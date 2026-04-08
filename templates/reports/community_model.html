@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Community investment model{% endblock %}
+{% block page_heading %}Community investment model{% endblock %}
+{% block content %}
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <h5 class="card-title">How Istithmar operates</h5>
+        <p class="text-muted mb-2">Members join the system, purchase investment shares, and pay either in <strong>full</strong> or on an <strong>installment</strong> plan. When a member has fully paid their subscribed share value, the system confirms ownership and can issue a <strong>share certificate</strong>.</p>
+        <p class="text-muted mb-2">Collected funds are pooled and allocated into <strong>approved investment projects</strong> in categories such as Real Estate, Medical, Trading, Services, Partnership, Agriculture, and Transport.</p>
+        <p class="text-muted mb-0">When projects generate profit, distributions split the pool by <strong>real money paid</strong> (contribution transactions): ownership % = member paid ÷ total paid. Subscribed amounts are never used as the basis. Policies only gate who participates (paid proportional vs fully paid only).</p>
+    </div>
+</div>
+
+{% if current_user.role == 'agent' %}
+<div class="alert alert-info py-2 small mb-3">
+    Figures for <strong>collections and subscriptions</strong> below are limited to your members. <strong>Deployed capital by project category</strong> is shown organization-wide so you can see where pooled funds are invested.
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header">Member funds ({{ 'your scope' if current_user.role == 'agent' else 'organization' }})</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr><td class="text-muted">Total contributions collected</td><td class="text-end fw-medium">{{ total_collected|money }} USD</td></tr>
+                        <tr><td class="text-muted">Paid into share subscriptions (sum)</td><td class="text-end fw-medium">{{ pool_paid|money }} USD</td></tr>
+                        <tr><td class="text-muted">Total subscribed value (active subs)</td><td class="text-end fw-medium">{{ pool_subscribed|money }} USD</td></tr>
+                        <tr><td class="text-muted">Active subscriptions</td><td class="text-end fw-medium">{{ subscription_count }}</td></tr>
+                        <tr><td class="text-muted">Fully paid subscriptions</td><td class="text-end fw-medium">{{ fully_paid_subs }}</td></tr>
+                        <tr><td class="text-muted">Installment plans</td><td class="text-end fw-medium">{{ installment_plans }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header">Funds linked to investment vehicles</div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr><th>Investment</th><th class="text-end">Paid from subscriptions</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for inv, amt in by_investment_rows %}
+                            <tr>
+                                <td><a href="{{ url_for('investments_edit', id=inv.id) }}">{{ inv.name }}</a></td>
+                                <td class="text-end">{{ amt|money }} USD</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="2" class="text-muted p-3">No subscription payments linked to an investment vehicle yet. Link subscriptions when creating or editing them.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">Deployed capital by approved project category</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th class="text-end">Sum of amounts invested (vehicles)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for key, label in project_categories %}
+                    <tr>
+                        <td>{{ label }}</td>
+                        <td class="text-end">{{ (by_category.get(key, 0))|money }} USD</td>
+                    </tr>
+                    {% endfor %}
+                    {% if by_category.get('_unlinked', 0) > 0 %}
+                    <tr class="table-light">
+                        <td><span class="text-muted">Not linked to a project</span></td>
+                        <td class="text-end">{{ by_category['_unlinked']|money }} USD</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+                <tfoot>
+                    <tr class="fw-medium">
+                        <td>Total deployed (all investments)</td>
+                        <td class="text-end">{{ total_deployed|money }} USD</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted small">Total profit recorded on investments (org.)</td>
+                        <td class="text-end text-muted small">{{ total_profit_org|money }} USD</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex flex-wrap gap-2">
+    <a href="{{ url_for('subscriptions_list') }}" class="btn btn-sm btn-primary">Subscriptions</a>
+    <a href="{{ url_for('investments_list') }}" class="btn btn-sm btn-soft-primary">Investments</a>
+    <a href="{{ url_for('projects_list') }}" class="btn btn-sm btn-soft-primary">Projects</a>
+    {% if current_user.role != 'agent' %}
+    {% if current_user.role == 'admin' %}
+    <a href="{{ url_for('profit_distribute') }}" class="btn btn-sm btn-soft-secondary">Record profit distribution</a>
+    {% endif %}
+    {% endif %}
+    <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-outline-secondary">All reports</a>
+</div>
+
+{% endblock %}

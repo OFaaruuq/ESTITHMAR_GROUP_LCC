@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+{% block title %}{{ sub.subscription_no }}{% endblock %}
+{% block page_heading %}{{ sub.subscription_no }}{% endblock %}
+{% block extra_css %}
+<style>
+.sub-inst-overdue { background-color: rgba(220, 53, 69, 0.08); }
+.cert-sub-panel {
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 0.65rem;
+  background: linear-gradient(165deg, rgba(239, 246, 255, 0.65) 0%, #fff 55%);
+  box-shadow: 0 2px 12px rgba(37, 99, 235, 0.06);
+}
+</style>
+{% endblock %}
+{% block content %}
+{% set elig_labels = {
+  'paid_proportional': 'Paid proportional (profit on amounts actually paid)',
+  'fully_paid_only': 'Fully paid only (no profit share until subscription is fully paid)',
+} %}
+{% set cur = currency_code %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('subscriptions_list') }}">Subscriptions</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ sub.subscription_no }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+        <h4 class="mb-2">{{ sub.subscription_no }}</h4>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            {% if sub.status == 'Fully Paid' %}
+            <span class="badge text-bg-success">{{ sub.status }}</span>
+            {% elif sub.status == 'Partially Paid' %}
+            <span class="badge text-bg-warning text-dark">{{ sub.status }}</span>
+            {% elif sub.status == 'Cancelled' %}
+            <span class="badge text-bg-secondary">{{ sub.status }}</span>
+            {% else %}
+            <span class="badge text-bg-info">{{ sub.status }}</span>
+            {% endif %}
+            {% if sub.is_share_confirmed %}
+            <span class="badge text-bg-success"><i class="ri-checkbox-circle-line me-1"></i>Share confirmed</span>
+            {% endif %}
+            <span class="text-muted small">Subscribed {{ sub.subscription_date }}</span>
+        </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{{ url_for('contributions_new', preselect=sub.member_id, subscription_id=sub.id) }}" class="btn btn-primary btn-sm"><i class="ri-hand-coin-line me-1"></i>Add payment</a>
+        <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-outline-primary btn-sm"><i class="ri-calendar-todo-line me-1"></i>Installments</a>
+        <div class="btn-group">
+            <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Related</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{{ url_for('members_profile', id=sub.member_id) }}"><i class="ri-user-line me-2"></i>Member profile</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('contributions_list', subscription_id=sub.id) }}"><i class="ri-hand-coin-line me-2"></i>Payments (this subscription)</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('invoices_list', subscription_id=sub.id) }}"><i class="ri-file-list-3-line me-2"></i>Invoices / receipts</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('subscriptions_list', member_id=sub.member_id) }}"><i class="ri-stack-line me-2"></i>Member’s subscriptions</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('reports_member_contrib', member_id=sub.member_id) }}"><i class="ri-file-chart-line me-2"></i>Member contribution report</a></li>
+                {% if sub.investment %}
+                <li><a class="dropdown-item" href="{{ url_for('investments_profile', id=sub.investment.id) }}"><i class="ri-line-chart-line me-2"></i>Linked investment</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Subscribed</p>
+                <p class="fs-5 fw-semibold mb-0">{{ settings.currency_symbol }}{{ sub.subscribed_amount|money }} <span class="fs-6 fw-normal text-muted">{{ cur }}</span></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Paid (linked)</p>
+                <p class="fs-5 fw-semibold mb-0 text-success">{{ settings.currency_symbol }}{{ paid_total|money }} <span class="fs-6 fw-normal text-muted">{{ cur }}</span></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Balance</p>
+                <p class="fs-5 fw-semibold mb-0 {% if outstanding > 0 %}text-warning{% else %}text-muted{% endif %}">{{ settings.currency_symbol }}{{ outstanding|money }} <span class="fs-6 fw-normal">{{ cur }}</span></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Complete</p>
+                <p class="fs-5 fw-semibold mb-0">{{ completion_pct|money }}%</p>
+                {% set pct_raw = completion_pct|float %}
+                <div class="progress mt-2" style="height: 10px;">
+                    <div class="progress-bar bg-primary" role="progressbar" style="width: {{ pct_raw if pct_raw <= 100 else 100 }}%;" aria-valuenow="{{ pct_raw if pct_raw <= 100 else 100 }}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Installment rows</p>
+                <p class="fs-5 fw-semibold mb-0">{{ installment_rows_total }}</p>
+                <p class="small mb-0 {% if installment_overdue_count > 0 %}text-danger{% else %}text-muted{% endif %}">{{ installment_overdue_count }} overdue</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Inst. due (unpaid)</p>
+                <p class="fs-5 fw-semibold mb-0">{{ settings.currency_symbol }}{{ installment_due_balance|money }} <span class="fs-6 fw-normal text-muted">{{ cur }}</span></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="card mb-3">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="card-title mb-0"><i class="ri-user-location-line me-2 text-primary"></i>Member &amp; assignment</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-start gap-3 mb-3">
+                    <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center flex-shrink-0" style="width:48px;height:48px;font-weight:600;">
+                        {{ sub.member.full_name[:2]|upper }}
+                    </div>
+                    <div>
+                        <a href="{{ url_for('members_profile', id=sub.member_id) }}" class="h6 mb-1 text-decoration-none d-block">{{ sub.member.full_name }}</a>
+                        <span class="font-monospace small text-muted">{{ sub.member.member_id }}</span>
+                        {% if sub.member.agent %}
+                        <p class="small mb-0 mt-1 text-muted">Agent: <strong>{{ sub.member.agent.full_name }}</strong> ({{ sub.member.agent.agent_id }})</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <hr>
+                <h6 class="text-muted text-uppercase small mb-2">Subscription details</h6>
+                <dl class="row small mb-0">
+                    <dt class="col-sm-5 text-muted">Payment plan</dt>
+                    <dd class="col-sm-7">{{ 'Installment' if sub.payment_plan == 'installment' else 'Full payment' }}</dd>
+                    <dt class="col-sm-5 text-muted">Eligibility</dt>
+                    <dd class="col-sm-7">{{ elig_labels.get(sub.eligibility_policy, sub.eligibility_policy) }}</dd>
+                    {% if sub.share_unit_price %}
+                    <dt class="col-sm-5 text-muted">Share unit price</dt>
+                    <dd class="col-sm-7">{{ settings.currency_symbol }}{{ sub.share_unit_price|money }} {{ cur }}</dd>
+                    {% endif %}
+                    {% if sub.share_units_subscribed %}
+                    <dt class="col-sm-5 text-muted">Units</dt>
+                    <dd class="col-sm-7">{{ sub.share_units_subscribed|money }}</dd>
+                    {% endif %}
+                    <dt class="col-sm-5 text-muted">Share confirmation</dt>
+                    <dd class="col-sm-7">
+                        {% if sub.is_share_confirmed and sub.confirmed_at %}
+                        <span class="text-success fw-medium">Confirmed</span>
+                        <span class="text-muted d-block small">{{ sub.confirmed_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+                        {% else %}
+                        <span class="text-muted">Not confirmed</span>
+                        <span class="d-block small text-muted">Requires full payment and workflow rules.</span>
+                        {% endif %}
+                    </dd>
+                    {% if sub.created_at %}
+                    <dt class="col-sm-5 text-muted">Record created</dt>
+                    <dd class="col-sm-7 text-muted">{{ sub.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header py-3">
+                <h5 class="card-title mb-0"><i class="ri-line-chart-line me-2 text-primary"></i>Linked investment</h5>
+            </div>
+            <div class="card-body">
+                {% if sub.investment %}
+                <p class="mb-1 fw-semibold">{{ sub.investment.name }}</p>
+                <p class="small text-muted mb-2 font-monospace">{{ sub.investment.investment_code or ('#' ~ sub.investment.id) }}</p>
+                <a href="{{ url_for('investments_profile', id=sub.investment.id) }}" class="btn btn-sm btn-soft-primary">Open investment</a>
+                {% else %}
+                <p class="text-warning mb-2"><i class="ri-alert-line me-1"></i>Not linked to an investment pool.</p>
+                <p class="small text-muted mb-0">Linking is used for investment-scoped profit and reporting.</p>
+                {% endif %}
+                {% if current_user.role != 'agent' %}
+                <hr>
+                <form method="post" action="{{ url_for('subscriptions_set_investment', id=sub.id) }}" class="row g-2 align-items-end">
+                    <div class="col-12">
+                        <label class="form-label small mb-0">Change link</label>
+                        <select name="investment_id" class="form-select form-select-sm">
+                            <option value="">— Not linked —</option>
+                            {% for inv in investments %}
+                            <option value="{{ inv.id }}" {{ 'selected' if sub.investment_id == inv.id else '' }}>{{ inv.investment_code or inv.name }} — {{ inv.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-outline-primary btn-sm">Update investment link</button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card cert-sub-panel border-0">
+            <div class="card-body">
+                <h6 class="small fw-semibold mb-3 d-flex align-items-center gap-2" style="color: #1d4ed8;">
+                    <span class="d-inline-flex align-items-center justify-content-center rounded-2" style="width:2rem;height:2rem;background:rgba(37,99,235,.12);"><i class="ri-award-line"></i></span>
+                    Share certificate
+                </h6>
+                {% if sub.certificate %}
+                <p class="mb-2 small text-muted">Number <strong class="font-monospace text-dark">{{ sub.certificate.certificate_no }}</strong>
+                    <span class="badge rounded-pill ms-1 {% if sub.certificate.status == 'Issued' %}bg-success-subtle text-success border border-success border-opacity-25{% else %}bg-secondary-subtle text-secondary{% endif %}">{{ sub.certificate.status }}</span>
+                </p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('certificates_print', id=sub.certificate.id) }}" class="btn btn-sm btn-primary"><i class="ri-eye-line me-1"></i>View</a>
+                    {% if sub.certificate.status == 'Issued' %}
+                    <a href="{{ url_for('certificates_pdf', id=sub.certificate.id) }}" class="btn btn-sm btn-outline-success"><i class="ri-file-pdf-line me-1"></i>PDF</a>
+                    {% endif %}
+                </div>
+                {% elif current_user.role != 'agent' %}
+                <p class="small text-muted mb-3">No certificate issued yet. Issue when this holding is fully paid and confirmed.</p>
+                <form method="post" action="{{ url_for('certificates_issue', subscription_id=sub.id) }}" class="d-inline">
+                    <button type="submit" class="btn btn-sm btn-primary"><i class="ri-award-line me-1"></i>Issue certificate</button>
+                </form>
+                {% else %}
+                <p class="small text-muted mb-0">No certificate on file.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-body py-3 d-flex flex-wrap gap-2">
+                {% if current_user.role in ['admin', 'operator'] and sub.status not in ['Cancelled', 'Fully Paid'] %}
+                <form method="post" action="{{ url_for('subscriptions_cancel', id=sub.id) }}" class="d-inline" onsubmit="return confirm('Cancel this share subscription? This applies to Pending or Partially paid subscriptions only.');">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Cancel subscription</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="accordion mb-3" id="subRulesAcc">
+            <div class="accordion-item border">
+                <h2 class="accordion-header" id="rulesHead">
+                    <button class="accordion-button collapsed py-2 small" type="button" data-bs-toggle="collapse" data-bs-target="#rulesCollapse" aria-expanded="false" aria-controls="rulesCollapse">
+                        How status &amp; balances work
+                    </button>
+                </h2>
+                <div id="rulesCollapse" class="accordion-collapse collapse" aria-labelledby="rulesHead" data-bs-parent="#subRulesAcc">
+                    <div class="accordion-body small text-muted">
+                        <strong>Pending</strong> — no payments linked yet (paid = 0).
+                        <strong>Partially Paid</strong> — some payments; balance &gt; 0.
+                        <strong>Fully Paid</strong> — payments ≥ subscribed amount.
+                        <strong>Cancelled</strong> — voided (admin). Paid and balance follow <strong>linked contributions</strong> only.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="card-title mb-0"><i class="ri-calendar-todo-line me-2 text-primary"></i>Installment schedule</h5>
+                <span class="badge bg-light text-dark border">{{ installment_rows_total }} rows</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Due date</th>
+                                <th class="text-end">Due</th>
+                                <th class="text-end">Paid</th>
+                                <th class="text-end">Remain</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for i in installments %}
+                            {% set rem = i.balance() %}
+                            {% set is_overdue = i.status == 'Overdue' or (i.due_date and i.due_date < today and i.status in ['Pending', 'Partially Paid']) %}
+                            <tr class="{% if is_overdue and rem > 0 %}sub-inst-overdue{% endif %}">
+                                <td>{{ i.sequence_no }}</td>
+                                <td>{{ i.due_date }}</td>
+                                <td class="text-end">{{ settings.currency_symbol }}{{ i.due_amount|money }}</td>
+                                <td class="text-end">{{ settings.currency_symbol }}{{ i.paid_amount|money }}</td>
+                                <td class="text-end fw-medium {% if rem > 0 %}text-danger{% endif %}">{{ settings.currency_symbol }}{{ rem|money }}</td>
+                                <td>
+                                    {% if i.status == 'Paid' %}
+                                    <span class="badge text-bg-success">{{ i.status }}</span>
+                                    {% elif i.status == 'Overdue' %}
+                                    <span class="badge text-bg-danger">{{ i.status }}</span>
+                                    {% elif i.status == 'Cancelled' %}
+                                    <span class="badge text-bg-secondary">{{ i.status }}</span>
+                                    {% else %}
+                                    <span class="badge text-bg-warning text-dark">{{ i.status }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-muted p-4 text-center">No installment lines. <a href="{{ url_for('subscriptions_installments', id=sub.id) }}">Define schedule</a> or use full payment plan.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="card-title mb-0"><i class="ri-hand-coin-line me-2 text-primary"></i>Linked payments</h5>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('contributions_list', subscription_id=sub.id) }}" class="btn btn-sm btn-soft-secondary">All in list</a>
+                    <a href="{{ url_for('invoices_list', subscription_id=sub.id) }}" class="btn btn-sm btn-outline-secondary">Invoices view</a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Receipt</th>
+                                <th>Date</th>
+                                <th class="text-end">Amount</th>
+                                <th>Method</th>
+                                <th>Verified</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in contribs %}
+                            <tr>
+                                <td><strong class="font-monospace">{{ c.receipt_no or '—' }}</strong></td>
+                                <td>{{ c.date }}</td>
+                                <td class="text-end fw-medium">{{ settings.currency_symbol }}{{ c.amount|money }}</td>
+                                <td><span class="badge bg-light text-dark border">{{ c.payment_type }}</span></td>
+                                <td>
+                                    {% if c.verified %}
+                                    <span class="badge text-bg-success">Yes</span>
+                                    {% else %}
+                                    <span class="badge text-bg-secondary">No</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    <a href="{{ url_for('contributions_receipt', id=c.id) }}" class="btn btn-sm btn-soft-primary">Receipt</a>
+                                    <a href="{{ url_for('invoice_detail', id=c.id) }}" class="btn btn-sm btn-outline-secondary">Invoice</a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-muted p-4 text-center">No payments linked yet. <a href="{{ url_for('contributions_new', preselect=sub.member_id, subscription_id=sub.id) }}">Record a payment</a> and select this subscription.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% if contribs|length > 0 %}
+            <div class="card-footer bg-transparent small text-muted">
+                {{ contribs|length }} payment(s); totals above use all linked rows.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

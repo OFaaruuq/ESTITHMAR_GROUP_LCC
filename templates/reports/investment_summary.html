@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Investment summary{% endblock %}
+{% block page_heading %}Investment summary{% endblock %}
+{% block extra_css %}
+<style>
+.is-hero { border-radius: 0.5rem; border: 1px solid rgba(25, 135, 84, 0.12); background: linear-gradient(135deg, rgba(25, 135, 84, 0.06) 0%, rgba(255,255,255,0.98) 50%); }
+.is-kpi { transition: transform .12s ease; }
+.is-kpi:hover { transform: translateY(-1px); }
+</style>
+{% endblock %}
+{% block content %}
+{% set cur = currency_code %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Investment summary</li>
+    </ol>
+</nav>
+
+<div class="is-hero p-3 p-md-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h5 class="mb-2"><i class="ri-line-chart-line me-2 text-success"></i>Deployment &amp; profit by investment line</h5>
+            <p class="text-muted small mb-0" style="max-width: 42rem;">
+                Each row is one <strong>investment line</strong>. <strong>Remaining</strong> is recorded profit minus amounts already distributed to members (not below zero).
+                Open a line for subscriptions, batches, and profit notes.
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('investments_list') }}" class="btn btn-sm btn-soft-primary"><i class="ri-list-check me-1"></i>Investments list</a>
+            <a href="{{ url_for('reports_projects_profitability') }}" class="btn btn-sm btn-outline-primary"><i class="ri-folder-3-line me-1"></i>Project profitability</a>
+            <a href="{{ url_for('profit_history') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-history-line me-1"></i>Profit history</a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100 is-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Lines</p>
+                <p class="fs-4 fw-semibold mb-0">{{ totals.lines }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100 is-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Total deployed</p>
+                <p class="fs-4 fw-semibold mb-0 text-primary">{{ settings.currency_symbol }}{{ totals.invested|money }}</p>
+                <p class="small text-muted mb-0">{{ cur }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100 is-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Profit recorded</p>
+                <p class="fs-4 fw-semibold mb-0">{{ settings.currency_symbol }}{{ totals.profit|money }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100 is-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Distributed</p>
+                <p class="fs-4 fw-semibold mb-0 text-success">{{ settings.currency_symbol }}{{ totals.distributed|money }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100 is-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Remaining</p>
+                <p class="fs-4 fw-semibold mb-0 {% if totals.remaining > 0 %}text-warning{% else %}text-muted{% endif %}">{{ settings.currency_symbol }}{{ totals.remaining|money }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 bg-primary bg-opacity-10 h-100">
+            <div class="card-body py-3 d-flex flex-column justify-content-center">
+                <p class="text-muted small mb-1">Reports</p>
+                <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-primary">Hub</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 border-bottom">
+        <h6 class="mb-0">All investment lines</h6>
+        <p class="text-muted small mb-0">Sorted by name. Links open the investment profile.</p>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Investment</th>
+                        <th class="d-none d-lg-table-cell">Code</th>
+                        <th>Project</th>
+                        <th class="text-end">Deployed</th>
+                        <th class="text-end d-none d-md-table-cell">Profit rec.</th>
+                        <th class="text-end d-none d-md-table-cell">Distributed</th>
+                        <th class="text-end">Remaining</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in rows %}
+                    {% set dist = dist_totals.get(inv.id, 0) %}
+                    {% set gen = inv.profit_generated or 0 %}
+                    {% set raw_rem = gen - dist %}
+                    {% set rem = raw_rem if raw_rem > 0 else 0 %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('investments_profile', id=inv.id) }}" class="fw-semibold text-decoration-none">{{ inv.name }}</a>
+                            {% if inv.investment_type %}<br><span class="small text-muted">{{ inv.investment_type }}</span>{% endif %}
+                        </td>
+                        <td class="d-none d-lg-table-cell font-monospace small text-muted">{{ inv.investment_code or '—' }}</td>
+                        <td class="small">
+                            {% if inv.project %}
+                            <a href="{{ url_for('projects_profile', id=inv.project.id) }}" class="text-decoration-none">{{ inv.project.name }}</a>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ inv.total_amount_invested|money }}</td>
+                        <td class="text-end text-nowrap d-none d-md-table-cell">{{ settings.currency_symbol }}{{ gen|money }}</td>
+                        <td class="text-end text-nowrap d-none d-md-table-cell text-success">{{ settings.currency_symbol }}{{ dist|money }}</td>
+                        <td class="text-end text-nowrap {% if rem > 0 %}fw-medium text-warning{% endif %}">{{ settings.currency_symbol }}{{ rem|money }}</td>
+                        <td>
+                            {% if inv.status == 'Active' %}
+                            <span class="badge text-bg-success">{{ inv.status }}</span>
+                            {% elif inv.status in ['Completed', 'Closed'] %}
+                            <span class="badge text-bg-secondary">{{ inv.status }}</span>
+                            {% elif inv.status == 'Suspended' %}
+                            <span class="badge text-bg-warning text-dark">{{ inv.status }}</span>
+                            {% elif inv.status == 'Planned' %}
+                            <span class="badge text-bg-info">{{ inv.status }}</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark border">{{ inv.status }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-muted p-4 text-center">No investment lines yet. Create one under <a href="{{ url_for('investments_list') }}">Investments</a>.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-transparent small text-muted">
+        Amounts in <strong>{{ cur }}</strong>. <strong>Remaining</strong> = profit generated minus member distributions (capped at zero per line).
+    </div>
+</div>
+
+<p class="mt-3 mb-0">
+    <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-arrow-left-line me-1"></i>Back to reports hub</a>
+</p>
+{% endblock %}

@@ -1,0 +1,438 @@
+{% extends "base.html" %}
+{% block title %}{{ investment.name }}{% endblock %}
+{% block page_heading %}{{ investment.investment_code or investment.name }}{% endblock %}
+{% block extra_css %}
+<style>
+.inv-hero {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(25, 135, 84, 0.15);
+  background: linear-gradient(135deg, rgba(25, 135, 84, 0.07) 0%, rgba(255,255,255,0.96) 55%);
+}
+.inv-kpi { transition: transform .15s ease; }
+.inv-kpi:hover { transform: translateY(-1px); }
+.inv-profit-bar { height: 8px; border-radius: 999px; overflow: hidden; background: rgba(0,0,0,.08); }
+</style>
+{% endblock %}
+{% block content %}
+{% set cur = currency_code %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('investments_list') }}">Investments</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ investment.investment_code or investment.name }}</li>
+    </ol>
+</nav>
+
+<div class="inv-hero p-3 p-md-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div class="d-flex gap-3 align-items-start">
+            <div class="rounded-3 bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center flex-shrink-0" style="width:52px;height:52px;">
+                <i class="ri-line-chart-line fs-3"></i>
+            </div>
+            <div>
+                <h4 class="mb-1">{{ investment.name }}</h4>
+                <p class="text-muted small font-monospace mb-2">{{ investment.investment_code or ('#' ~ investment.id) }}</p>
+                <div class="d-flex flex-wrap gap-2">
+                    {% if investment.status == 'Active' %}
+                    <span class="badge text-bg-success">{{ investment.status }}</span>
+                    {% elif investment.status in ['Completed', 'Closed'] %}
+                    <span class="badge text-bg-secondary">{{ investment.status }}</span>
+                    {% elif investment.status == 'Suspended' %}
+                    <span class="badge text-bg-warning text-dark">{{ investment.status }}</span>
+                    {% elif investment.status == 'Planned' %}
+                    <span class="badge text-bg-info">{{ investment.status }}</span>
+                    {% else %}
+                    <span class="badge bg-light text-dark border">{{ investment.status }}</span>
+                    {% endif %}
+                    {% if investment.investment_type %}
+                    <span class="badge bg-white text-dark border">{{ investment.investment_type }}</span>
+                    {% endif %}
+                    {% if investment.project %}
+                    <span class="badge bg-light text-muted border"><i class="ri-folder-3-line me-1"></i>{{ investment.project.name }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('investments_edit', id=investment.id) }}" class="btn btn-primary btn-sm"><i class="ri-pencil-line me-1"></i>Edit</a>
+            <a href="{{ url_for('subscriptions_new', investment_id=investment.id) }}" class="btn btn-success btn-sm"><i class="ri-user-add-line me-1"></i>New subscription</a>
+            <div class="btn-group">
+                <button type="button" class="btn btn-outline-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Related</button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="{{ url_for('investments_list') }}"><i class="ri-list-check me-2"></i>All investments</a></li>
+                    {% if investment.project %}
+                    <li><a class="dropdown-item" href="{{ url_for('projects_profile', id=investment.project.id) }}"><i class="ri-folder-3-line me-2"></i>Project profile</a></li>
+                    <li><a class="dropdown-item" href="{{ url_for('investments_list', project_id=investment.project.id) }}"><i class="ri-filter-3-line me-2"></i>Investments (this project)</a></li>
+                    {% endif %}
+                    <li><a class="dropdown-item" href="{{ url_for('subscriptions_list', investment_id=investment.id) }}"><i class="ri-stack-line me-2"></i>Share subscriptions</a></li>
+                    {% if current_user.role != 'agent' %}
+                    <li><a class="dropdown-item" href="{{ url_for('reports_investment_summary') }}"><i class="ri-file-list-3-line me-2"></i>Investment summary report</a></li>
+                    <li><a class="dropdown-item" href="{{ url_for('profit_history') }}"><i class="ri-history-line me-2"></i>Profit history</a></li>
+                    {% endif %}
+                    {% if current_user.role == 'admin' and undist > 0 %}
+                    <li><a class="dropdown-item" href="{{ url_for('profit_distribute', investment_id=investment.id) }}"><i class="ri-share-forward-line me-2"></i>Distribute profit</a></li>
+                    {% endif %}
+                    <li><a class="dropdown-item" href="{{ url_for('reports_hub') }}"><i class="ri-file-chart-line me-2"></i>Reports hub</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    {% set gen = investment.profit_generated or 0 %}
+    {% if gen > 0 %}
+    {% set dist_pct = (100 * (dist_total / gen)) if gen > 0 else 0 %}
+    <div class="mt-3 pt-3 border-top border-success border-opacity-25">
+        <div class="d-flex justify-content-between align-items-center small mb-1">
+            <span class="text-muted">Profit distributed vs recorded</span>
+            <span class="fw-semibold">{{ dist_pct|money }}%</span>
+        </div>
+        <div class="inv-profit-bar" role="progressbar" aria-valuenow="{{ dist_pct|float }}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar bg-success h-100" style="width: {{ dist_pct if dist_pct <= 100 else 100 }}%;"></div>
+        </div>
+        <p class="small text-muted mb-0 mt-1">{{ settings.currency_symbol }}{{ dist_total|money }} paid out of {{ settings.currency_symbol }}{{ gen|money }} {{ cur }} recorded.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% if investment.status == 'Closed' and undist > 0 %}
+<div class="alert alert-warning py-2 small mb-3">
+    <i class="ri-alert-line me-1"></i>Recorded profit still exceeds amounts distributed to members. Review distributions or edit recorded profit.
+</div>
+{% endif %}
+
+<div class="accordion mb-3" id="invHelpAcc">
+    <div class="accordion-item border">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed py-2 small" type="button" data-bs-toggle="collapse" data-bs-target="#invHelpCollapse">
+                How this investment fits in the model
+            </button>
+        </h2>
+        <div id="invHelpCollapse" class="accordion-collapse collapse" data-bs-parent="#invHelpAcc">
+            <div class="accordion-body small text-muted">
+                Pool funds are <strong>deployed</strong> here as deployed capital. <strong>Share subscriptions</strong> linked to this line determine who participates in profit from this vehicle.
+                <strong>Profit generated</strong> is your operational total; <strong>profit distributed</strong> is what was paid to members via distribution batches.
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 inv-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Deployed</p>
+                <p class="fs-5 fw-semibold mb-0 text-primary">{{ settings.currency_symbol }}{{ investment.total_amount_invested|money }}</p>
+                <p class="small text-muted mb-0">{{ cur }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 inv-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Capital returned</p>
+                <p class="fs-5 fw-semibold mb-0">{{ settings.currency_symbol }}{{ (investment.capital_returned or 0)|money }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 inv-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Profit recorded</p>
+                <p class="fs-5 fw-semibold mb-0">{{ settings.currency_symbol }}{{ investment.profit_generated|money }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 inv-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Distributed</p>
+                <p class="fs-5 fw-semibold mb-0 text-success">{{ settings.currency_symbol }}{{ dist_total|money }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 inv-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Undistributed</p>
+                <p class="fs-5 fw-semibold mb-0 {% if undist > 0 %}text-warning{% else %}text-muted{% endif %}">{{ settings.currency_symbol }}{{ undist|money }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 inv-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Subscriptions</p>
+                <p class="fs-5 fw-semibold mb-0">{{ subscription_count }}</p>
+                <p class="small text-muted mb-0">{{ settings.currency_symbol }}{{ sum_subscribed|money }} {{ cur }} linked</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1"><i class="ri-funds-line me-1"></i>Pool (organization)</p>
+                <p class="mb-0 small">Available for new deployment: <strong class="text-success">{{ settings.currency_symbol }}{{ pool.available|money }}</strong> {{ cur }}</p>
+                <p class="small text-muted mb-0 mt-1">Collected {{ settings.currency_symbol }}{{ pool.collected|money }} · Allocated {{ settings.currency_symbol }}{{ pool.invested|money }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1"><i class="ri-group-line me-1"></i>Profit participation</p>
+                <p class="mb-0 small"><strong>{{ members_benefit_count }}</strong> distinct member(s) received profit from this investment (via distributions).</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if investment.profit_distribution_frequency or investment.next_distribution_review_date %}
+<div class="alert alert-light border mb-3 small">
+    <strong><i class="ri-calendar-event-line me-1"></i>Distribution review reminder:</strong>
+    {% if investment.profit_distribution_frequency %}
+    Cadence: {{ profit_distribution_labels.get(investment.profit_distribution_frequency, investment.profit_distribution_frequency) }}.
+    {% endif %}
+    {% if investment.next_distribution_review_date %}
+    Next review: <strong>{{ investment.next_distribution_review_date }}</strong>.
+    {% endif %}
+    <a href="{{ url_for('investments_edit', id=investment.id) }}" class="ms-1">Edit</a>
+</div>
+{% endif %}
+
+{% if current_user.role in ('admin', 'operator') %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="card-title mb-0"><i class="ri-book-2-line me-2 text-primary"></i>Financial snapshots (ledger)</h5>
+        <span class="small text-muted">§10.3 — point-in-time copies of deployed capital and profit balances</span>
+    </div>
+    <div class="card-body">
+        <form method="post" action="{{ url_for('investments_ledger_snapshot', id=investment.id) }}" class="row g-2 align-items-end mb-4 pb-3 border-bottom">
+            <div class="col-md-8">
+                <label class="form-label small mb-0" for="ledger-notes">Optional note for this snapshot</label>
+                <input type="text" name="ledger_notes" id="ledger-notes" class="form-control form-control-sm" maxlength="500" placeholder="e.g. Month-end Q1, audit request">
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i class="ri-camera-line me-1"></i>Record snapshot</button>
+            </div>
+        </form>
+        {% if ledger_entries %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th class="text-end">Deployed</th>
+                        <th class="text-end">Cap. returned</th>
+                        <th class="text-end">Profit rec.</th>
+                        <th class="text-end">Dist.</th>
+                        <th class="text-end">Undist.</th>
+                        <th>Note</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in ledger_entries %}
+                    <tr>
+                        <td class="text-nowrap small">{{ row.created_at.strftime('%Y-%m-%d %H:%M') if row.created_at else '—' }}</td>
+                        <td class="text-end text-nowrap small">{{ settings.currency_symbol }}{{ row.capital_invested|money }}</td>
+                        <td class="text-end text-nowrap small">{{ settings.currency_symbol }}{{ row.capital_returned|money }}</td>
+                        <td class="text-end text-nowrap small">{{ settings.currency_symbol }}{{ row.profit_generated|money }}</td>
+                        <td class="text-end text-nowrap small">{{ settings.currency_symbol }}{{ row.profit_distributed|money }}</td>
+                        <td class="text-end text-nowrap small">{{ settings.currency_symbol }}{{ row.profit_undistributed|money }}</td>
+                        <td class="small text-muted">{{ row.notes or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">No snapshots yet. Use <strong>Record snapshot</strong> to save the current figures for audit and reporting.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="card-title mb-0"><i class="ri-information-line me-2 text-success"></i>Details</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <p class="text-muted small mb-1">Project</p>
+                {% if investment.project %}
+                <p class="mb-0"><a href="{{ url_for('projects_profile', id=investment.project.id) }}" class="fw-semibold text-decoration-none">{{ investment.project.name }}</a></p>
+                <p class="small text-muted font-monospace mb-0">{{ investment.project.project_code or '' }}</p>
+                {% else %}
+                <p class="mb-0 text-muted">—</p>
+                {% endif %}
+            </div>
+            <div class="col-md-4">
+                <p class="text-muted small mb-1">Project manager</p>
+                <p class="mb-0">{{ investment.project_manager or '—' }}</p>
+            </div>
+            <div class="col-md-4">
+                <p class="text-muted small mb-1">Timeline</p>
+                <p class="mb-0">{{ investment.start_date or '—' }} <span class="text-muted">→</span> {{ investment.end_date or '—' }}</p>
+            </div>
+            {% if investment.profit_entry_date or investment.profit_notes %}
+            <div class="col-12">
+                <p class="text-muted small mb-1">Latest profit note (from edit form)</p>
+                {% if investment.profit_entry_date %}<p class="small mb-1">As of <strong>{{ investment.profit_entry_date }}</strong></p>{% endif %}
+                {% if investment.profit_notes %}<p class="mb-0 small">{{ investment.profit_notes }}</p>{% else %}<p class="text-muted small mb-0">—</p>{% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if recent_subscriptions %}
+<div class="card mb-3">
+    <div class="card-header py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="card-title mb-0"><i class="ri-stack-line me-2 text-primary"></i>Linked share subscriptions</h5>
+        <a href="{{ url_for('subscriptions_list', investment_id=investment.id) }}" class="btn btn-sm btn-soft-primary">View all</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Subscription</th>
+                        <th>Member</th>
+                        <th class="text-end">Subscribed</th>
+                        <th>Status</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in recent_subscriptions %}
+                    <tr>
+                        <td class="font-monospace small"><a href="{{ url_for('subscriptions_profile', id=s.id) }}" class="text-decoration-none">{{ s.subscription_no }}</a></td>
+                        <td>{% if s.member %}<a href="{{ url_for('members_profile', id=s.member.id) }}" class="text-decoration-none">{{ s.member.full_name }}</a>{% else %}—{% endif %}</td>
+                        <td class="text-end text-nowrap small">{{ settings.currency_symbol }}{{ s.subscribed_amount|money }}</td>
+                        <td>
+                            {% if s.status == 'Fully Paid' %}
+                            <span class="badge text-bg-success">{{ s.status }}</span>
+                            {% elif s.status in ['Cancelled'] %}
+                            <span class="badge text-bg-secondary">{{ s.status }}</span>
+                            {% elif s.status == 'Partially Paid' %}
+                            <span class="badge text-bg-warning text-dark">{{ s.status }}</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark border">{{ s.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end"><a href="{{ url_for('subscriptions_profile', id=s.id) }}" class="btn btn-sm btn-outline-primary py-0">Open</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if subscription_count > recent_subscriptions|length %}
+    <div class="card-footer bg-transparent small text-muted">
+        Showing {{ recent_subscriptions|length }} of {{ subscription_count }} subscription(s){% if current_user.role == 'agent' %} in your scope{% endif %}.
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="card mb-3 bg-light border">
+    <div class="card-body py-4 text-center text-muted">
+        <p class="mb-2">No share subscriptions linked to this investment{% if current_user.role == 'agent' %} for members in your scope{% endif %}.</p>
+        <a href="{{ url_for('subscriptions_new', investment_id=investment.id) }}" class="btn btn-sm btn-primary">Create subscription</a>
+        <a href="{{ url_for('subscriptions_list', investment_id=investment.id) }}" class="btn btn-sm btn-link">Open subscription list</a>
+    </div>
+</div>
+{% endif %}
+
+{% if recent_profit_batches %}
+<div class="card mb-3">
+    <div class="card-header py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="card-title mb-0"><i class="ri-share-forward-line me-2 text-success"></i>Profit distribution batches</h5>
+        {% if current_user.role in ('admin', 'operator') %}
+        <a href="{{ url_for('profit_history') }}" class="btn btn-sm btn-outline-secondary">Full history</a>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Batch</th>
+                        <th>Date</th>
+                        <th class="text-end">Input</th>
+                        <th class="text-end">Distributed</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in recent_profit_batches %}
+                    <tr>
+                        <td class="font-monospace small">{{ b.batch_no }}</td>
+                        <td>{{ b.distribution_date }}</td>
+                        <td class="text-end text-nowrap small">{{ settings.currency_symbol }}{{ b.total_profit_input|money }}</td>
+                        <td class="text-end text-nowrap small text-success">{{ settings.currency_symbol }}{{ b.total_profit_distributed|money }}</td>
+                        <td class="text-end text-nowrap">
+                            {% if current_user.role in ('admin', 'operator') %}
+                            <a href="{{ url_for('profit_batch_detail', batch_id=b.id) }}" class="btn btn-sm btn-outline-primary py-0">Details</a>
+                            {% else %}
+                            <span class="text-muted small">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if profit_batch_total > recent_profit_batches|length %}
+    <div class="card-footer bg-transparent small text-muted">
+        Showing {{ recent_profit_batches|length }} of {{ profit_batch_total }} batch(es).
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if profit_logs %}
+<div class="card mb-3">
+    <div class="card-header py-3">
+        <h5 class="card-title mb-0"><i class="ri-history-line me-2"></i>Profit entry log</h5>
+        <p class="text-muted small mb-0">Audit trail when recorded profit was entered or updated (up to 50 rows).</p>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Recorded at</th>
+                        <th class="text-end">Amount</th>
+                        <th>Entry date</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in profit_logs %}
+                    <tr>
+                        <td class="text-nowrap small">{% if log.created_at %}{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}</td>
+                        <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ log.amount|money }}</td>
+                        <td>{{ log.entry_date or '—' }}</td>
+                        <td class="small">{{ log.notes or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="d-flex flex-wrap gap-2 align-items-center">
+    <a href="{{ url_for('investments_list') }}" class="btn btn-soft-secondary btn-sm"><i class="ri-arrow-left-line me-1"></i>All investments</a>
+    {% if can_delete and current_user.role == 'admin' %}
+    <form method="post" action="{{ url_for('investments_delete', id=investment.id) }}" class="d-inline ms-auto" onsubmit="return confirm('Delete this investment? This cannot be undone.');">
+        <button type="submit" class="btn btn-outline-danger btn-sm">Delete investment</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

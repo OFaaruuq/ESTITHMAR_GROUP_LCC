@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Trial balance{% endblock %}
+{% block page_heading %}Accounting — Trial balance{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('accounting_hub') }}">Accounting</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Trial balance</li>
+    </ol>
+</nav>
+
+{% include 'accounting/_subnav.html' %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <p class="small text-muted mb-0">All accounts with posted activity. Totals should match (double-entry).</p>
+    <a href="{{ url_for('accounting_export_trial_balance') }}" class="btn btn-sm btn-outline-secondary">Export CSV</a>
+</div>
+
+<div class="table-responsive card border-0 shadow-sm">
+    <table class="table table-hover table-sm mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Code</th>
+                <th>Account</th>
+                <th>Type</th>
+                <th class="text-end">Debit</th>
+                <th class="text-end">Credit</th>
+                <th class="text-end">Balance (Dr − Cr)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in trial_balance %}
+            <tr>
+                <td class="font-monospace"><a href="{{ url_for('accounting_ledger', account_id=r.account_id) }}">{{ r.code }}</a></td>
+                <td><a href="{{ url_for('accounting_ledger', account_id=r.account_id) }}" class="text-reset">{{ r.name }}</a></td>
+                <td class="small">{{ r.type }}</td>
+                <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ r.debit|money }}</td>
+                <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ r.credit|money }}</td>
+                <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ r.balance|money }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-semibold">
+            <tr>
+                <td colspan="3">Totals</td>
+                <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ total_debits|money }}</td>
+                <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ total_credits|money }}</td>
+                <td class="text-end">{% if total_debits == total_credits %}✓{% endif %}</td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endblock %}

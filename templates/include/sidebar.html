@@ -1,0 +1,169 @@
+{# Istithmar — single source for the vertical navigation strip. Edit menu items only here. #}
+<div class="vertical-menu">
+    <div class="navbar-brand-box">
+        <a href="{{ url_for('dashboard') }}" class="logo logo-dark">
+            <span class="logo-sm"><img src="{{ brand_logo_dark_sm }}" alt="logo-sm-dark" height="24"></span>
+            <span class="logo-lg"><img src="{{ brand_logo_dark_lg }}" alt="logo-dark" height="22"></span>
+        </a>
+        <a href="{{ url_for('dashboard') }}" class="logo logo-light">
+            <span class="logo-sm"><img src="{{ brand_logo_light_sm }}" alt="logo-light" height="24"></span>
+            <span class="logo-lg"><img src="{{ brand_logo_light_lg }}" alt="logo-light" height="22"></span>
+        </a>
+    </div>
+
+    <button type="button" class="btn btn-sm px-3 font-size-24 header-item waves-effect vertical-menu-btn" id="vertical-menu-btn" aria-label="Toggle navigation menu">
+        <i class="ri-menu-2-line align-middle"></i>
+    </button>
+
+    <div data-simplebar class="vertical-scroll">
+        <div id="sidebar-menu">
+            <ul class="metismenu list-unstyled" id="side-menu">
+                <li class="menu-title">Main modules</li>
+                <li>
+                    <a href="{{ url_for('dashboard') }}" class="waves-effect">
+                        <i class="uim uim-airplay"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('members_list') }}" class="waves-effect">
+                        <i class="ri-team-line"></i>
+                        <span>{% if current_user.role == 'agent' %}My team{% else %}Members{% endif %}</span>
+                    </a>
+                </li>
+                {% if current_user.role != 'agent' %}
+                <li>
+                    <a href="{{ url_for('agents_list') }}" class="waves-effect">
+                        <i class="ri-map-pin-user-line"></i>
+                        <span>Agents</span>
+                    </a>
+                </li>
+                {% endif %}
+                <li>
+                    <a href="{{ url_for('contributions_list') }}" class="waves-effect">
+                        <i class="ri-hand-coin-line"></i>
+                        <span>Contributions</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('projects_list') }}" class="waves-effect">
+                        <i class="ri-folder-3-line"></i>
+                        <span>Projects</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('investments_list') }}" class="waves-effect">
+                        <i class="ri-line-chart-line"></i>
+                        <span>Investments</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('invoices_list') }}" class="waves-effect">
+                        <i class="ri-file-list-3-line"></i>
+                        <span>Invoices</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('subscriptions_list') }}" class="waves-effect">
+                        <i class="ri-stack-line"></i>
+                        <span>Subscriptions</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('certificates_list') }}" class="waves-effect">
+                        <i class="ri-award-line"></i>
+                        <span>Certificates</span>
+                    </a>
+                </li>
+                {% if current_user.role in ('admin', 'operator') %}
+                <li>
+                    <a href="{{ url_for('profit_distribute') }}" class="waves-effect">
+                        <i class="ri-share-forward-line"></i>
+                        <span>Profit distribution</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="javascript:void(0);" class="has-arrow waves-effect">
+                        <i class="ri-book-2-line"></i>
+                        <span>Accounting</span>
+                    </a>
+                    <ul class="sub-menu" aria-expanded="false">
+                        <li><a href="{{ url_for('accounting_hub') }}">Dashboard</a></li>
+                        <li><a href="{{ url_for('accounting_settings') }}">Account settings</a></li>
+                        <li><a href="{{ url_for('accounting_chart') }}">Chart of accounts</a></li>
+                        <li><a href="{{ url_for('accounting_journal') }}">Journal entries</a></li>
+                        <li><a href="{{ url_for('accounting_manual_entry') }}">New journal entry</a></li>
+                        <li><a href="{{ url_for('accounting_trial_balance') }}">Trial balance</a></li>
+                        <li><a href="{{ url_for('accounting_ledger') }}">General ledger</a></li>
+                    </ul>
+                </li>
+                {% else %}
+                <li>
+                    <a href="{{ url_for('profit_history') }}" class="waves-effect">
+                        <i class="ri-share-forward-line"></i>
+                        <span>Profit history</span>
+                    </a>
+                </li>
+                {% endif %}
+                <li>
+                    <a href="{{ url_for('reports_hub') }}" class="waves-effect">
+                        <i class="ri-file-chart-line"></i>
+                        <span>Reports</span>
+                    </a>
+                </li>
+                {% if current_user.role == 'admin' %}
+                <li>
+                    <a href="{{ url_for('settings_page') }}" class="waves-effect">
+                        <i class="ri-settings-3-line"></i>
+                        <span>Settings</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('users_list') }}" class="waves-effect">
+                        <i class="ri-shield-user-line"></i>
+                        <span>User Management</span>
+                    </a>
+                </li>
+                {% endif %}
+                <li>
+                    <a href="{{ url_for('contributions_list') }}" class="waves-effect">
+                        <i class="ri-exchange-dollar-line"></i>
+                        <span>Transactions</span>
+                    </a>
+                </li>
+                {% if current_user.role == 'admin' %}
+                <li>
+                    <a href="{{ url_for('audit_logs') }}" class="waves-effect">
+                        <i class="ri-history-line"></i>
+                        <span>Audit Logs</span>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+
+    <div class="dropdown px-3 sidebar-user sidebar-user-info">
+        <button type="button" class="btn w-100 px-0 border-0" id="sidebar-footer-user-dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">
+            <span class="d-flex align-items-center">
+                <div class="flex-shrink-0">
+                    <img src="{% if current_user.profile_image %}{{ url_for('static', filename=current_user.profile_image) }}{% else %}{{ url_for('static', filename='assets/images/users/avatar-2.jpg') }}{% endif %}" class="img-fluid header-profile-user rounded-circle" alt="">
+                </div>
+                <div class="flex-grow-1 ms-2 text-start">
+                    <span class="ms-1 fw-medium user-name-text">{{ current_user.full_name or current_user.username }}</span>
+                </div>
+                <div class="flex-shrink-0 text-end">
+                    <i class="mdi mdi-dots-vertical font-size-16"></i>
+                </div>
+            </span>
+        </button>
+        <div class="dropdown-menu dropdown-menu-end" aria-labelledby="sidebar-footer-user-dropdown">
+            <a class="dropdown-item" href="{{ url_for('pages_profile') }}"><i class="mdi mdi-account-circle text-muted font-size-16 align-middle me-1"></i> <span class="align-middle">Profile</span></a>
+            <div class="dropdown-divider"></div>
+            {% if current_user.role == 'admin' %}
+            <a class="dropdown-item" href="{{ url_for('settings_page') }}"><i class="mdi mdi-cog-outline text-muted font-size-16 align-middle me-1"></i> <span class="align-middle">Settings</span></a>
+            {% endif %}
+            <a class="dropdown-item" href="{{ url_for('logout') }}"><i class="mdi mdi-logout text-muted font-size-16 align-middle me-1"></i> <span class="align-middle">Logout</span></a>
+        </div>
+    </div>
+</div>

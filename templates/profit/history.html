@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Profit history{% endblock %}
+{% block page_heading %}Profit distribution history{% endblock %}
+{% block extra_css %}
+<style>
+.ph-hero { border-radius: 0.5rem; border: 1px solid rgba(12, 118, 138, 0.12); background: linear-gradient(135deg, rgba(12, 118, 138, 0.06) 0%, #fff 50%); }
+.ph-shell { max-width: 1320px; margin-left: auto; margin-right: auto; }
+</style>
+{% endblock %}
+{% block content %}
+{% set cur = currency_code %}
+
+<nav aria-label="breadcrumb" class="mb-3 ph-shell">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Profit history</li>
+    </ol>
+</nav>
+
+<div class="ph-hero p-3 p-md-4 mb-4 ph-shell">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h5 class="mb-2"><i class="ri-history-line me-2 text-primary"></i>All distribution lines</h5>
+            <p class="text-muted small mb-0" style="max-width: 42rem;">
+                One row per member per batch. Open a batch to see the full snapshot. Amounts are in <strong>{{ cur }}</strong>.
+                {% if current_user.role in ('admin', 'operator') %}
+                Run new payouts from <a href="{{ url_for('profit_distribute') }}">Profit distribution</a>.
+                {% endif %}
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            {% if current_user.role in ('admin', 'operator') %}
+            <a href="{{ url_for('profit_distribute') }}" class="btn btn-sm btn-primary"><i class="ri-share-forward-line me-1"></i>New distribution</a>
+            {% endif %}
+            <a href="{{ url_for('export_profit_xlsx') }}" class="btn btn-sm btn-outline-primary"><i class="ri-file-excel-2-line me-1"></i>Export Excel</a>
+            {% if current_user.role != 'agent' %}
+            <a href="{{ url_for('reports_profit_summary') }}" class="btn btn-sm btn-soft-secondary">Undistributed summary</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4 ph-shell">
+    <div class="col-6 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Lines (rows)</p>
+                <p class="fs-4 fw-semibold mb-0">{{ history_totals.lines }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Total amount (sum)</p>
+                <p class="fs-4 fw-semibold mb-0 text-success">{{ settings.currency_symbol }}{{ history_totals.amount|money }}</p>
+                <p class="small text-muted mb-0">{{ cur }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Distinct batches</p>
+                <p class="fs-4 fw-semibold mb-0">{{ history_totals.batches }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm ph-shell">
+    <div class="card-header bg-white py-3 border-bottom">
+        <div class="row align-items-center g-2">
+            <div class="col">
+                <h6 class="mb-0">Distributions</h6>
+                <p class="text-muted small mb-0">Search filters the table below (client-side).</p>
+            </div>
+            <div class="col-12 col-md-auto">
+                <label class="visually-hidden" for="ph-search">Search profit history</label>
+                <div class="position-relative">
+                    <span class="ri-search-line position-absolute top-50 start-0 translate-middle-y ms-2 text-muted small"></span>
+                    <input type="search" id="ph-search" class="form-control form-control-sm ps-4" placeholder="Search member, batch, investment…" autocomplete="off" {% if not rows %}disabled{% endif %}>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0" id="ph-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Batch</th>
+                        <th>Investment</th>
+                        <th>Member</th>
+                        <th class="text-end">Paid basis</th>
+                        <th class="text-end">Share %</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Pool</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    {% set inv = r.investment %}
+                    {% set mem = r.member %}
+                    {% set batch = r.batch %}
+                    {% set search_blob = ((r.distribution_date|string) ~ ' ' ~ (batch.batch_no if batch else '') ~ ' ' ~ (inv.name if inv else '') ~ ' ' ~ mem.member_id ~ ' ' ~ (mem.full_name or ''))|lower %}
+                    <tr data-ph-row data-search="{{ search_blob|e }}">
+                        <td class="text-nowrap small">{{ r.distribution_date }}</td>
+                        <td class="font-monospace small">
+                            {% if r.batch_id %}
+                                {% if current_user.role in ('admin', 'operator') %}
+                                <a href="{{ url_for('profit_batch_detail', batch_id=r.batch_id) }}">{{ batch.batch_no if batch else r.batch_id }}</a>
+                                {% else %}
+                                <span class="text-muted">{{ batch.batch_no if batch else r.batch_id }}</span>
+                                {% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="small">
+                            {% if inv %}
+                            <a href="{{ url_for('investments_profile', id=inv.id) }}" class="text-decoration-none">{{ inv.name }}</a>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="small">
+                            <a href="{{ url_for('members_profile', id=mem.id) }}" class="text-decoration-none">{{ mem.member_id }}</a>
+                            <span class="text-muted d-none d-md-inline"> — </span>
+                            <span class="d-none d-md-inline">{{ mem.full_name }}</span>
+                        </td>
+                        <td class="text-end text-nowrap small">{% if r.eligible_amount_basis is not none %}{{ settings.currency_symbol }}{{ r.eligible_amount_basis|money }}{% else %}—{% endif %}</td>
+                        <td class="text-end text-nowrap small">{% if r.share_percentage is not none %}{{ '%.4f'|format(r.share_percentage|float) }}%{% else %}—{% endif %}</td>
+                        <td class="text-end text-nowrap fw-medium">{{ settings.currency_symbol }}{{ r.amount|money }}</td>
+                        <td class="text-end text-nowrap small text-muted">{% if r.profit_pool_amount is not none %}{{ settings.currency_symbol }}{{ r.profit_pool_amount|money }}{% else %}—{% endif %}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="ri-inbox-line fs-3 d-block mb-2"></i>
+                            No profit distributions yet.
+                            {% if current_user.role in ('admin', 'operator') %}
+                            <a href="{{ url_for('profit_distribute') }}" class="d-block mt-2">Create the first distribution</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if rows %}
+    <div class="card-footer bg-light small text-muted py-2" id="ph-count">Showing <strong id="ph-visible">{{ rows|length }}</strong> of {{ rows|length }} lines.</div>
+    {% endif %}
+</div>
+{% endblock %}
+{% block extra_js %}
+{% if rows %}
+<script>
+(function() {
+    var input = document.getElementById('ph-search');
+    var table = document.getElementById('ph-table');
+    var countEl = document.getElementById('ph-visible');
+    if (!input || !table) return;
+    var rows = table.querySelectorAll('tbody tr[data-ph-row]');
+    function run() {
+        var q = (input.value || '').trim().toLowerCase();
+        var n = 0;
+        rows.forEach(function(tr) {
+            var hay = tr.getAttribute('data-search') || '';
+            var show = !q || hay.indexOf(q) !== -1;
+            tr.style.display = show ? '' : 'none';
+            if (show) n++;
+        });
+        if (countEl) countEl.textContent = String(n);
+    }
+    input.addEventListener('input', run);
+    input.addEventListener('search', run);
+})();
+</script>
+{% endif %}
+{% endblock %}

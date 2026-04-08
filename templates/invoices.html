@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Invoices &amp; receipts{% endblock %}
+{% block page_heading %}Invoices{% endblock %}
+{% block content %}
+<p class="text-muted small mb-3">
+    Each row is a <strong>recorded payment</strong> (contribution). Invoice numbers use the receipt number when set, otherwise <code>INV-#####</code>.
+    <strong>Paid</strong> means this payment is settled as a line item; <strong>Partially paid</strong> means the linked share subscription still has a remaining balance overall.
+</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-sm-6 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Matching payments</p>
+                <p class="fs-4 fw-semibold mb-0">{{ total_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Total amount (filtered)</p>
+                <p class="fs-4 fw-semibold mb-0">{{ total_collected|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 bg-primary bg-opacity-10 h-100">
+            <div class="card-body py-3 d-flex flex-column justify-content-center">
+                <span class="small text-muted mb-2">Same data as contributions — export or open the ledger.</span>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ contributions_list_url }}" class="btn btn-sm btn-primary">Contributions</a>
+                    <a href="{{ export_url }}" class="btn btn-sm btn-soft-primary">Excel export</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header py-3">
+        <h5 class="card-title mb-0"><i class="ri-filter-3-line me-2 text-primary"></i>Filters</h5>
+        <p class="text-muted small mb-0">Narrow by member, agent, subscription, dates, verification, or search.</p>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0">Member</label>
+                <select name="member_id" class="form-select">
+                    <option value="">All members</option>
+                    {% for m in members %}
+                    <option value="{{ m.id }}" {{ 'selected' if member_id == m.id else '' }}>{{ m.member_id }} — {{ m.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if filter_subscriptions %}
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0">Subscription</label>
+                <select name="subscription_id" class="form-select">
+                    <option value="">All</option>
+                    {% for s in filter_subscriptions %}
+                    <option value="{{ s.id }}" {{ 'selected' if subscription_id == s.id else '' }}>{{ s.subscription_no }} — {{ s.member.member_id }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            {% if agents %}
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Agent</label>
+                <select name="agent_id" class="form-select">
+                    <option value="">All agents</option>
+                    {% for a in agents %}
+                    <option value="{{ a.id }}" {{ 'selected' if agent_id == a.id else '' }}>{{ a.agent_id }} — {{ a.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">From date</label>
+                <input type="date" name="date_from" class="form-control" value="{{ date_from.strftime('%Y-%m-%d') if date_from else '' }}">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">To date</label>
+                <input type="date" name="date_to" class="form-control" value="{{ date_to.strftime('%Y-%m-%d') if date_to else '' }}">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Verified</label>
+                <select name="verified" class="form-select">
+                    <option value="" {{ 'selected' if not verified_filter else '' }}>All</option>
+                    <option value="yes" {{ 'selected' if verified_filter == 'yes' else '' }}>Verified only</option>
+                    <option value="no" {{ 'selected' if verified_filter == 'no' else '' }}>Not verified</option>
+                </select>
+            </div>
+            <div class="col-md-6 col-lg-3">
+                <label class="form-label small mb-0">Search</label>
+                <input type="search" name="q" class="form-control" placeholder="Receipt, member ID, name, notes" value="{{ q or '' }}">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Rows per page</label>
+                <select name="per_page" class="form-select">
+                    {% for n in (25, 50, 100, 200) %}
+                    <option value="{{ n }}" {{ 'selected' if per_page == n else '' }}>{{ n }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary">Apply</button>
+                <a href="{{ url_for('invoices_list') }}" class="btn btn-outline-secondary">Clear</a>
+                <a href="{{ url_for('reports_hub') }}" class="btn btn-link">Reports</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div class="text-muted small">
+        {% if total_count %}
+        Showing <strong>{{ row_start }}</strong>–<strong>{{ row_end }}</strong> of <strong>{{ total_count }}</strong>
+        {% else %}
+        No rows
+        {% endif %}
+        · Page {{ page }} / {{ total_pages }}
+    </div>
+    {% if total_pages > 1 %}
+    <nav aria-label="Invoice pages">
+        <ul class="pagination pagination-sm mb-0 flex-wrap">
+            <li class="page-item {{ 'disabled' if not first_page_url else '' }}"><a class="page-link" href="{{ first_page_url or '#' }}">«</a></li>
+            <li class="page-item {{ 'disabled' if not prev_page_url else '' }}"><a class="page-link" href="{{ prev_page_url or '#' }}">Previous</a></li>
+            <li class="page-item {{ 'disabled' if not next_page_url else '' }}"><a class="page-link" href="{{ next_page_url or '#' }}">Next</a></li>
+            <li class="page-item {{ 'disabled' if not last_page_url else '' }}"><a class="page-link" href="{{ last_page_url or '#' }}">»</a></li>
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Invoice / receipt</th>
+                        <th scope="col">Member</th>
+                        <th scope="col">Contact</th>
+                        <th scope="col">Territory</th>
+                        <th scope="col">Date</th>
+                        <th scope="col" class="text-end">Amount</th>
+                        <th scope="col">Verified</th>
+                        <th scope="col">Status</th>
+                        <th scope="col" class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in rows %}
+                    {% set invoice_no = c.receipt_no or ('INV-%05d' % c.id) %}
+                    {% set inv_status = invoice_labels.get(c.id, 'Paid') %}
+                    <tr>
+                        <td>{{ invoice_no }}</td>
+                        <td>
+                            <a href="{{ url_for('members_profile', id=c.member.id) }}" class="fw-medium text-reset">{{ c.member.full_name }}</a>
+                            <a href="{{ url_for('members_profile', id=c.member.id) }}" class="text-muted small d-block font-monospace">{{ c.member.member_id }}</a>
+                        </td>
+                        <td>{{ c.member.phone or c.member.national_id or '—' }}</td>
+                        <td class="small">{% if c.member.agent %}{{ c.member.agent.region or '—' }}{% if c.member.agent.country %}, {{ c.member.agent.country }}{% endif %}{% else %}—{% endif %}</td>
+                        <td>{{ c.date }}</td>
+                        <td class="text-end">{{ c.amount|money }}</td>
+                        <td>{% if c.verified %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+                        <td>
+                            {% if inv_status == 'Paid' %}
+                            <span class="badge bg-success">Paid</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">Partial</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-nowrap">
+                            <a href="{{ url_for('invoice_detail', id=c.id) }}" class="btn btn-sm btn-soft-primary">View</a>
+                            <a href="{{ url_for('contributions_receipt', id=c.id) }}" class="btn btn-sm btn-outline-secondary">Receipt</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="9" class="text-muted p-5 text-center">No payments match these filters.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<p class="text-muted small mt-2 mb-0">Amounts in <strong>{{ currency_code }}</strong>. Status reflects the <strong>subscription</strong> balance when a payment is linked to a share subscription; unlinked pool payments show as Paid.</p>
+{% endblock %}

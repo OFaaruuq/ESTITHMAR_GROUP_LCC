@@ -1,0 +1,29 @@
+{# Horizontal navigation inside Accounting module. Requires accounting_section: hub | settings | chart | journal | manual | trial | ledger #}
+{% set sec = accounting_section|default('hub') %}
+<div class="accounting-subnav card border-0 shadow-sm mb-3">
+    <div class="card-body py-2 px-3">
+        <ul class="nav nav-pills flex-wrap gap-1 mb-0 small">
+            <li class="nav-item">
+                <a class="nav-link py-1 px-2 {% if sec == 'hub' %}active{% endif %}" href="{{ url_for('accounting_hub') }}"><i class="ri-dashboard-line me-1"></i>Dashboard</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-2 {% if sec == 'settings' %}active{% endif %}" href="{{ url_for('accounting_settings') }}"><i class="ri-settings-4-line me-1"></i>Account settings</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-2 {% if sec == 'chart' %}active{% endif %}" href="{{ url_for('accounting_chart') }}"><i class="ri-node-tree me-1"></i>Chart of accounts</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-2 {% if sec == 'journal' %}active{% endif %}" href="{{ url_for('accounting_journal') }}"><i class="ri-file-list-line me-1"></i>Journal entries</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-2 {% if sec == 'manual' %}active{% endif %}" href="{{ url_for('accounting_manual_entry') }}"><i class="ri-add-line me-1"></i>New journal entry</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-2 {% if sec == 'trial' %}active{% endif %}" href="{{ url_for('accounting_trial_balance') }}"><i class="ri-scales-3-line me-1"></i>Trial balance</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-1 px-2 {% if sec == 'ledger' %}active{% endif %}" href="{{ url_for('accounting_ledger') }}"><i class="ri-book-read-line me-1"></i>General ledger</a>
+            </li>
+        </ul>
+    </div>
+</div>

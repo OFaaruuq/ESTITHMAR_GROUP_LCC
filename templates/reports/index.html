@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block page_heading %}Reports &amp; export{% endblock %}
+{% block content %}
+<p class="text-muted small mb-3">Headline totals (<strong>members, agents, collected, invested, profit, projects</strong>) are on the <a href="{{ url_for('dashboard') }}">Dashboard</a>. The five core report areas below cover members, agents, contributions, investments, and profit.</p>
+
+<div class="alert alert-light border mb-3 small">
+    <strong class="text-body">Business model alignment.</strong> The platform implements community investment flows: member → agent assignment → share subscription (full or installments) → contribution receipts → project/investment deployment → profit on paid-eligible basis → distribution batches → certificates when fully paid and confirmed. See <a href="{{ url_for('reports_community_model') }}">Community investment model</a> for narrative and live metrics.
+</div>
+
+<div class="card border-primary border-opacity-25 mb-3">
+    <div class="card-header bg-primary bg-opacity-10 py-3">
+        <h5 class="card-title mb-0">Core reports</h5>
+        <p class="text-muted small mb-0">Required report categories — on-screen views and matching Excel exports (right column).</p>
+    </div>
+    <div class="card-body">
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="border rounded p-3 h-100">
+                    <h6 class="text-primary mb-2"><span class="badge bg-primary me-2">1</span>Members report</h6>
+                    <ul class="mb-0 small">
+                        <li><a href="{{ url_for('members_list') }}"><strong>Member list</strong></a> — search, filters, status</li>
+                        <li><a href="{{ url_for('reports_members_financial') }}"><strong>Members financial summary</strong></a> — subscribed, paid, outstanding, confirmed value/units, profit (per member)</li>
+                        <li>Per-member contribution report: open a member profile → <strong>Contribution report</strong> (transaction list for that member)</li>
+                        <li><a href="{{ url_for('reports_monthly') }}">Monthly contribution report</a> — filter by agent when needed</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3 h-100">
+                    <h6 class="text-primary mb-2"><span class="badge bg-primary me-2">2</span>Agent performance</h6>
+                    {% if current_user.role != 'agent' %}
+                    <ul class="mb-0 small">
+                        <li><a href="{{ url_for('reports_agents') }}"><strong>Agents performance</strong></a> — members count, contribution volume, share value by agent</li>
+                        <li><a href="{{ url_for('reports_agents_geography') }}"><strong>Agents by geography</strong></a> — rollups by country &amp; region (§4.3)</li>
+                        <li><a href="{{ url_for('agents_list') }}">Agent directory</a></li>
+                    </ul>
+                    {% else %}
+                    <p class="text-muted small mb-0">Organization-wide agent rankings are available to administrators. Use <a href="{{ url_for('members_list') }}">Members</a> for your team and the <a href="{{ url_for('dashboard') }}">Dashboard</a> for portfolio scope.</p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3 h-100">
+                    <h6 class="text-primary mb-2"><span class="badge bg-primary me-2">3</span>Contribution report</h6>
+                    <ul class="mb-0 small">
+                        <li><a href="{{ url_for('reports_monthly') }}"><strong>Monthly contribution report</strong></a> — by month, optional agent filter</li>
+                        <li><a href="{{ url_for('reports_daily') }}">Daily collection report</a></li>
+                        <li><a href="{{ url_for('contributions_list') }}">All contributions</a> — full transaction list with filters</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3 h-100">
+                    <h6 class="text-primary mb-2"><span class="badge bg-primary me-2">4</span>Investment report</h6>
+                    {% if current_user.role != 'agent' %}
+                    <ul class="mb-0 small">
+                        <li><a href="{{ url_for('reports_investment_summary') }}"><strong>Investment summary</strong></a> — deployed, profit, distributed, status by investment</li>
+                        <li><a href="{{ url_for('investments_list') }}">Investments list</a> — edit links, full detail</li>
+                        <li><a href="{{ url_for('reports_projects_profitability') }}">Project profitability</a> — budget vs invested by project</li>
+                    </ul>
+                    {% else %}
+                    <ul class="mb-0 small">
+                        <li><a href="{{ url_for('investments_list') }}"><strong>Investments list</strong></a></li>
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-12">
+                <div class="border rounded p-3">
+                    <h6 class="text-primary mb-2"><span class="badge bg-primary me-2">5</span>Profit report</h6>
+                    <ul class="mb-0 small">
+                        <li><a href="{{ url_for('profit_history') }}"><strong>Profit distribution history</strong></a> — each member line, batch links (where permitted)</li>
+                        {% if current_user.role != 'agent' %}
+                        <li><a href="{{ url_for('reports_profit_calculation') }}">Profit calculation summary</a> — formula, settings, hypothetical pool preview by investment</li>
+                        <li><a href="{{ url_for('reports_profit_summary') }}">Profit undistributed summary</a> — generated vs distributed by investment</li>
+                        {% else %}
+                        <li class="text-muted">Undistributed profit by investment is available to administrators (org-wide totals).</li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Additional on-screen reports</div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li><a href="{{ url_for('reports_community_model') }}"><strong>Community investment model</strong></a> — narrative &amp; live metrics</li>
+                    <li><a href="{{ url_for('reports_installments') }}">Installment completion / unpaid</a></li>
+                    <li><a href="{{ url_for('projects_list') }}">Projects list</a></li>
+                </ul>
+                <p class="text-muted small mt-2 mb-0">Filters on list pages (date, agent, member) apply where available. Exports respect your role (agents see scoped data).</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Export Excel (.xlsx)</div>
+            <div class="card-body">
+                <p class="text-muted small mb-2">Aligned with core reports above:</p>
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                    <span class="badge bg-light text-dark border">1 Members</span>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_members_xlsx') }}">Members report</a>
+                </div>
+                {% if current_user.role != 'agent' %}
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                    <span class="badge bg-light text-dark border">2 Agents</span>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_agents_xlsx') }}">Agent performance</a>
+                </div>
+                {% endif %}
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                    <span class="badge bg-light text-dark border">3 Contributions</span>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_contributions_xlsx') }}">Contribution report</a>
+                </div>
+                {% if current_user.role != 'agent' %}
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                    <span class="badge bg-light text-dark border">4 Investments</span>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_investments_xlsx') }}">Investment report</a>
+                </div>
+                {% endif %}
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                    <span class="badge bg-light text-dark border">5 Profit</span>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_profit_xlsx') }}">Profit report</a>
+                </div>
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                    <span class="badge bg-light text-dark border">—</span>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_projects_xlsx') }}">Projects export</a>
+                </div>
+                {% if current_user.role == 'admin' %}
+                <div class="d-flex flex-wrap gap-1">
+                    <span class="badge bg-light text-dark border">Admin</span>
+                    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('audit_logs') }}">Audit log (CSV)</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card mt-3">
+            <div class="card-header">Export PDF</div>
+            <div class="card-body">
+                <a class="btn btn-soft-secondary btn-sm mb-1" href="{{ url_for('export_members_pdf') }}">Members (PDF)</a>
+                <a class="btn btn-soft-secondary btn-sm mb-1" href="{{ url_for('export_contributions_pdf') }}">Contributions (PDF)</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

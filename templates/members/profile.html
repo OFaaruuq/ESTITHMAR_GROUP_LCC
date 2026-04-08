@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}{{ member.full_name }} — {{ member.member_id }}{% endblock %}
+{% block page_heading %}Member profile{% endblock %}
+{% block content %}
+{% set mk = member.member_kind or 'member' %}
+{% set kind_labels = dict(member_kinds) %}
+{% set cur = settings.currency_code or 'USD' %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('members_list') }}">{% if current_user.role == 'agent' %}My team{% else %}Members{% endif %}</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ member.member_id }}</li>
+    </ol>
+</nav>
+
+{% if member.status != 'Active' %}
+<div class="alert alert-warning border-0 mb-4" role="status">
+    <div class="d-flex gap-2 align-items-start">
+        <i class="ri-alert-line fs-5 flex-shrink-0"></i>
+        <div class="small">
+            <strong>Inactive member.</strong> Per policy, inactive members cannot purchase shares, receive contributions in normal flows, receive profit distributions, or be issued certificates. Reactivate the member to resume activity.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div class="d-flex gap-3 align-items-center">
+        <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center flex-shrink-0" style="width:56px;height:56px;font-size:1.25rem;font-weight:600;">
+            {{ member.full_name[:2]|upper }}
+        </div>
+        <div>
+            <h4 class="mb-1">{{ member.full_name }}</h4>
+            <p class="mb-0 text-muted small font-monospace">{{ member.member_id }}</p>
+            <div class="mt-1">
+                <span class="badge text-bg-primary">{{ kind_labels.get(mk, mk) }}</span>
+                <span class="badge bg-{{ 'success' if member.status == 'Active' else 'secondary' }}">{{ member.status }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{{ url_for('members_edit', id=member.id) }}" class="btn btn-primary btn-sm"><i class="ri-pencil-line me-1"></i>Edit</a>
+        <a href="{{ url_for('contributions_new') }}?preselect={{ member.id }}" class="btn btn-soft-primary btn-sm">Add contribution</a>
+        <a href="{{ url_for('subscriptions_new') }}?member_id={{ member.id }}" class="btn btn-soft-primary btn-sm">New subscription</a>
+        <div class="btn-group">
+            <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">More</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{{ url_for('contributions_list') }}?member_id={{ member.id }}">All contributions</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('subscriptions_list') }}?member_id={{ member.id }}">All subscriptions</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('reports_member_contrib', member_id=member.id) }}">Contribution report</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('profit_statement', member_id=member.id) }}">Profit statement</a></li>
+                {% if cert_count %}
+                <li><a class="dropdown-item" href="{{ url_for('certificates_list') }}">Certificates ({{ cert_count }})</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Contributions (all)</p>
+                <p class="fs-5 fw-semibold mb-0">{{ contribution_total|money }} <span class="fs-6 fw-normal text-muted">{{ cur }}</span></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Profit received</p>
+                <p class="fs-5 fw-semibold mb-0">{{ profit_total|money }} <span class="fs-6 fw-normal text-muted">{{ cur }}</span></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Subscribed (active)</p>
+                <p class="fs-5 fw-semibold mb-0">{{ total_subscribed|money }} <span class="fs-6 fw-normal text-muted">{{ cur }}</span></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Paid toward subs</p>
+                <p class="fs-5 fw-semibold mb-0">{{ total_paid|money }} <span class="fs-6 fw-normal text-muted">{{ cur }}</span></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Outstanding</p>
+                <p class="fs-5 fw-semibold mb-0 text-{{ 'warning' if outstanding > 0 else 'muted' }}">{{ outstanding|money }} <span class="fs-6 fw-normal">{{ cur }}</span></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Confirmed share value</p>
+                <p class="fs-5 fw-semibold mb-0">{{ confirmed_owned|money }} <span class="fs-6 fw-normal text-muted">{{ cur }}</span></p>
+                <p class="text-muted small mb-0 mt-1">Units (confirmed) {% if confirmed_share_units > 0 %}<span class="font-monospace text-body">{{ confirmed_share_units|money }}</span>{% else %}—{% endif %}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-5 mb-4">
+        <div class="card h-100">
+            <div class="card-header">Contact &amp; assignment</div>
+            <div class="card-body">
+                <dl class="row small mb-0">
+                    <dt class="col-sm-4 text-muted">Phone</dt>
+                    <dd class="col-sm-8 mb-2">{% if member.phone %}<a href="tel:{{ member.phone }}">{{ member.phone }}</a>{% else %}—{% endif %}</dd>
+                    <dt class="col-sm-4 text-muted">Address</dt>
+                    <dd class="col-sm-8 mb-2">{{ member.address or '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">National ID</dt>
+                    <dd class="col-sm-8 mb-2">{{ member.national_id or '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">Join date</dt>
+                    <dd class="col-sm-8 mb-2">{{ member.join_date.strftime('%d %B %Y') if member.join_date else '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">Agent</dt>
+                    <dd class="col-sm-8 mb-2">
+                        {% if member.agent %}
+                        {{ member.agent.full_name }} <span class="text-muted">({{ member.agent.agent_id }})</span>
+                        {% else %}—{% endif %}
+                    </dd>
+                    {% if member.last_profit_distribution_date %}
+                    <dt class="col-sm-4 text-muted">Last profit</dt>
+                    <dd class="col-sm-8 mb-0">{{ member.last_profit_distribution_date }}</dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-7 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>Recent contributions</span>
+                <a href="{{ url_for('contributions_list') }}?member_id={{ member.id }}" class="btn btn-sm btn-soft-primary">View all{% if contribution_count > contrib_limit %} ({{ contribution_count }}){% endif %}</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Receipt</th>
+                                <th>Date</th>
+                                <th class="text-end">Amount</th>
+                                <th>Type</th>
+                                <th>Subscription</th>
+                                <th>Verified</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in contributions %}
+                            <tr>
+                                <td class="font-monospace small">{{ c.receipt_no or '—' }}</td>
+                                <td>{{ c.date.strftime('%d %b %Y') if c.date else '—' }}</td>
+                                <td class="text-end">{{ c.amount|money }}</td>
+                                <td><span class="badge bg-light text-dark border">{{ c.payment_type|payment_type_label }}</span></td>
+                                <td class="small">{% if c.subscription_id and c.subscription %}<a href="{{ url_for('subscriptions_profile', id=c.subscription_id) }}">{{ c.subscription.subscription_no }}</a>{% else %}—{% endif %}</td>
+                                <td>{% if c.verified %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+                                <td class="text-nowrap"><a href="{{ url_for('contributions_receipt', id=c.id) }}" class="btn btn-sm btn-outline-primary py-0">Receipt</a></td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="7" class="text-muted p-4 text-center">No contributions yet.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if contribution_count > contrib_limit %}
+                <p class="small text-muted mb-0 px-3 py-2 border-top">Showing latest {{ contrib_limit }} of {{ contribution_count }}. <a href="{{ url_for('contributions_list') }}?member_id={{ member.id }}">Open full list</a>.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>Share subscriptions</span>
+                <a href="{{ url_for('subscriptions_new') }}?member_id={{ member.id }}" class="btn btn-sm btn-soft-primary">+ Add</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No.</th>
+                                <th>Status</th>
+                                <th>Plan</th>
+                                <th class="text-end">Subscribed</th>
+                                <th class="text-end">Paid</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for s in subscriptions %}
+                            <tr>
+                                <td><a href="{{ url_for('subscriptions_profile', id=s.id) }}">{{ s.subscription_no }}</a></td>
+                                <td><span class="badge bg-{{ 'success' if s.status == 'Fully Paid' else ('warning' if s.status == 'Partially Paid' else ('secondary' if s.status == 'Cancelled' else 'info')) }}">{{ s.status }}</span></td>
+                                <td>{{ 'Installment' if s.payment_plan == 'installment' else 'Full' }}</td>
+                                <td class="text-end">{{ (s.subscribed_amount or 0)|money }}</td>
+                                <td class="text-end">{{ s.paid_total()|money }}</td>
+                                <td><a href="{{ url_for('subscriptions_profile', id=s.id) }}" class="btn btn-sm btn-outline-secondary py-0">View</a></td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-muted p-4 text-center">No share subscriptions yet.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>Profit distributions</span>
+                <a href="{{ url_for('profit_statement', member_id=member.id) }}" class="btn btn-sm btn-soft-secondary">Full statement</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Investment</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in profit_rows %}
+                            <tr>
+                                <td>{{ r.distribution_date.strftime('%d %b %Y') if r.distribution_date else '—' }}</td>
+                                <td>{{ r.investment.name if r.investment else '—' }}</td>
+                                <td class="text-end">{{ r.amount|money }} {{ cur }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-muted p-4 text-center">No profit distributions recorded.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if profit_rows|length >= 25 %}
+                <p class="small text-muted mb-0 px-3 py-2 border-top">Showing latest 25. <a href="{{ url_for('profit_statement', member_id=member.id) }}">Full statement</a>.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if cert_count %}
+<div class="card mb-4 border-0 shadow-sm cert-member-certs-card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 border-bottom" style="background: linear-gradient(180deg, #fff 0%, rgba(239, 246, 255, 0.5) 100%); border-color: rgba(37, 99, 235, 0.12) !important;">
+        <span class="fw-semibold"><i class="ri-award-line me-1 text-primary" style="color: #2563eb !important;"></i>Share certificates <span class="badge rounded-pill" style="background: rgba(37, 99, 235, 0.1); color: #1d4ed8; border: 1px solid rgba(37, 99, 235, 0.2);">{{ cert_count }}</span></span>
+        <a href="{{ url_for('certificates_list') }}" class="btn btn-sm btn-outline-primary" style="border-color: rgba(37, 99, 235, 0.35); color: #1d4ed8;">Open registry</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr class="small text-uppercase text-muted" style="letter-spacing: 0.03em;"><th>Certificate</th><th>Reference</th><th>Issued</th><th>Status</th><th class="text-end">Actions</th></tr>
+                </thead>
+                <tbody>
+                    {% for cert in recent_certs %}
+                    <tr>
+                        <td class="font-monospace">{{ cert.certificate_no }}</td>
+                        <td>{% if cert.subscription %}<a href="{{ url_for('subscriptions_profile', id=cert.subscription_id) }}">{{ cert.subscription.subscription_no }}</a>{% else %}—{% endif %}</td>
+                        <td>{{ cert.issued_date }}</td>
+                        <td><span class="badge bg-secondary">{{ cert.status }}</span></td>
+                        <td class="text-end text-nowrap">
+                            <div class="btn-group btn-group-sm">
+                                <a class="btn btn-soft-primary py-0" href="{{ url_for('certificates_print', id=cert.id) }}"><i class="ri-eye-line"></i></a>
+                                {% if cert.status == 'Issued' %}
+                                <a class="btn btn-outline-success py-0" href="{{ url_for('certificates_pdf', id=cert.id) }}" title="PDF"><i class="ri-file-pdf-line"></i></a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if cert_count > recent_certs|length %}
+        <p class="small text-muted mb-0 px-3 py-2 border-top bg-light bg-opacity-50">Showing {{ recent_certs|length }} most recent. Open the full <a href="{{ url_for('certificates_list') }}">certificate registry</a>.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block extra_css %}
+<style>
+.cert-member-certs-card { border: 1px solid rgba(37, 99, 235, 0.12) !important; }
+.cert-member-certs-card tbody tr:hover { background: rgba(37, 99, 235, 0.04); }
+</style>
+{% endblock %}

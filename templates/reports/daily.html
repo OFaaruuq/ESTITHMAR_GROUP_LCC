@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Daily collections{% endblock %}
+{% block page_heading %}Daily collection report{% endblock %}
+{% block content %}
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label small mb-0">Date</label>
+                <input type="date" name="date" class="form-control" value="{{ report_date }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Run</button>
+            </div>
+        </form>
+    </div>
+</div>
+<div class="card">
+    <div class="card-header">Collections on {{ report_date }}</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Txn</th>
+                        <th>Receipt</th>
+                        <th>Member</th>
+                        <th class="text-end">Amount</th>
+                        <th>Type</th>
+                        <th>Verified</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in rows %}
+                    <tr>
+                        <td>{{ c.id }}</td>
+                        <td>{{ c.receipt_no or '—' }}</td>
+                        <td>{{ c.member.member_id }} — {{ c.member.full_name }}</td>
+                        <td class="text-end">{{ c.amount|money }}</td>
+                        <td>{{ c.payment_type }}</td>
+                        <td>{% if c.verified %}Yes{% else %}No{% endif %}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-muted p-3">No contributions on this date.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="p-3 border-top"><strong>Total:</strong> {{ total|money }} USD</div>
+    </div>
+</div>
+{% endblock %}

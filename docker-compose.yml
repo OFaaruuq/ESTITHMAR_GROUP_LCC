@@ -1,0 +1,20 @@
+# Local/staging PostgreSQL (matches .env ISTITHMAR_PG_* / POSTGRES_*).
+# If you change user/password here but Postgres was already created, either:
+#   docker compose down -v && docker compose up -d
+# or run scripts/align_local_postgres_admin.sh against a native Postgres install.
+# Start: docker compose up -d
+# Stop:  docker compose down
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: admin_user
+      POSTGRES_PASSWORD: "Isth@12345"
+      POSTGRES_DB: estithmar_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - istithmar_pgdata:/var/lib/postgresql/data
+
+volumes:
+  istithmar_pgdata:

@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+{% block title %}Certificates{% endblock %}
+{% block page_heading %}Share certificates{% endblock %}
+{% block extra_css %}
+<style>
+:root {
+  --cert-ui-blue: #2563eb;
+  --cert-ui-blue-soft: rgba(37, 99, 235, 0.08);
+}
+.cert-page {
+  width: 100%;
+  max-width: min(1400px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  padding-bottom: 1.5rem;
+  box-sizing: border-box;
+  overflow-x: clip;
+}
+.cert-list-bg {
+  margin: -0.5rem -0.75rem 0;
+  padding: 0.5rem max(0.5rem, env(safe-area-inset-right)) 1.5rem max(0.5rem, env(safe-area-inset-left));
+  min-height: 50vh;
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.04) 0%, rgba(248, 250, 252, 0.5) 35%, transparent 100%);
+  border-radius: 0.5rem;
+  box-sizing: border-box;
+}
+.cert-registry-card .table-responsive {
+  -webkit-overflow-scrolling: touch;
+}
+.cert-hero {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.07) 0%, rgba(255,255,255,0.98) 45%, rgba(239, 246, 255, 0.4) 100%);
+  box-shadow: 0 0.25rem 1rem rgba(37, 99, 235, 0.07);
+}
+.cert-hero__icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.65rem;
+  background: linear-gradient(145deg, rgba(37, 99, 235, 0.18), rgba(37, 99, 235, 0.06));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+}
+.cert-kpi {
+  transition: transform .15s ease, box-shadow .15s ease;
+  border: 1px solid rgba(15, 23, 42, 0.06) !important;
+}
+.cert-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0.35rem 1rem rgba(15, 23, 42, 0.08) !important;
+}
+.cert-kpi__icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+.cert-kpi--total .cert-kpi__icon { background: rgba(37, 99, 235, 0.1); color: #1d4ed8; }
+.cert-kpi--issued .cert-kpi__icon { background: rgba(25, 135, 84, 0.12); color: #198754; }
+.cert-kpi--revoked .cert-kpi__icon { background: rgba(108, 117, 125, 0.15); color: #6c757d; }
+.cert-filter-chip {
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.cert-filter-chip.active {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.35);
+  border-color: rgba(37, 99, 235, 0.45) !important;
+  background: rgba(37, 99, 235, 0.04);
+}
+#cert-table tbody tr[data-cert-row] { transition: background-color .12s ease; }
+#cert-table tbody tr[data-cert-row]:hover { background-color: rgba(37, 99, 235, 0.045); }
+.cert-cert-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(37, 99, 235, 0.4);
+  transition: color .12s ease, border-color .12s ease;
+}
+.cert-cert-link:hover { color: #1d4ed8; border-bottom-color: #2563eb; }
+.cert-registry-card {
+  border: 1px solid rgba(37, 99, 235, 0.1) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 0.35rem 1.25rem rgba(37, 99, 235, 0.06) !important;
+  overflow: hidden;
+}
+.cert-registry-card .card-header {
+  background: linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(239, 246, 255, 0.35) 100%) !important;
+  border-bottom: 1px solid rgba(37, 99, 235, 0.1) !important;
+}
+#cert-table thead th {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+  border-bottom: 2px solid rgba(37, 99, 235, 0.15) !important;
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+.cert-search-wrap .cert-search-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.35rem;
+  transform: translateY(-50%);
+  padding: 0.2rem 0.45rem;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  border-radius: 0.25rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: color .12s ease, background .12s ease, opacity .12s ease;
+}
+.cert-search-wrap .cert-search-clear:hover { color: #64748b; background: rgba(0,0,0,.05); }
+.cert-search-wrap.has-value .cert-search-clear { opacity: 1; pointer-events: auto; }
+#cert-empty-filter td { background: rgba(248, 250, 252, 0.9); }
+.cert-empty-icon {
+  width: 4rem;
+  height: 4rem;
+  background: linear-gradient(145deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.04)) !important;
+  color: #2563eb !important;
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="cert-page">
+<div class="cert-list-bg">
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Certificates</li>
+    </ol>
+</nav>
+
+<div class="cert-hero p-3 p-md-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div class="d-flex gap-3">
+            <div class="cert-hero__icon" aria-hidden="true"><i class="ri-award-line"></i></div>
+            <div>
+                <h5 class="mb-2 fw-semibold">Certificate dashboard</h5>
+                <p class="text-muted small mb-0" style="max-width: 44rem;">
+                    Each certificate belongs to <strong>one member investment</strong>. Use <strong>View</strong> for print preview or <strong>PDF</strong> when issued.
+                    {% if current_user.role != 'agent' %}
+                    Operators can revoke from this list.
+                    {% else %}
+                    Scoped to members linked to your agent profile.
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 ms-auto">
+            <a href="{{ url_for('subscriptions_list') }}" class="btn btn-sm btn-soft-primary"><i class="ri-stack-line me-1"></i>Investments</a>
+            <a href="{{ url_for('members_list') }}" class="btn btn-sm btn-outline-primary"><i class="ri-group-line me-1"></i>Members</a>
+            <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-folder-chart-line me-1"></i>Reports</a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl-3">
+        <div class="card border-0 shadow-sm h-100 cert-kpi cert-kpi--total">
+            <div class="card-body py-3">
+                <div class="cert-kpi__icon"><i class="ri-file-list-3-line" aria-hidden="true"></i></div>
+                <p class="text-muted small mb-1">Total</p>
+                <p class="fs-4 fw-semibold mb-0">{{ totals.total }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-3">
+        <div class="card border-0 shadow-sm h-100 cert-kpi cert-kpi--issued">
+            <div class="card-body py-3">
+                <div class="cert-kpi__icon"><i class="ri-checkbox-circle-line" aria-hidden="true"></i></div>
+                <p class="text-muted small mb-1">Issued</p>
+                <p class="fs-4 fw-semibold mb-0 text-success">{{ totals.issued }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-3">
+        <div class="card border-0 shadow-sm h-100 cert-kpi cert-kpi--revoked">
+            <div class="card-body py-3">
+                <div class="cert-kpi__icon"><i class="ri-forbid-line" aria-hidden="true"></i></div>
+                <p class="text-muted small mb-1">Revoked</p>
+                <p class="fs-4 fw-semibold mb-0 text-secondary">{{ totals.revoked }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-xl-3">
+        <div class="card border-0 bg-primary bg-opacity-10 border border-primary border-opacity-10 h-100">
+            <div class="card-body py-3 d-flex flex-column justify-content-center h-100">
+                <p class="text-primary small fw-semibold mb-1"><i class="ri-lightbulb-line me-1"></i>Issue a certificate</p>
+                <p class="small text-muted mb-2 mb-xl-0">From a <strong>fully paid</strong> investment holding, choose <strong>Issue certificate</strong>.</p>
+                <a href="{{ url_for('subscriptions_list') }}" class="btn btn-sm btn-primary align-self-start mt-auto">Browse investments</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm overflow-hidden cert-registry-card">
+    <div class="card-header bg-white py-3 border-bottom">
+        <div class="row align-items-center g-3">
+            <div class="col-lg-auto">
+                <h6 class="mb-1 fw-semibold">Registry</h6>
+                <p class="text-muted small mb-0">Filter by status and search by certificate, member, reference, investment, or shares.</p>
+            </div>
+            <div class="col-lg">
+                <div class="d-flex flex-wrap gap-2 align-items-center" role="group" aria-label="Filter by status">
+                    <button type="button" class="btn btn-sm btn-outline-secondary cert-filter-chip active" data-filter="all">All <span class="badge bg-light text-dark ms-1">{{ totals.total }}</span></button>
+                    <button type="button" class="btn btn-sm btn-outline-success cert-filter-chip" data-filter="Issued">Issued <span class="badge bg-success-subtle text-success ms-1">{{ totals.issued }}</span></button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary cert-filter-chip" data-filter="Revoked">Revoked <span class="badge bg-secondary-subtle text-secondary ms-1">{{ totals.revoked }}</span></button>
+                </div>
+            </div>
+            <div class="col-12 col-lg-auto">
+                <label class="visually-hidden" for="cert-search">Search certificates</label>
+                <div class="position-relative cert-search-wrap" id="cert-search-wrap">
+                    <span class="ri-search-line position-absolute top-50 start-0 translate-middle-y ms-2 text-muted small" aria-hidden="true"></span>
+                    <input type="search" id="cert-search" class="form-control form-control-sm ps-4 pe-5" placeholder="Search registry…" autocomplete="off" aria-describedby="cert-count-hint">
+                    <button type="button" class="cert-search-clear" id="cert-search-clear" title="Clear search" aria-label="Clear search"><i class="ri-close-line fs-5"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="cert-table">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Certificate</th>
+                        <th scope="col">Member</th>
+                        <th class="d-none d-md-table-cell" scope="col">Reference</th>
+                        <th class="d-none d-xl-table-cell" scope="col">Investment</th>
+                        <th class="text-end text-nowrap" scope="col">Shares</th>
+                        <th scope="col">Issued</th>
+                        <th scope="col">Status</th>
+                        <th class="text-end" scope="col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in rows %}
+                    {% set inv = c.subscription.investment if c.subscription else none %}
+                    {% set sq = share_qty_by_cert.get(c.id, '') %}
+                    {% set search_blob = (c.certificate_no ~ ' ' ~ (c.member.member_id or '') ~ ' ' ~ (c.member.full_name or '') ~ ' ' ~ (c.subscription.subscription_no if c.subscription else '') ~ ' ' ~ (inv.name if inv else '') ~ ' ' ~ sq)|lower %}
+                    <tr data-cert-row data-status="{{ c.status|e }}" data-search="{{ search_blob|e }}">
+                        <td>
+                            <a href="{{ url_for('certificates_print', id=c.id) }}" class="cert-cert-link font-monospace fw-semibold">{{ c.certificate_no }}</a>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('members_profile', id=c.member.id) }}" class="text-decoration-none fw-medium">{{ c.member.member_id }}</a>
+                            <span class="text-muted d-none d-sm-inline"> — </span>
+                            <span class="d-none d-sm-inline">{{ c.member.full_name }}</span>
+                            <span class="d-sm-none d-block small text-muted">{{ c.member.full_name }}</span>
+                        </td>
+                        <td class="d-none d-md-table-cell">
+                            <a href="{{ url_for('subscriptions_profile', id=c.subscription.id) }}" class="small text-decoration-none font-monospace">{{ c.subscription.subscription_no }}</a>
+                        </td>
+                        <td class="d-none d-xl-table-cell small text-muted">
+                            {% if inv %}
+                            <a href="{{ url_for('investments_profile', id=inv.id) }}" class="text-decoration-none">{{ inv.name }}</a>
+                            {% else %}
+                            —
+                            {% endif %}
+                        </td>
+                        <td class="text-end small font-monospace text-nowrap">{{ share_qty_by_cert.get(c.id, '—') }}</td>
+                        <td class="text-nowrap small">{{ c.issued_date }}</td>
+                        <td>
+                            {% if c.status == 'Issued' %}
+                            <span class="badge bg-success-subtle text-success border border-success border-opacity-25">Issued</span>
+                            {% elif c.status == 'Revoked' %}
+                            <span class="badge bg-secondary-subtle text-secondary border">Revoked</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark border">{{ c.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <div class="d-flex flex-wrap justify-content-end gap-1" role="group" aria-label="Actions for {{ c.certificate_no }}">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <a class="btn btn-soft-primary" href="{{ url_for('certificates_print', id=c.id) }}" title="Preview and print"><i class="ri-eye-line me-1"></i>View</a>
+                                    {% if c.status == 'Issued' %}
+                                    <a class="btn btn-outline-success" href="{{ url_for('certificates_pdf', id=c.id) }}" title="Download PDF"><i class="ri-download-2-line me-1"></i>PDF</a>
+                                    {% endif %}
+                                </div>
+                                {% if current_user.role != 'agent' and c.status != 'Revoked' %}
+                                <form method="post" action="{{ url_for('certificates_revoke', id=c.id) }}" class="d-inline" onsubmit="return confirm('Revoke certificate {{ c.certificate_no }}? This cannot be undone from the UI.');">
+                                    <input type="hidden" name="reason" value="Revoked from certificates list">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit" title="Revoke">Revoke</button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5">
+                            <div class="py-2">
+                                <span class="cert-empty-icon d-inline-flex align-items-center justify-content-center rounded-circle mb-3"><i class="ri-award-line fs-2"></i></span>
+                                <p class="text-secondary fw-medium mb-1">No certificates yet</p>
+                                <p class="small text-muted mb-3 mx-auto" style="max-width: 22rem;">Issue the first certificate from a fully paid investment when it is ready.</p>
+                                <a href="{{ url_for('subscriptions_list') }}" class="btn btn-primary btn-sm"><i class="ri-stack-line me-1"></i>Open investments</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if rows %}
+                    <tr id="cert-empty-filter" class="d-none">
+                        <td colspan="8" class="text-center py-5 text-muted small">
+                            <i class="ri-filter-off-line fs-4 d-block mb-2 opacity-75"></i>
+                            No certificates match the current filters. Try another status or clear the search.
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-light border-top py-2 small text-muted d-flex flex-wrap align-items-center justify-content-between gap-2" id="cert-count-hint">
+        {% if rows %}
+        <span><span id="cert-count-label">Showing</span> <strong id="cert-visible-count">{{ rows|length }}</strong> of {{ rows|length }}</span>
+        <span class="text-muted text-nowrap" id="cert-filter-hint-end" hidden>Adjust filters or search to see more.</span>
+        {% else %}<span>&nbsp;</span>{% endif %}
+    </div>
+</div>
+</div>
+</div>
+{% endblock %}
+{% block extra_js %}
+{% if rows %}
+<script>
+(function() {
+    var input = document.getElementById('cert-search');
+    var table = document.getElementById('cert-table');
+    var countEl = document.getElementById('cert-visible-count');
+    var countLabel = document.getElementById('cert-count-label');
+    var hintEnd = document.getElementById('cert-filter-hint-end');
+    var searchWrap = document.getElementById('cert-search-wrap');
+    var clearBtn = document.getElementById('cert-search-clear');
+    var emptyFilter = document.getElementById('cert-empty-filter');
+    var chips = document.querySelectorAll('.cert-filter-chip');
+    if (!input || !table) return;
+    var rows = table.querySelectorAll('tbody tr[data-cert-row]');
+    var total = rows.length;
+    var statusFilter = 'all';
+
+    function setActiveChip() {
+        chips.forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-filter') === statusFilter);
+        });
+    }
+
+    function toggleSearchUi() {
+        var has = (input.value || '').trim().length > 0;
+        if (searchWrap) searchWrap.classList.toggle('has-value', has);
+    }
+
+    function run() {
+        var q = (input.value || '').trim().toLowerCase();
+        var n = 0;
+        rows.forEach(function(tr) {
+            var st = tr.getAttribute('data-status') || '';
+            var hay = tr.getAttribute('data-search') || '';
+            var okStatus = statusFilter === 'all' || st === statusFilter;
+            var okSearch = !q || hay.indexOf(q) !== -1;
+            var show = okStatus && okSearch;
+            tr.style.display = show ? '' : 'none';
+            if (show) n++;
+        });
+        if (countEl) countEl.textContent = String(n);
+        if (emptyFilter) {
+            var showEmpty = n === 0 && total > 0;
+            emptyFilter.classList.toggle('d-none', !showEmpty);
+        }
+        if (countLabel) countLabel.textContent = n === 0 && total > 0 ? 'Matching' : 'Showing';
+        if (hintEnd) hintEnd.hidden = !(n === 0 && total > 0);
+        toggleSearchUi();
+    }
+
+    chips.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            statusFilter = btn.getAttribute('data-filter') || 'all';
+            setActiveChip();
+            run();
+        });
+    });
+    input.addEventListener('input', run);
+    input.addEventListener('search', run);
+    if (clearBtn) clearBtn.addEventListener('click', function() {
+        input.value = '';
+        input.focus();
+        run();
+    });
+    setActiveChip();
+    toggleSearchUi();
+    run();
+})();
+</script>
+{% endif %}
+{% endblock %}

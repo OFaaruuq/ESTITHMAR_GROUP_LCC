@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}My profile{% endblock %}
+{% block page_heading %}My profile{% endblock %}
+{% block extra_css %}
+<style>
+.pp-shell { max-width: 1100px; margin-left: auto; margin-right: auto; }
+.pp-hero {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(155deg, #f0f9ff 0%, #ffffff 50%, #f8fafc 100%);
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+}
+.pp-avatar {
+  width: 96px; height: 96px; border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #fff;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.2);
+}
+.pp-avatar-fallback {
+  width: 96px; height: 96px; border-radius: 50%;
+  background: linear-gradient(145deg, #2563eb, #1d4ed8);
+  color: #fff; font-weight: 700; font-size: 1.5rem;
+  display: flex; align-items: center; justify-content: center;
+  border: 3px solid #fff;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.25);
+}
+.pp-card { border-radius: 0.75rem; border: 1px solid rgba(15, 23, 42, 0.08); }
+.pp-section-title { font-size: 0.7rem; letter-spacing: .1em; text-transform: uppercase; color: #64748b; font-weight: 600; }
+</style>
+{% endblock %}
+{% block content %}
+{% set cur = currency_code %}
+{% set initials = (user.username[0:2] if user.username else '?')|upper %}
+
+<nav aria-label="breadcrumb" class="mb-3 pp-shell">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item active" aria-current="page">My profile</li>
+    </ol>
+</nav>
+
+<div class="pp-hero p-3 p-md-4 mb-4 pp-shell">
+    <div class="row g-4 align-items-center">
+        <div class="col-auto">
+            {% if user.profile_image %}
+            <img src="{{ url_for('static', filename=user.profile_image) }}" alt="" class="pp-avatar">
+            {% else %}
+            <div class="pp-avatar-fallback" aria-hidden="true">{{ initials }}</div>
+            {% endif %}
+        </div>
+        <div class="col min-w-0">
+            <h4 class="fw-semibold mb-1 text-truncate">{{ user.full_name or user.username }}</h4>
+            <p class="text-muted mb-2 font-monospace small">@{{ user.username }} · {{ role_labels.get(user.role, user.role) }}</p>
+            <div class="d-flex flex-wrap gap-2">
+                {% if user.is_active %}
+                <span class="badge rounded-pill text-bg-success">Active</span>
+                {% else %}
+                <span class="badge rounded-pill text-bg-secondary">Inactive</span>
+                {% endif %}
+                {% if user.role == 'admin' %}
+                <span class="badge rounded-pill text-bg-danger">Administrator</span>
+                {% elif user.role == 'operator' %}
+                <span class="badge rounded-pill text-bg-primary">Operator</span>
+                {% elif user.role == 'agent' %}
+                <span class="badge rounded-pill text-bg-secondary">Agent user</span>
+                {% endif %}
+            </div>
+            {% if user.role == 'agent' and user.agent %}
+            <p class="small text-muted mb-0 mt-2">
+                <i class="ri-team-line me-1"></i>Linked agent: <strong>{{ user.agent.full_name }}</strong>
+                <span class="font-monospace">({{ user.agent.agent_id }})</span>
+                — <a href="{{ url_for('agents_profile', id=user.agent.id) }}">Open agent profile</a>
+            </p>
+            {% elif user.role == 'agent' and not user.agent %}
+            <p class="small text-warning mb-0 mt-2"><i class="ri-alert-line me-1"></i>No agent record linked. Ask an administrator to assign one under <a href="{{ url_for('users_edit', id=user.id) }}">your user account</a>.</p>
+            {% endif %}
+        </div>
+        <div class="col-12 col-lg-auto text-lg-end">
+            <p class="small text-muted mb-1">Account ID</p>
+            <p class="font-monospace fw-semibold mb-0">#{{ user.id }}</p>
+            {% if user.created_at %}
+            <p class="small text-muted mb-0 mt-2">Member since {{ user.created_at.strftime('%b %d, %Y') }}</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 pp-shell">
+    <div class="col-lg-8">
+        <div class="card pp-card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 border-bottom">
+                <h6 class="mb-0">Profile &amp; security</h6>
+                <p class="text-muted small mb-0">This is your <strong>application login</strong>, not a member record. Changes here affect how you sign in and appear in the header.</p>
+            </div>
+            <div class="card-body p-3 p-md-4">
+                <form method="post" enctype="multipart/form-data" id="profile-form">
+                    <p class="pp-section-title mb-3">Identity</p>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium" for="pp-user">Username <span class="text-danger">*</span></label>
+                            <input type="text" name="username" id="pp-user" class="form-control font-monospace" required value="{{ user.username }}" autocomplete="username">
+                            <div class="form-text">Your sign-in name. Must stay unique.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium" for="pp-name">Full name</label>
+                            <input type="text" name="full_name" id="pp-name" class="form-control" value="{{ user.full_name or '' }}" placeholder="Display name" autocomplete="name">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium" for="pp-email">Email</label>
+                            <input type="email" name="email" id="pp-email" class="form-control" value="{{ user.email or '' }}" placeholder="you@organization.com" autocomplete="email">
+                            <div class="form-text">Optional. Used for identification; must be unique if set.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium" for="pp-phone">Phone</label>
+                            <input type="tel" name="phone" id="pp-phone" class="form-control" value="{{ user.phone or '' }}" autocomplete="tel"
+                                   inputmode="tel" maxlength="22"
+                                   title="7–15 digits; use + and country code for international numbers"
+                                   placeholder="+252 63 1234567">
+                            <div class="form-text">Optional. 7–15 digits; + allowed. No letters.</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-medium" for="pp-addr">Address</label>
+                            <textarea name="address" id="pp-addr" rows="2" class="form-control" placeholder="Optional">{{ user.address or '' }}</textarea>
+                        </div>
+                    </div>
+
+                    <hr class="my-4 opacity-25">
+
+                    <p class="pp-section-title mb-3">Security</p>
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label fw-medium" for="pp-pwd">New password</label>
+                            <input type="password" name="password" id="pp-pwd" class="form-control" autocomplete="new-password" placeholder="Leave blank to keep current password">
+                            <div class="form-text">Minimum 4 characters when changing.</div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4 opacity-25">
+
+                    <p class="pp-section-title mb-3">Photo</p>
+                    <div class="mb-0">
+                        <label class="form-label fw-medium" for="pp-img">Profile image</label>
+                        <input type="file" name="profile_image" id="pp-img" class="form-control" accept=".png,.jpg,.jpeg,.gif,.webp">
+                        <div class="form-text">PNG, JPG, GIF, or Webp. Shown in this profile card when set.</div>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2 pt-4 mt-2 border-top">
+                        <button type="submit" class="btn btn-primary px-4"><i class="ri-save-3-line me-1"></i>Save changes</button>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Back to dashboard</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card pp-card border-0 bg-light h-100">
+            <div class="card-body">
+                <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing: .08em;">Workspace</h6>
+                <p class="small text-muted">Shortcuts based on your role. Financial amounts use <strong>{{ settings.currency_symbol }}</strong> {{ cur }} from <a href="{{ url_for('settings_page') }}">settings</a> (admin).</p>
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-light border text-start"><i class="ri-dashboard-line me-2 text-primary"></i>Dashboard</a>
+                    <a href="{{ url_for('members_list') }}" class="btn btn-sm btn-light border text-start"><i class="ri-group-line me-2 text-primary"></i>Members</a>
+                    <a href="{{ url_for('contributions_list') }}" class="btn btn-sm btn-light border text-start"><i class="ri-exchange-dollar-line me-2 text-primary"></i>Contributions</a>
+                    {% if current_user.role != 'agent' %}
+                    <a href="{{ url_for('investments_list') }}" class="btn btn-sm btn-light border text-start"><i class="ri-line-chart-line me-2 text-primary"></i>Investments</a>
+                    <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-light border text-start"><i class="ri-file-chart-line me-2 text-primary"></i>Reports</a>
+                    {% endif %}
+                    {% if current_user.role == 'admin' %}
+                    <a href="{{ url_for('settings_page') }}" class="btn btn-sm btn-light border text-start"><i class="ri-settings-3-line me-2 text-danger"></i>System settings</a>
+                    <a href="{{ url_for('users_edit', id=user.id) }}" class="btn btn-sm btn-light border text-start"><i class="ri-user-settings-line me-2 text-danger"></i>Advanced account (admin)</a>
+                    <a href="{{ url_for('audit_logs') }}" class="btn btn-sm btn-light border text-start"><i class="ri-shield-keyhole-line me-2 text-danger"></i>Audit log</a>
+                    {% endif %}
+                </div>
+                {% if current_user.role == 'admin' %}
+                <p class="small text-muted mt-3 mb-0">Admins can also lock roles and agents under <strong>Users</strong>; this page is for your own contact info and password.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

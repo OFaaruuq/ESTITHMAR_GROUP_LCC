@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Chart of accounts{% endblock %}
+{% block page_heading %}Accounting — Chart of accounts{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('accounting_hub') }}">Accounting</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Chart of accounts</li>
+    </ol>
+</nav>
+
+{% include 'accounting/_subnav.html' %}
+
+<div class="table-responsive card border-0 shadow-sm mb-4">
+    <table class="table table-hover mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Active</th>
+                <th class="text-end">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in accounts %}
+            <tr>
+                <td class="font-monospace"><a href="{{ url_for('accounting_ledger', account_id=a.id) }}">{{ a.code }}</a></td>
+                <td><a href="{{ url_for('accounting_ledger', account_id=a.id) }}" class="text-reset">{{ a.name }}</a></td>
+                <td>{{ a.account_type }}</td>
+                <td>{% if a.is_active %}Yes{% else %}No{% endif %}</td>
+                <td class="text-end text-nowrap">
+                    <a href="{{ url_for('accounting_ledger', account_id=a.id) }}" class="btn btn-sm btn-outline-secondary py-0">Ledger</a>
+                    {% if a.code in system_account_codes %}
+                    <span class="text-muted small ms-1">System</span>
+                    {% else %}
+                    <form method="post" class="d-inline ms-1" onsubmit="return confirm('Change active status for this account?');">
+                        <input type="hidden" name="action" value="toggle_active">
+                        <input type="hidden" name="account_toggle_id" value="{{ a.id }}">
+                        <button type="submit" class="btn btn-sm btn-outline-primary py-0">{% if a.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3"><h6 class="mb-0">Add account</h6></div>
+    <div class="card-body">
+        <p class="small text-muted">New accounts are available for manual journals immediately. System postings use fixed codes (1000, 2000, 4000, 6100, etc.).</p>
+        <form method="post" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label" for="code">Code</label>
+                <input type="text" name="code" id="code" class="form-control font-monospace" maxlength="32" required placeholder="e.g. 7100">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="name">Name</label>
+                <input type="text" name="name" id="name" class="form-control" maxlength="200" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="atype">Type</label>
+                <select name="account_type" id="atype" class="form-select" required>
+                    <option value="asset">Asset</option>
+                    <option value="liability">Liability</option>
+                    <option value="equity">Equity</option>
+                    <option value="revenue">Revenue</option>
+                    <option value="expense">Expense</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="sort">Sort</label>
+                <input type="number" name="sort_order" id="sort" class="form-control" value="100" step="1">
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-primary w-100">Add</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

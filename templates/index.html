@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+
+    <head>
+        
+        <meta charset="utf-8" />
+        <title>Dashboard | Istithmar Investment Management</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta content="Investment analytics dashboard." name="description" />
+        <!-- App favicon -->
+        <link rel="shortcut icon" href="{{ url_for('static', filename='assets/images/favicon.ico') }}">
+
+        <!-- Layout Js -->
+        <script src="{{ url_for('static', filename='assets/js/layout.js') }}"></script>
+        <!-- Bootstrap Css -->
+        <link href="{{ url_for('static', filename='assets/css/bootstrap.min.css') }}" id="bootstrap-style" rel="stylesheet" type="text/css" />
+        <!-- Icons Css -->
+        <link href="{{ url_for('static', filename='assets/css/icons.min.css') }}" rel="stylesheet" type="text/css" />
+        <!-- App Css-->
+        <link href="{{ url_for('static', filename='assets/css/app.min.css') }}" id="app-style" rel="stylesheet" type="text/css" />
+        <link href="{{ url_for('static', filename='assets/css/istithmar-sidebar.css') }}" rel="stylesheet" type="text/css" />
+        <!-- Vector map (Tocly dashboard) -->
+        <link href="{{ url_for('static', filename='assets/libs/jsvectormap/jsvectormap.min.css') }}" rel="stylesheet" type="text/css" />
+
+
+
+    </head>
+
+    <body data-sidebar="colored">
+    
+    <!-- <body data-layout="horizontal" data-topbar="dark"> -->
+
+        <!-- Begin page -->
+        <div id="layout-wrapper">
+
+            
+            
+            <header id="page-topbar">
+                <div class="navbar-header">
+                    <div class="d-flex">
+                          <!-- LOGO -->
+                        <div class="navbar-brand-box">
+                            <a href="{{ url_for('dashboard') }}" class="logo logo-dark">
+                                <span class="logo-sm">
+                                    <img src="{{ brand_logo_dark_sm }}" alt="logo-sm-dark" height="24">
+                                </span>
+                                <span class="logo-lg">
+                                    <img src="{{ brand_logo_dark_lg }}" alt="logo-dark" height="25">
+                                </span>
+                            </a>
+
+                            <a href="{{ url_for('dashboard') }}" class="logo logo-light">
+                                <span class="logo-sm">
+                                    <img src="{{ brand_logo_light_sm }}" alt="logo-light" height="24">
+                                </span>
+                                <span class="logo-lg">
+                                    <img src="{{ brand_logo_light_lg }}" alt="logo-light" height="25">
+                                </span>
+                            </a>
+                        </div>
+
+                        <button type="button" class="btn btn-sm px-3 font-size-24 header-item waves-effect vertical-menu-btn" id="vertical-menu-btn">
+                            <i class="ri-menu-2-line align-middle"></i>
+                        </button>
+            
+                      <!-- start page title -->
+                      <div class="page-title-box align-self-center d-none d-md-block">
+                        <p class="text-muted small mb-0">{{ today.strftime('%A, %d %B %Y') }}</p>
+                        <h4 class="page-title mb-0">Hi, {{ current_user.full_name or current_user.username }}</h4>
+                      </div>
+                      <!-- end page title -->
+                    </div>
+
+                    <div class="d-flex align-items-center">
+                        {% if current_user.is_authenticated %}
+                        <a href="{{ url_for('pages_profile') }}" class="btn btn-sm btn-soft-primary me-2 d-none d-sm-inline-block">Profile</a>
+                        <span class="text-muted small me-2 d-none d-lg-inline">{{ current_user.username }} · {{ current_user.role }}</span>
+                        <a href="{{ url_for('logout') }}" class="btn btn-sm btn-soft-secondary me-2">Logout</a>
+                        {% endif %}
+                         <!-- App Search-->
+                         <form class="app-search d-none d-lg-block" method="get" action="{{ url_for('members_list') }}">
+                            <div class="position-relative">
+                                <input type="text" name="q" class="form-control" placeholder="Search members…">
+                                <span class="ri-search-line"></span>
+                            </div>
+                        </form>
+
+                        <div class="dropdown d-inline-block d-lg-none ms-2">
+                            <button type="button" class="btn header-item noti-icon waves-effect" id="page-header-search-dropdown"
+                                data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                <i class="ri-search-line"></i>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-lg dropdown-menu-end p-0"
+                                aria-labelledby="page-header-search-dropdown">
+                                <form class="p-3" method="get" action="{{ url_for('members_list') }}" role="search">
+                                    <label class="form-label small text-muted mb-1" for="mobile-member-search">Find members</label>
+                                    <div class="input-group">
+                                        <input type="search" name="q" id="mobile-member-search" class="form-control" placeholder="Name or member ID…" autocomplete="off" value="{{ request.args.get('q', '') }}">
+                                        <button class="btn btn-primary" type="submit" aria-label="Search"><i class="ri-search-line"></i></button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="dropdown d-none d-sm-inline-block">
+                            <button type="button" class="btn header-item waves-effect"
+                                data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false"
+                                aria-label="Workspace and reporting currency">
+                                <span class="d-inline-flex align-items-center gap-1">
+                                    <i class="ri-money-dollar-circle-line font-size-18"></i>
+                                    <span class="d-none d-md-inline small text-muted fw-medium">{{ settings.currency_code or 'USD' }}</span>
+                                </span>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-end p-0" style="min-width: 280px;">
+                                <div class="p-3 border-bottom">
+                                    <h6 class="mb-0">Workspace</h6>
+                                    <p class="text-muted small mb-0">Reporting currency and session</p>
+                                </div>
+                                <div class="px-3 py-3">
+                                    <div class="d-flex align-items-start mb-3">
+                                        <i class="ri-exchange-dollar-line text-primary me-2 mt-1 font-size-18"></i>
+                                        <div>
+                                            <div class="small text-muted">Reporting currency</div>
+                                            <div class="fw-medium">{{ settings.currency_symbol or '$' }} <span class="text-muted fw-normal">({{ settings.currency_code or 'USD' }})</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex align-items-start mb-3">
+                                        <i class="ri-calendar-line text-primary me-2 mt-1 font-size-18"></i>
+                                        <div>
+                                            <div class="small text-muted">Today</div>
+                                            <div class="fw-medium">{{ today.strftime('%A, %d %B %Y') }}</div>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex align-items-start">
+                                        <i class="ri-account-circle-line text-primary me-2 mt-1 font-size-18"></i>
+                                        <div>
+                                            <div class="small text-muted">Signed in</div>
+                                            <div class="fw-medium">{{ current_user.username }}
+                                                <span class="badge bg-secondary font-size-11 ms-1">{{ current_user.role }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="border-top p-2 bg-light bg-opacity-50">
+                                    {% if current_user.role == 'admin' %}
+                                    <a class="btn btn-sm btn-soft-primary w-100 text-start" href="{{ url_for('settings_page') }}">
+                                        <i class="ri-settings-3-line me-1"></i> Change currency in Settings
+                                    </a>
+                                    {% else %}
+                                    <a class="btn btn-sm btn-soft-primary w-100 text-start" href="{{ url_for('pages_profile') }}">
+                                        <i class="ri-user-line me-1"></i> My profile
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="dropdown d-none d-lg-inline-block ms-1">
+                            <button type="button" class="btn header-item noti-icon waves-effect"
+                                data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                <i class="ri-apps-2-line"></i>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-lg dropdown-menu-end">
+                                <div class="px-lg-2 py-2">
+                                    <div class="row g-0">
+                                        <div class="col">
+                                            <a class="dropdown-icon-item" href="{{ url_for('dashboard') }}">
+                                                <i class="ri-dashboard-2-line font-size-22 text-primary d-block mb-1"></i>
+                                                <span>Dashboard</span>
+                                            </a>
+                                        </div>
+                                        <div class="col">
+                                            <a class="dropdown-icon-item" href="{{ url_for('members_list') }}">
+                                                <i class="ri-team-line font-size-22 text-primary d-block mb-1"></i>
+                                                <span>{% if current_user.role == 'agent' %}My team{% else %}Members{% endif %}</span>
+                                            </a>
+                                        </div>
+                                        <div class="col">
+                                            <a class="dropdown-icon-item" href="{{ url_for('contributions_list') }}">
+                                                <i class="ri-hand-coin-line font-size-22 text-primary d-block mb-1"></i>
+                                                <span>Contributions</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="row g-0">
+                                        <div class="col">
+                                            <a class="dropdown-icon-item" href="{{ url_for('invoices_list') }}">
+                                                <i class="ri-file-list-3-line font-size-22 text-primary d-block mb-1"></i>
+                                                <span>Invoices</span>
+                                            </a>
+                                        </div>
+                                        <div class="col">
+                                            <a class="dropdown-icon-item" href="{{ url_for('subscriptions_list') }}">
+                                                <i class="ri-stack-line font-size-22 text-primary d-block mb-1"></i>
+                                                <span>Subscriptions</span>
+                                            </a>
+                                        </div>
+                                        <div class="col">
+                                            <a class="dropdown-icon-item" href="{{ url_for('certificates_list') }}">
+                                                <i class="ri-award-line font-size-22 text-primary d-block mb-1"></i>
+                                                <span>Certificates</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="row g-0">
+                                        <div class="col">
+                                            <a class="dropdown-icon-item" href="{{ url_for('investments_list') }}">
+                                                <i class="ri-line-chart-line font-size-22 text-primary d-block mb-1"></i>
+                                                <span>Investments</span>
+                                            </a>
+                                        </div>
+                                        <div class="col">
+                                            <a class="dropdown-icon-item" href="{{ url_for('reports_hub') }}">
+                                                <i class="ri-file-chart-line font-size-22 text-primary d-block mb-1"></i>
+                                                <span>Reports</span>
+                                            </a>
+                                        </div>
+                                        <div class="col">
+                                            {% if current_user.role == 'admin' %}
+                                            <a class="dropdown-icon-item" href="{{ url_for('settings_page') }}">
+                                                <i class="ri-settings-3-line font-size-22 text-primary d-block mb-1"></i>
+                                                <span>Settings</span>
+                                            </a>
+                                            {% else %}
+                                            <a class="dropdown-icon-item" href="{{ url_for('pages_profile') }}">
+                                                <i class="ri-user-settings-line font-size-22 text-primary d-block mb-1"></i>
+                                                <span>My profile</span>
+                                            </a>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="dropdown d-none d-lg-inline-block ms-1">
+                            <button type="button" class="btn header-item noti-icon waves-effect" data-toggle="fullscreen">
+                                <i class="ri-fullscreen-line"></i>
+                            </button>
+                        </div>
+
+                        <div class="dropdown d-inline-block">
+                            <button type="button" class="btn header-item noti-icon waves-effect" id="page-header-notifications-dropdown"
+                                  data-bs-toggle="dropdown" aria-expanded="false" aria-label="Activity notifications">
+                                <i class="ri-notification-3-line"></i>
+                                {% if header_notifications_count %}
+                                <span class="noti-dot"></span>
+                                {% endif %}
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-lg dropdown-menu-end p-0"
+                                aria-labelledby="page-header-notifications-dropdown">
+                                <div class="p-3">
+                                    <div class="row align-items-center">
+                                        <div class="col">
+                                            <h6 class="m-0">Activity</h6>
+                                        </div>
+                                        <div class="col-auto">
+                                            <a href="{{ header_notifications_view_all }}" class="small">View all</a>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div data-simplebar style="max-height: 230px;">
+                                    {% for n in header_notifications %}
+                                    <a href="{{ n.href }}" class="text-reset notification-item">
+                                        <div class="d-flex">
+                                            <div class="avatar-xs me-3">
+                                                <span class="avatar-title bg-{{ n.color }} rounded-circle font-size-16">
+                                                    <i class="{{ n.icon }}"></i>
+                                                </span>
+                                            </div>
+                                            <div class="flex-1 overflow-hidden">
+                                                <h6 class="mb-1 text-truncate">{{ n.title }}</h6>
+                                                <div class="font-size-12 text-muted">
+                                                    {% if n.body %}
+                                                    <p class="mb-1 small">{{ n.body }}</p>
+                                                    {% endif %}
+                                                    <p class="mb-0"><i class="mdi mdi-clock-outline"></i> {{ n.time_ago }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </a>
+                                    {% else %}
+                                    <div class="p-4 text-center text-muted small">
+                                        <p class="mb-0">No recent activity yet.</p>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                <div class="p-2 border-top">
+                                    <div class="d-grid">
+                                        <a class="btn btn-sm btn-link font-size-14 text-center" href="{{ header_notifications_view_all }}">
+                                            <i class="mdi mdi-arrow-right-circle me-1"></i> View all activity
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="dropdown d-inline-block">
+                            <button type="button" class="btn header-item noti-icon right-bar-toggle waves-effect">
+                                <i class="ri-settings-2-line"></i>
+                            </button>
+                        </div>
+            
+                    </div>
+                </div>
+            </header>
+
+            {% include 'include/sidebar.html' %}
+
+            <!-- ============================================================== -->
+            <!-- Start right Content here -->
+            <!-- ============================================================== -->
+            <div class="main-content">
+
+                <div class="page-content">
+                    <div class="container-fluid">
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                        {{ message }}
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+
+                        {% include '_dashboard_main.html' %}
+
+                    </div>
+                    <!-- container-fluid -->
+                </div>
+                <!-- End Page-content -->
+               
+                <footer class="footer">
+                    <div class="container-fluid">
+                        <div class="row">
+                            <div class="col-sm-6">
+                                <script>document.write(new Date().getFullYear())</script> © Istithmar Investment Management.
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="text-sm-end d-none d-sm-block">
+                                    Offline community investment system
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </footer>
+                
+            </div>
+            <!-- end main content-->
+
+        </div>
+        <!-- END layout-wrapper -->
+
+        <!-- Right Sidebar -->
+        <div class="right-bar">
+            <div data-simplebar class="h-100">
+                <div class="rightbar-title d-flex align-items-center px-3 py-4">
+            
+                    <h5 class="m-0 me-2">Settings</h5>
+
+                    <a href="javascript:void(0);" class="right-bar-toggle ms-auto">
+                        <i class="mdi mdi-close noti-icon"></i>
+                    </a>
+                </div>
+
+                <!-- Settings -->
+                <hr class="mt-0" />
+                <h6 class="text-center mb-0">Choose Layouts</h6>
+
+                <div class="p-4">
+                    <div class="mb-2">
+                        <img src="{{ url_for('static', filename='assets/images/layouts/layout-1.jpg') }}" class="img-fluid img-thumbnail" alt="layout-1">
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input theme-choice" type="checkbox" id="light-mode-switch" checked>
+                        <label class="form-check-label" for="light-mode-switch">Light Mode</label>
+                    </div>
+    
+                    <div class="mb-2">
+                        <img src="{{ url_for('static', filename='assets/images/layouts/layout-2.jpg') }}" class="img-fluid img-thumbnail" alt="layout-2">
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input theme-choice" type="checkbox" id="dark-mode-switch" data-bsStyle="{{ url_for('static', filename='assets/css/bootstrap-dark.min.css') }}" data-appStyle="{{ url_for('static', filename='assets/css/app-dark.min.css') }}">
+                        <label class="form-check-label" for="dark-mode-switch">Dark Mode</label>
+                    </div>
+    
+                    <div class="mb-2">
+                        <img src="{{ url_for('static', filename='assets/images/layouts/layout-3.jpg') }}" class="img-fluid img-thumbnail" alt="layout-3">
+                    </div>
+                    <div class="form-check form-switch mb-5">
+                        <input class="form-check-input theme-choice" type="checkbox" id="rtl-mode-switch" data-appStyle="{{ url_for('static', filename='assets/css/app-rtl.min.css') }}">
+                        <label class="form-check-label" for="rtl-mode-switch">RTL Mode</label>
+                    </div>
+
+            
+                </div>
+
+            </div> <!-- end slimscroll-menu-->
+        </div>
+        <!-- /Right-bar -->
+
+        <!-- Right bar overlay-->
+        <div class="rightbar-overlay"></div>
+
+        <!-- JAVASCRIPT -->
+        <script src="{{ url_for('static', filename='assets/libs/jquery/jquery.min.js') }}"></script>
+        <script src="{{ url_for('static', filename='assets/libs/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+        <script src="{{ url_for('static', filename='assets/libs/metismenu/metisMenu.min.js') }}"></script>
+        <script src="{{ url_for('static', filename='assets/libs/simplebar/simplebar.min.js') }}"></script>
+        <script src="{{ url_for('static', filename='assets/libs/node-waves/waves.min.js') }}"></script>
+
+        <!-- Icon -->
+        <script src="https://unicons.iconscout.com/release/v2.0.1/script/monochrome/bundle.js"></script>
+
+        <!-- apexcharts -->
+        <script src="{{ url_for('static', filename='assets/libs/apexcharts/apexcharts.min.js') }}"></script>
+        <style>
+        .dashboard-chart-clickable .apexcharts-canvas { cursor: pointer; }
+        </style>
+        <script>
+        (function() {
+            var el = document.getElementById('istithmar-dashboard-data');
+            if (!el || typeof ApexCharts === 'undefined') return;
+            var D = JSON.parse(el.textContent);
+            var L = D.chartLinks || {};
+            function navEvents(urls) {
+                if (!urls || !urls.length) return {};
+                return {
+                    dataPointSelection: function(event, chartContext, config) {
+                        var i = config.dataPointIndex;
+                        if (urls[i]) window.location.href = urls[i];
+                    }
+                };
+            }
+            var col = document.querySelector('#column-chart');
+            var donut = document.querySelector('#donut-chart');
+            if (col && D.hasChartData) {
+                var darkSeries = (D.values || []).map(function(v) { return Number(v || 0) * 0.75; });
+                var lightSeries = (D.values || []).map(function(v) { return Number(v || 0) * 0.25; });
+                new ApexCharts(col, {
+                    series: [
+                        { name: 'Collected', data: darkSeries },
+                        { name: 'Other', data: lightSeries }
+                    ],
+                    chart: {
+                        type: 'bar',
+                        stacked: true,
+                        height: 320,
+                        toolbar: { show: false },
+                        events: navEvents(L.performance_months)
+                    },
+                    plotOptions: {
+                        bar: { columnWidth: '45%', borderRadius: 2 }
+                    },
+                    dataLabels: { enabled: false },
+                    stroke: { width: 0 },
+                    xaxis: { categories: D.labels },
+                    legend: { show: false },
+                    grid: { borderColor: '#e9ecef' },
+                    colors: ['#0f7b8f', '#d5e3ea'],
+                    yaxis: { labels: { formatter: function(v) { return v.toFixed(0); } } }
+                }).render();
+            }
+            if (donut) {
+                var dc = D.cash || 0, dm = D.mobile || 0, db = D.bank || 0, doth = D.other || 0;
+                var dsum = dc + dm + db + doth;
+                if (dsum < 0.005) {
+                    donut.innerHTML = '<p class="text-muted text-center py-5 mb-0">No contribution payments yet.</p>';
+                } else {
+                    new ApexCharts(donut, {
+                        series: [dc, dm, db, doth],
+                        labels: ['Cash', 'Mobile money', 'Bank transfer', 'Other'],
+                        chart: {
+                            type: 'donut',
+                            height: 300,
+                            events: navEvents(L.donut_payment)
+                        },
+                        plotOptions: {
+                            pie: {
+                                donut: {
+                                    size: '78%',
+                                    labels: {
+                                        show: true,
+                                        name: { show: false },
+                                        value: { show: false },
+                                        total: {
+                                            show: true,
+                                            label: 'Total value',
+                                            formatter: function() { return '$' + dsum.toFixed(0); }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        dataLabels: { enabled: false },
+                        legend: { show: true, position: 'bottom' },
+                        colors: ['#0f7b8f', '#38c786', '#5b7cfa', '#c9b28f'],
+                        tooltip: { y: { formatter: function(v) { return (D.currencySymbol || '$') + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + (D.currencyCode || ''); } } }
+                    }).render();
+                }
+            }
+            /* Business KPIs — bar + donuts */
+            var barEl = document.querySelector('#business-kpi-bar-chart');
+            if (barEl && D.businessKpiBar && Array.isArray(D.businessKpiBar.values)) {
+                var bv = D.businessKpiBar.values;
+                var bmax = Math.max.apply(null, bv.concat([0]));
+                if (bmax < 0.005) {
+                    barEl.innerHTML = '<p class="text-muted text-center py-5 mb-0">No financial KPI data yet.</p>';
+                } else {
+                    var sym = D.currencySymbol || '$';
+                    var fmt = function (v) {
+                        v = Number(v);
+                        if (v >= 1e9) return sym + (v / 1e9).toFixed(2) + 'B';
+                        if (v >= 1e6) return sym + (v / 1e6).toFixed(2) + 'M';
+                        if (v >= 1e3) return sym + (v / 1e3).toFixed(1) + 'k';
+                        return sym + v.toFixed(0);
+                    };
+                    new ApexCharts(barEl, {
+                        series: [{ name: 'Amount', data: bv }],
+                        chart: {
+                            type: 'bar',
+                            height: 300,
+                            toolbar: { show: false },
+                            fontFamily: 'inherit',
+                            events: navEvents(L.business_kpi_bar)
+                        },
+                        plotOptions: { bar: { borderRadius: 4, columnWidth: '58%' } },
+                        colors: ['#0c768a'],
+                        dataLabels: { enabled: false },
+                        xaxis: {
+                            categories: D.businessKpiBar.categories,
+                            labels: { rotate: -35, rotateAlways: false, hideOverlappingLabels: true, style: { fontSize: '11px' } }
+                        },
+                        yaxis: { labels: { formatter: fmt } },
+                        tooltip: { y: { formatter: function (v) { return sym + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + (D.currencyCode || ''); } } },
+                        grid: { borderColor: '#e9ecef' }
+                    }).render();
+                }
+            }
+            var invEl = document.querySelector('#business-kpi-inv-chart');
+            if (invEl && D.businessKpiInv) {
+                var isum = (D.businessKpiInv.series || []).reduce(function(a,b){ return a + b; }, 0);
+                if (isum < 1) {
+                    invEl.innerHTML = '<p class="text-muted text-center py-4 mb-0 small">No investment lines yet.</p>';
+                } else {
+                    new ApexCharts(invEl, {
+                        series: D.businessKpiInv.series,
+                        labels: D.businessKpiInv.labels,
+                        chart: {
+                            type: 'donut',
+                            height: 220,
+                            events: navEvents(L.investments_donut)
+                        },
+                        plotOptions: { pie: { donut: { size: '70%' } } },
+                        colors: ['#0c768a', '#94a3b8'],
+                        legend: { position: 'bottom' },
+                        dataLabels: { enabled: true }
+                    }).render();
+                }
+            }
+            var certEl = document.querySelector('#business-kpi-cert-chart');
+            if (certEl && D.businessKpiCert) {
+                var csum = (D.businessKpiCert.series || []).reduce(function(a,b){ return a + b; }, 0);
+                if (csum < 1) {
+                    certEl.innerHTML = '<p class="text-muted text-center py-4 mb-0 small">No certificate activity yet.</p>';
+                } else {
+                    new ApexCharts(certEl, {
+                        series: D.businessKpiCert.series,
+                        labels: D.businessKpiCert.labels,
+                        chart: {
+                            type: 'donut',
+                            height: 220,
+                            events: navEvents(L.certificates_donut)
+                        },
+                        plotOptions: { pie: { donut: { size: '70%' } } },
+                        colors: ['#f59e0b', '#22c55e'],
+                        legend: { position: 'bottom' },
+                        dataLabels: { enabled: true }
+                    }).render();
+                }
+            }
+        })();
+        </script>
+
+        <!-- Vector map -->
+        <script src="{{ url_for('static', filename='assets/libs/jsvectormap/jsvectormap.min.js') }}"></script>
+        <script src="{{ url_for('static', filename='assets/libs/jsvectormap/maps/world-merc.js') }}"></script>
+        <script>
+        (function() {
+            if (typeof jsVectorMap === 'undefined') return;
+            var el = document.querySelector('#world-map-markers');
+            if (!el) return;
+            var dataEl = document.getElementById('istithmar-dashboard-data');
+            if (!dataEl) return;
+            var D = {};
+            try { D = JSON.parse(dataEl.textContent); } catch (e) { return; }
+            var mr = D.membersRegionMap || {};
+            var markers = mr.markers || [];
+            if (!markers.length) {
+                el.innerHTML = '<div class="d-flex align-items-center justify-content-center h-100 text-muted small px-3 text-center">No map pins yet. Set <strong>Agent country</strong> (e.g. Somalia, Kenya) so members can be placed by region.</div>';
+                return;
+            }
+            new jsVectorMap({
+                map: 'world_merc',
+                selector: '#world-map-markers',
+                zoomOnScroll: true,
+                zoomOnScrollSpeed: 3,
+                zoomButtons: true,
+                zoomMin: 1,
+                zoomMax: 12,
+                zoomStep: 1.5,
+                draggable: true,
+                showTooltip: true,
+                bindTouchEvents: true,
+                markerStyle: {
+                    initial: { r: 7, fill: '#0c768a', fillOpacity: 1, stroke: '#fff', strokeWidth: 2, strokeOpacity: 0.85 },
+                    hover: { fill: '#0ea8c2', cursor: 'pointer' },
+                    selected: { fill: '#086070' }
+                },
+                markers: markers,
+                regionStyle: {
+                    initial: { stroke: '#daeaee', strokeWidth: 0.25, fill: '#eef6f7', fillOpacity: 1 },
+                    hover: { fillOpacity: 0.92, cursor: 'pointer' }
+                }
+            });
+        })();
+        </script>
+        <script>
+        (function() {
+            var dataEl = document.getElementById('istithmar-dashboard-data');
+            var soc = document.querySelector('#social-source');
+            if (!dataEl || !soc || typeof ApexCharts === 'undefined') return;
+            var D = JSON.parse(dataEl.textContent);
+            var L = D.chartLinks || {};
+            var payUrls = L.donut_payment || [];
+            function navEvents(urls) {
+                if (!urls || !urls.length) return {};
+                return {
+                    dataPointSelection: function(event, chartContext, config) {
+                        var i = config.dataPointIndex;
+                        if (urls[i]) window.location.href = urls[i];
+                    }
+                };
+            }
+            var dc = Number(D.cash || 0), dm = Number(D.mobile || 0), db = Number(D.bank || 0), doth = Number(D.other || 0);
+            if (dc + dm + db + doth < 0.005) {
+                soc.innerHTML = '<p class="text-muted text-center py-4 mb-0">No payment-type data yet.</p>';
+                return;
+            }
+            new ApexCharts(soc, {
+                labels: ['Cash', 'Mobile money', 'Bank transfer', 'Other'],
+                series: [dc, dm, db, doth],
+                chart: { height: 280, type: 'donut', events: navEvents(payUrls) },
+                plotOptions: {
+                    pie: {
+                        startAngle: -90,
+                        endAngle: 90,
+                        offsetY: 10,
+                        donut: { size: '80%' }
+                    }
+                },
+                colors: ['#0c768a', '#38c786', '#5b7cfa', '#c9b28f'],
+                grid: { padding: { bottom: -120 } },
+                legend: { show: true, position: 'bottom' },
+                dataLabels: { enabled: false },
+                tooltip: { y: { formatter: function(v) { return (D.currencySymbol || '$') + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + (D.currencyCode || ''); } } }
+            }).render();
+        })();
+        </script>
+
+        <!-- App js -->
+        <script src="{{ url_for('static', filename='assets/js/app.js') }}"></script>
+    </body>
+
+</html>

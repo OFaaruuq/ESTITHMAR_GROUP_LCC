@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Projects{% endblock %}
+{% block page_heading %}Projects{% endblock %}
+{% block content %}
+<p class="text-muted small mb-3">
+    Projects group capital deployment under a <strong>budget cap</strong> (optional). <strong>Investments</strong> allocate pooled member funds into a project; totals on this page match the filtered set. Use <strong>Export</strong> for the same filters.
+</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-sm-6 col-md-4 col-xl-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1"><i class="ri-folder-3-line me-1"></i>Matching projects</p>
+                <p class="fs-4 fw-semibold mb-0">{{ total_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-md-4 col-xl-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Sum of budgets (filtered)</p>
+                <p class="fs-4 fw-semibold mb-0">{{ settings.currency_symbol }}{{ sum_budget|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-md-4 col-xl-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Invested into filtered projects</p>
+                <p class="fs-4 fw-semibold mb-0 text-primary">{{ settings.currency_symbol }}{{ sum_invested|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-md-4 col-xl-3">
+        <div class="card border-0 bg-primary bg-opacity-10 h-100">
+            <div class="card-body py-3 d-flex flex-column justify-content-center">
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('projects_new') }}" class="btn btn-sm btn-primary">New project</a>
+                    <a href="{{ url_for('investments_new') }}" class="btn btn-sm btn-soft-primary">New investment</a>
+                    <a href="{{ export_url }}" class="btn btn-sm btn-outline-primary">Excel</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header py-3">
+        <h5 class="card-title mb-0"><i class="ri-filter-3-line me-2 text-primary"></i>Filters</h5>
+        <p class="text-muted small mb-0">Category, status, start-date range, or search name / code / manager.</p>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0">Category</label>
+                <select name="category" class="form-select">
+                    <option value="">All</option>
+                    {% for key, label in project_categories %}
+                    <option value="{{ key }}" {{ 'selected' if category == key else '' }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">All</option>
+                    {% for key, label in project_statuses %}
+                    <option value="{{ key }}" {{ 'selected' if status == key else '' }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Start from</label>
+                <input type="date" name="date_from" class="form-control" value="{{ date_from.strftime('%Y-%m-%d') if date_from else '' }}">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Start to</label>
+                <input type="date" name="date_to" class="form-control" value="{{ date_to.strftime('%Y-%m-%d') if date_to else '' }}">
+            </div>
+            <div class="col-md-6 col-lg-3">
+                <label class="form-label small mb-0">Search</label>
+                <input type="search" name="q" class="form-control" placeholder="Name, code, manager, description" value="{{ q or '' }}" autocomplete="off">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Rows per page</label>
+                <select name="per_page" class="form-select">
+                    {% for n in (25, 50, 100, 200) %}
+                    <option value="{{ n }}" {{ 'selected' if per_page == n else '' }}>{{ n }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary">Apply</button>
+                <a href="{{ url_for('projects_list') }}" class="btn btn-outline-secondary">Clear</a>
+                {% if current_user.role != 'agent' %}
+                <a href="{{ url_for('reports_projects_profitability') }}" class="btn btn-link">Project profitability report</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div class="text-muted small">
+        {% if total_count %}
+        Showing <strong>{{ row_start }}</strong>–<strong>{{ row_end }}</strong> of <strong>{{ total_count }}</strong>
+        {% else %}
+        No rows match.
+        {% endif %}
+    </div>
+    {% if total_pages > 1 %}
+    <nav aria-label="Projects pages">
+        <ul class="pagination pagination-sm mb-0 flex-wrap">
+            <li class="page-item {{ 'disabled' if not first_page_url else '' }}"><a class="page-link" href="{{ first_page_url or '#' }}">First</a></li>
+            <li class="page-item {{ 'disabled' if not prev_page_url else '' }}"><a class="page-link" href="{{ prev_page_url or '#' }}">Previous</a></li>
+            <li class="page-item disabled"><span class="page-link">Page {{ page }} / {{ total_pages }}</span></li>
+            <li class="page-item {{ 'disabled' if not next_page_url else '' }}"><a class="page-link" href="{{ next_page_url or '#' }}">Next</a></li>
+            <li class="page-item {{ 'disabled' if not last_page_url else '' }}"><a class="page-link" href="{{ last_page_url or '#' }}">Last</a></li>
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Manager</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th class="text-end">Budget</th>
+                        <th class="text-end">Invested</th>
+                        <th>Status</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in projects %}
+                    <tr>
+                        <td class="font-monospace small">{{ p.project_code or '—' }}</td>
+                        <td><a href="{{ url_for('projects_profile', id=p.id) }}" class="fw-semibold text-decoration-none">{{ p.name }}</a></td>
+                        <td>{{ cat_map.get(p.category, p.category) }}</td>
+                        <td class="small">{{ p.project_manager or '—' }}</td>
+                        <td class="small text-muted">{{ p.start_date or '—' }}</td>
+                        <td class="small text-muted">{{ p.end_date or '—' }}</td>
+                        <td class="text-end text-nowrap small">{% if p.total_budget is not none %}{{ settings.currency_symbol }}{{ p.total_budget|money }}{% else %}—{% endif %}</td>
+                        <td class="text-end text-nowrap small fw-medium">{{ settings.currency_symbol }}{{ p.total_investment_received()|money }}</td>
+                        <td>
+                            {% if p.status == 'Active' %}
+                            <span class="badge text-bg-success">{{ p.status }}</span>
+                            {% elif p.status in ['Completed', 'Closed'] %}
+                            <span class="badge text-bg-secondary">{{ p.status }}</span>
+                            {% elif p.status == 'On Hold' %}
+                            <span class="badge text-bg-warning text-dark">{{ p.status }}</span>
+                            {% else %}
+                            <span class="badge text-bg-info">{{ p.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-nowrap">
+                            <a href="{{ url_for('projects_profile', id=p.id) }}" class="btn btn-sm btn-soft-primary">View</a>
+                            <a href="{{ url_for('projects_edit', id=p.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                            <a href="{{ url_for('investments_new', project_id=p.id) }}" class="btn btn-sm btn-outline-primary" title="New investment in this project">+ Inv.</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="10" class="text-muted p-4 text-center">No projects match these filters.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-transparent small text-muted">
+        Amounts in <strong>{{ currency_code }}</strong>. <strong>Invested</strong> is the sum of <strong>total amount invested</strong> on all investments linked to the project.
+    </div>
+</div>
+{% endblock %}

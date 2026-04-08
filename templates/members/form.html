@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% set kind_labels = dict(member_kinds) %}
+{% set mk = (member.member_kind if member and member.member_kind else 'member') %}
+{% block title %}{{ 'Edit member' if is_edit else 'Register person' }}{% endblock %}
+{% block page_heading %}{{ 'Edit member' if is_edit else 'Register member, shareholder, or investor' }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('members_list') }}">{% if current_user.role == 'agent' %}My team{% else %}Members{% endif %}</a></li>
+        {% if is_edit %}
+        <li class="breadcrumb-item"><a href="{{ url_for('members_profile', id=member.id) }}">{{ member.member_id }}</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active" aria-current="page">New</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        {% if current_user.role == 'agent' and current_user.agent %}
+        <div class="alert alert-info border-0 mb-3" role="status">
+            <div class="d-flex gap-2">
+                <i class="ri-team-line fs-5"></i>
+                <div>
+                    <strong>Your team.</strong> This person is assigned to <strong>{{ current_user.agent.agent_id }}</strong> — {{ current_user.agent.full_name }}. Only your team appears in your lists.
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if require_agent and not (current_user.role == 'agent' and current_user.agent_id) %}
+        <div class="alert alert-warning border-0 mb-3" role="status">
+            <i class="ri-alert-line me-1"></i>
+            <strong>Settings require an agent.</strong> Every member must have an assigned agent unless your account auto-assigns (agent users).
+        </div>
+        {% endif %}
+
+        <form method="post" class="needs-validation" novalidate>
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="mb-0"><i class="ri-user-settings-line me-2 text-primary"></i>Role &amp; identity</h5>
+                    <p class="text-muted small mb-0">How this person is classified in the system.</p>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="member_kind">Person type <span class="text-danger">*</span></label>
+                        <select name="member_kind" id="member_kind" class="form-select" required>
+                            {% for k, label in member_kinds %}
+                            <option value="{{ k }}" {{ 'selected' if mk == k else '' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Members, shareholders, and investors share the same record type—pick the label that fits your process.</div>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label" for="full_name">Full name <span class="text-danger">*</span></label>
+                        <input type="text" name="full_name" id="full_name" class="form-control form-control-lg" required
+                               maxlength="200" autocomplete="name"
+                               value="{{ member.full_name if member else '' }}" placeholder="Legal or preferred full name">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="mb-0"><i class="ri-contacts-line me-2 text-primary"></i>Contact</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="phone">Phone</label>
+                        <input type="tel" name="phone" id="phone" class="form-control" autocomplete="tel"
+                               inputmode="tel" maxlength="22"
+                               title="7–15 digits; use + and country code for international numbers"
+                               value="{{ member.phone if member else '' }}" placeholder="+252 63 1234567">
+                        <div class="form-text">Optional. Digits only (7–15), with optional +. No letters.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="address">Address</label>
+                        <textarea name="address" id="address" class="form-control" rows="3" autocomplete="street-address"
+                                  placeholder="Street, city, region">{{ member.address if member else '' }}</textarea>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label" for="national_id">National ID / document no. <span class="text-danger">*</span></label>
+                        <input type="text" name="national_id" id="national_id" class="form-control" required
+                               value="{{ member.national_id if member else '' }}" maxlength="64" autocomplete="off"
+                               placeholder="National ID, passport, or other official identifier">
+                        <div class="form-text">Required for registration and audit trail (business policy).</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="mb-0"><i class="ri-calendar-event-line me-2 text-primary"></i>Membership</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="join_date">Join date</label>
+                            <input type="date" name="join_date" id="join_date" class="form-control"
+                                   value="{% if member and member.join_date %}{{ member.join_date.strftime('%Y-%m-%d') }}{% else %}{{ default_join_date }}{% endif %}">
+                            <div class="form-text">Date they joined the program or community.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="status">Status</label>
+                            <select name="status" id="status" class="form-select">
+                                <option value="Active" {{ 'selected' if not member or member.status == 'Active' else '' }}>Active</option>
+                                <option value="Inactive" {{ 'selected' if member and member.status == 'Inactive' else '' }}>Inactive</option>
+                            </select>
+                            <div class="form-text">Inactive members are hidden from most operational lists.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if not (current_user.role == 'agent' and current_user.agent_id) %}
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="mb-0"><i class="ri-map-pin-user-line me-2 text-primary"></i>Assignment</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-0">
+                        <label class="form-label" for="agent_id">Assigned agent{% if require_agent %} <span class="text-danger">*</span>{% endif %}</label>
+                        <select name="agent_id" id="agent_id" class="form-select" {{ 'required' if require_agent else '' }}>
+                            <option value="">— None —</option>
+                            {% for a in agents %}
+                            <option value="{{ a.id }}" {{ 'selected' if member and member.agent_id == a.id else '' }}>
+                                {{ a.agent_id }} — {{ a.full_name }}{% if a.status != 'Active' %} (inactive){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% if member and member.agent and member.agent.status != 'Active' %}
+                        <div class="form-text text-warning">Current agent is inactive; choose an active agent when possible.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="d-flex flex-wrap gap-2 align-items-center pt-2 border-top">
+                <button type="submit" class="btn btn-primary btn-lg px-4">
+                    <i class="ri-save-3-line me-1"></i>Save changes
+                </button>
+                {% if is_edit %}
+                <a href="{{ url_for('members_profile', id=member.id) }}" class="btn btn-outline-secondary">Cancel</a>
+                {% else %}
+                <a href="{{ url_for('members_list') }}" class="btn btn-outline-secondary">Cancel</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-4">
+        {% if is_edit %}
+        <div class="card border-0 shadow-sm sticky-lg-top" style="top: 1rem;">
+            <div class="card-body">
+                <h6 class="text-muted text-uppercase small mb-3">Record summary</h6>
+                <p class="mb-2">
+                    <span class="text-muted small d-block">Member ID</span>
+                    <span class="font-monospace fs-5 fw-semibold">{{ member.member_id }}</span>
+                </p>
+                <p class="mb-2">
+                    <span class="text-muted small d-block">Internal ID</span>
+                    <span class="font-monospace text-muted">#{{ member.id }}</span>
+                </p>
+                <p class="mb-2">
+                    <span class="text-muted small d-block">Type</span>
+                    <span class="badge text-bg-primary">{{ kind_labels.get(mk, mk) }}</span>
+                </p>
+                {% if member.created_at %}
+                <p class="mb-2 small">
+                    <span class="text-muted d-block">Created</span>
+                    {{ member.created_at.strftime('%d %b %Y, %H:%M') }} UTC
+                </p>
+                {% endif %}
+                {% if member.updated_at %}
+                <p class="mb-3 small">
+                    <span class="text-muted d-block">Last updated</span>
+                    {{ member.updated_at.strftime('%d %b %Y, %H:%M') }} UTC
+                </p>
+                {% endif %}
+                <hr>
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('members_profile', id=member.id) }}" class="btn btn-soft-primary btn-sm"><i class="ri-eye-line me-1"></i>View profile</a>
+                    <a href="{{ url_for('contributions_list') }}?member_id={{ member.id }}" class="btn btn-outline-secondary btn-sm"><i class="ri-hand-coin-line me-1"></i>Contributions</a>
+                    <a href="{{ url_for('contributions_new') }}?preselect={{ member.id }}" class="btn btn-outline-secondary btn-sm"><i class="ri-add-line me-1"></i>Add contribution</a>
+                    <a href="{{ url_for('subscriptions_new') }}?member_id={{ member.id }}" class="btn btn-outline-secondary btn-sm"><i class="ri-stack-line me-1"></i>New subscription</a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card border-0 shadow-sm bg-light">
+            <div class="card-body">
+                <h6 class="mb-2"><i class="ri-information-line me-1"></i>After you save</h6>
+                <p class="small text-muted mb-0">A unique member ID is generated automatically. You can add contributions and share subscriptions from the member profile.</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+  'use strict';
+  var form = document.querySelector('form.needs-validation');
+  if (!form) return;
+  form.addEventListener('submit', function (e) {
+    if (!form.checkValidity()) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    form.classList.add('was-validated');
+  }, false);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,34 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Legacy / accidental local DB files (app uses PostgreSQL or SQL Server only)
+instance/*.db
+*.db
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Node (if present under static)
+**/node_modules/
+
+# Logs
+*.log

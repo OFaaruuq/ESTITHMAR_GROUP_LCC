@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}General ledger{% endblock %}
+{% block page_heading %}Accounting — General ledger{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('accounting_hub') }}">Accounting</a></li>
+        <li class="breadcrumb-item active" aria-current="page">General ledger</li>
+    </ol>
+</nav>
+
+{% include 'accounting/_subnav.html' %}
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-md-4">
+        <label class="form-label small mb-0" for="acc">Account</label>
+        <select name="account_id" id="acc" class="form-select">
+            <option value="">— Select account —</option>
+            {% for a in accounts %}
+            <option value="{{ a.id }}" {% if account and account.id == a.id %}selected{% endif %}>{{ a.code }} — {{ a.name }}{% if not a.is_active %} (inactive){% endif %}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label small mb-0" for="df">From</label>
+        <input type="date" name="date_from" id="df" class="form-control" value="{{ date_from.strftime('%Y-%m-%d') if date_from else '' }}">
+    </div>
+    <div class="col-md-2">
+        <label class="form-label small mb-0" for="dt">To</label>
+        <input type="date" name="date_to" id="dt" class="form-control" value="{{ date_to.strftime('%Y-%m-%d') if date_to else '' }}">
+    </div>
+    <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Apply</button>
+    </div>
+</form>
+
+{% if account %}
+<div class="mb-2">
+    <span class="badge bg-light text-dark border font-monospace">{{ account.code }}</span>
+    <strong>{{ account.name }}</strong>
+    <span class="text-muted small">({{ account.account_type }})</span>
+    {% if not account.is_active %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+</div>
+
+<p class="small text-muted mb-2">Running balance is <strong>debit minus credit</strong> for this account.{% if date_from %} Opening balance includes all posted activity before <strong>{{ date_from }}</strong>.{% endif %}</p>
+
+<div class="table-responsive card border-0 shadow-sm">
+    <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Date</th>
+                <th>Reference</th>
+                <th>Source</th>
+                <th class="text-end">Debit</th>
+                <th class="text-end">Credit</th>
+                <th class="text-end">Balance</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if date_from is not none %}
+            <tr class="table-light">
+                <td colspan="3" class="small text-muted">Opening balance (before {{ date_from }})</td>
+                <td class="text-end text-muted">—</td>
+                <td class="text-end text-muted">—</td>
+                <td class="text-end text-nowrap fw-medium">{{ settings.currency_symbol }}{{ opening_balance|money }}</td>
+                <td></td>
+            </tr>
+            {% endif %}
+            {% for row in lines %}
+            <tr>
+                <td class="text-nowrap">{{ row.entry_date }}</td>
+                <td class="font-monospace small">{{ row.reference or '—' }}</td>
+                <td class="small text-muted">{% if row.source_type %}{{ row.source_type }}{% if row.source_id %} #{{ row.source_id }}{% endif %}{% else %}—{% endif %}</td>
+                <td class="text-end text-nowrap">{% if row.debit > 0 %}{{ settings.currency_symbol }}{{ row.debit|money }}{% else %}—{% endif %}</td>
+                <td class="text-end text-nowrap">{% if row.credit > 0 %}{{ settings.currency_symbol }}{{ row.credit|money }}{% else %}—{% endif %}</td>
+                <td class="text-end text-nowrap fw-medium">{{ settings.currency_symbol }}{{ row.running_balance|money }}</td>
+                <td><a href="{{ url_for('accounting_journal_detail', entry_id=row.entry_id) }}" class="btn btn-sm btn-outline-secondary py-0">Entry</a></td>
+            </tr>
+            {% endfor %}
+            {% if not lines %}
+            <tr><td colspan="7" class="text-muted text-center py-4">{% if date_from is not none %}No lines in this date range.{% else %}No posted lines for this account yet.{% endif %}</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted">Choose an account to view posted lines and running balance (debit minus credit).</p>
+{% endif %}
+{% endblock %}

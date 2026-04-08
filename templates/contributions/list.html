@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Contributions{% endblock %}
+{% block page_heading %}Collection (contributions){% endblock %}
+{% block content %}
+<p class="text-muted small mb-3">Record and review member payments. Filters apply to the table, totals, and Excel export. Verification is limited to administrators and operators.</p>
+
+<div class="card mb-3">
+    <div class="card-header py-3">
+        <h5 class="card-title mb-0">Filters</h5>
+        <p class="text-muted small mb-0">Narrow by member, date range, verification, or search receipt / member.</p>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0">Member</label>
+                <select name="member_id" class="form-select">
+                    <option value="">All members</option>
+                    {% for m in members %}
+                    <option value="{{ m.id }}" {{ 'selected' if member_id == m.id else '' }}>{{ m.member_id }} — {{ m.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if filter_subscriptions %}
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0">Subscription</label>
+                <select name="subscription_id" class="form-select">
+                    <option value="">All subscriptions</option>
+                    {% for s in filter_subscriptions %}
+                    <option value="{{ s.id }}" {{ 'selected' if subscription_id == s.id else '' }}>{{ s.subscription_no }} — {{ s.member.member_id }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            {% if agents %}
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Agent</label>
+                <select name="agent_id" class="form-select">
+                    <option value="">All agents</option>
+                    {% for a in agents %}
+                    <option value="{{ a.id }}" {{ 'selected' if agent_id == a.id else '' }}>{{ a.agent_id }} — {{ a.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">From date</label>
+                <input type="date" name="date_from" class="form-control" value="{{ date_from.strftime('%Y-%m-%d') if date_from else '' }}">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">To date</label>
+                <input type="date" name="date_to" class="form-control" value="{{ date_to.strftime('%Y-%m-%d') if date_to else '' }}">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Verified</label>
+                <select name="verified" class="form-select">
+                    <option value="" {{ 'selected' if not verified_filter else '' }}>All</option>
+                    <option value="yes" {{ 'selected' if verified_filter == 'yes' else '' }}>Verified only</option>
+                    <option value="no" {{ 'selected' if verified_filter == 'no' else '' }}>Not verified</option>
+                </select>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Payment type</label>
+                <select name="payment_type" class="form-select">
+                    {% set pt = payment_type_filter|default('', true) %}
+                    <option value="" {{ 'selected' if not pt else '' }}>All types</option>
+                    <option value="Cash" {{ 'selected' if pt == 'Cash' else '' }}>Cash</option>
+                    <option value="Mobile" {{ 'selected' if pt == 'Mobile' else '' }}>Mobile money</option>
+                    <option value="Bank" {{ 'selected' if pt == 'Bank' else '' }}>Bank transfer</option>
+                    <option value="Other" {{ 'selected' if pt == 'Other' else '' }}>Other</option>
+                </select>
+            </div>
+            <div class="col-md-6 col-lg-3">
+                <label class="form-label small mb-0">Search</label>
+                <input type="search" name="q" class="form-control" placeholder="Receipt, member ID, name, notes" value="{{ q or '' }}" autocomplete="off">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Rows per page</label>
+                <select name="per_page" class="form-select">
+                    {% for n in (25, 50, 100, 200) %}
+                    <option value="{{ n }}" {{ 'selected' if per_page == n else '' }}>{{ n }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary">Apply filters</button>
+                <a href="{{ url_for('contributions_list') }}" class="btn btn-outline-secondary">Clear</a>
+                <a href="{{ url_for('contributions_new') }}" class="btn btn-success">Record payment</a>
+                <a href="{{ export_url }}" class="btn btn-soft-primary">Export Excel (filtered)</a>
+                <a href="{{ url_for('reports_hub') }}" class="btn btn-link">Reports hub</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div>
+        <span class="text-muted small">Matching rows:</span> <strong>{{ total_count }}</strong>
+        <span class="text-muted small ms-2">Total amount (filtered):</span> <strong>{{ total_collected|money }} USD</strong>
+    </div>
+    {% if total_pages > 1 %}
+    <nav aria-label="Contributions pages">
+        <ul class="pagination pagination-sm mb-0">
+            <li class="page-item {{ 'disabled' if not prev_page_url else '' }}">
+                <a class="page-link" href="{{ prev_page_url or '#' }}">Previous</a>
+            </li>
+            <li class="page-item disabled"><span class="page-link">Page {{ page }} / {{ total_pages }}</span></li>
+            <li class="page-item {{ 'disabled' if not next_page_url else '' }}">
+                <a class="page-link" href="{{ next_page_url or '#' }}">Next</a>
+            </li>
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Txn</th>
+                        <th>Receipt</th>
+                        <th>Member</th>
+                        <th>Name</th>
+                        <th>Subscription</th>
+                        <th>Agent</th>
+                        <th class="text-end">Amount</th>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Verified</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in rows %}
+                    <tr>
+                        <td><span class="text-muted">#{{ c.id }}</span></td>
+                        <td><strong>{{ c.receipt_no or '—' }}</strong></td>
+                        <td>{{ c.member.member_id }}</td>
+                        <td>{{ c.member.full_name }}</td>
+                        <td>{{ c.subscription.subscription_no if c.subscription_id and c.subscription else '—' }}</td>
+                        <td>{{ c.member.agent.agent_id if c.member.agent else '—' }}</td>
+                        <td class="text-end">{{ c.amount|money }}</td>
+                        <td>{{ c.date }}</td>
+                        <td><span class="badge bg-light text-dark border">{{ c.payment_type }}</span></td>
+                        <td>
+                            {% if c.verified %}
+                            <span class="badge bg-success">Yes</span>
+                            {% else %}
+                            <span class="badge bg-secondary">No</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-nowrap">
+                            <a href="{{ url_for('contributions_receipt', id=c.id) }}" class="btn btn-sm btn-soft-primary">Receipt</a>
+                            {% if current_user.role in ('admin', 'operator') %}
+                            {% if not c.verified %}
+                            <form method="post" action="{{ url_for('contributions_verify', id=c.id) }}" class="d-inline"><button type="submit" class="btn btn-sm btn-outline-success">Verify</button></form>
+                            {% else %}
+                            <form method="post" action="{{ url_for('contributions_unverify', id=c.id) }}" class="d-inline"><button type="submit" class="btn btn-sm btn-outline-warning">Unverify</button></form>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="11" class="text-muted p-4 text-center">No contributions match these filters.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

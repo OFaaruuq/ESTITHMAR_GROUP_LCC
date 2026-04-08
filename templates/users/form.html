@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit user' if user else 'New user' }}{% endblock %}
+{% block page_heading %}{{ 'Edit user' if user else 'New user' }}{% endblock %}
+{% block extra_css %}
+<style>
+/* User form — admin / enterprise */
+.uf-page { max-width: 1040px; margin-left: auto; margin-right: auto; }
+.uf-profile {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(165deg, #f8fafc 0%, #ffffff 45%, #f1f5f9 100%);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+.uf-avatar {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: linear-gradient(145deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff; font-weight: 600; font-size: 1.35rem; letter-spacing: 0.02em;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+.uf-meta { font-size: 0.8125rem; color: #64748b; }
+.uf-surface {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+}
+.uf-section-label {
+  font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: #64748b; margin-bottom: 1rem;
+}
+.uf-divider { border: 0; border-top: 1px solid rgba(15, 23, 42, 0.08); margin: 1.5rem 0; }
+.uf-ig .input-group-text { background: #f8fafc; border-color: rgba(15, 23, 42, 0.12); color: #64748b; }
+.uf-ig-lg .input-group-text { min-height: 3rem; align-items: center; }
+.uf-sidebar {
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: #f8fafc;
+}
+.uf-perm-item {
+  padding: 0.75rem 0; border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.uf-perm-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.uf-perm-item:first-child { padding-top: 0; }
+.uf-action-bar {
+  position: sticky; bottom: 0; z-index: 10;
+  margin: 0 -0.25rem -0.25rem; padding: 1rem 1.25rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 12%);
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 0 0 0.75rem 0.75rem;
+}
+.uf-agent-panel {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.9) 0%, rgba(255,255,255,0.95) 100%);
+}
+.form-control:focus, .form-select:focus {
+  border-color: #94a3bf;
+  box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.12);
+}
+@media (max-width: 991.98px) {
+  .uf-action-bar {
+    margin-left: -1rem; margin-right: -1rem;
+    padding-left: 1rem; padding-right: 1rem;
+    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
+  }
+}
+</style>
+{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3 uf-page">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}" class="text-decoration-none">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('users_list') }}" class="text-decoration-none">Users</a></li>
+        {% if user %}
+        <li class="breadcrumb-item active text-truncate" aria-current="page" style="max-width: 12rem;">{{ user.username }}</li>
+        {% else %}
+        <li class="breadcrumb-item active" aria-current="page">New account</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<div class="uf-page">
+    {% if user %}
+    {% set initials = (user.username[0:2] if user.username else '?')|upper %}
+    <div class="uf-profile p-3 p-md-4 mb-4">
+        <div class="d-flex flex-wrap align-items-center gap-3 gap-md-4">
+            <div class="uf-avatar" aria-hidden="true">{{ initials }}</div>
+            <div class="flex-grow-1 min-w-0">
+                <h5 class="mb-1 fw-semibold text-dark">{{ user.full_name or user.username }}</h5>
+                <p class="uf-meta mb-2 mb-md-1 font-monospace">@{{ user.username }} · ID {{ user.id }}</p>
+                {% if user.created_at %}
+                <p class="uf-meta mb-0"><i class="ri-time-line me-1"></i>Created {{ user.created_at.strftime('%b %d, %Y · %H:%M') }} UTC</p>
+                {% endif %}
+            </div>
+            <div class="d-flex flex-wrap gap-2 ms-md-auto">
+                {% if user.role == 'admin' %}
+                <span class="badge rounded-pill px-3 py-2 text-bg-danger">{{ role_labels.get(user.role, user.role) }}</span>
+                {% elif user.role == 'operator' %}
+                <span class="badge rounded-pill px-3 py-2 text-bg-primary">{{ role_labels.get(user.role, user.role) }}</span>
+                {% else %}
+                <span class="badge rounded-pill px-3 py-2 text-bg-secondary">{{ role_labels.get(user.role, user.role) }}</span>
+                {% endif %}
+                {% if user.is_active %}
+                <span class="badge rounded-pill px-3 py-2 text-bg-success">Active</span>
+                {% else %}
+                <span class="badge rounded-pill px-3 py-2 text-bg-secondary">Inactive</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="mb-4 p-3 p-md-4 rounded-3 border bg-light border-opacity-50">
+        <h5 class="fw-semibold mb-1">Create staff account</h5>
+        <p class="text-muted small mb-0">Provision a login for your team. Password must be at least four characters.</p>
+    </div>
+    {% endif %}
+
+    <div class="uf-surface overflow-hidden">
+        <div class="px-3 px-md-4 py-3 border-bottom bg-light bg-opacity-50">
+            <h6 class="mb-0 fw-semibold">{% if user %}Account settings{% else %}Account details{% endif %}</h6>
+            <p class="text-muted small mb-0 mt-1">
+                {% if user %}
+                Update profile, credentials, and access. Username is permanent.
+                {% else %}
+                Choose role and optional agent linkage after you set the login.
+                {% endif %}
+            </p>
+        </div>
+
+        <form method="post" id="user-form" class="p-3 p-md-4 pb-0">
+            <div class="row g-4 g-xl-5">
+                <div class="col-lg-7">
+                    <div class="uf-section-label">Credentials</div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary" for="uf-user">Username <span class="text-danger">*</span></label>
+                        <div class="input-group input-group-lg uf-ig uf-ig-lg">
+                            <span class="input-group-text"><i class="ri-user-3-line"></i></span>
+                            <input type="text" name="username" id="uf-user" class="form-control" required
+                                   value="{{ user.username if user else '' }}" {% if user %}readonly{% endif %}
+                                   placeholder="login.name" {% if not user %}autocomplete="username"{% endif %}
+                                   aria-describedby="uf-user-help">
+                        </div>
+                        <div id="uf-user-help" class="form-text">{% if user %}Immutable login identifier.{% else %}Used to sign in; letters, numbers, and dots are typical.{% endif %}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary" for="uf-name">Display name</label>
+                        <div class="input-group uf-ig">
+                            <span class="input-group-text"><i class="ri-id-card-line"></i></span>
+                            <input type="text" name="full_name" id="uf-name" class="form-control" value="{{ user.full_name if user else '' }}" placeholder="Full name as shown in the app" autocomplete="name">
+                        </div>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label small fw-semibold text-secondary" for="uf-pwd">Password {% if user %}<span class="fw-normal text-muted">(optional)</span>{% else %}<span class="text-danger">*</span>{% endif %}</label>
+                        <div class="input-group uf-ig">
+                            <span class="input-group-text"><i class="ri-lock-password-line"></i></span>
+                            <input type="password" name="password" id="uf-pwd" class="form-control" {{ 'required' if not user else '' }} autocomplete="new-password"
+                                   placeholder="{% if user %}New password — leave blank to keep{% else %}Minimum 4 characters{% endif %}"
+                                   aria-describedby="uf-pwd-help">
+                        </div>
+                        <div id="uf-pwd-help" class="form-text">{% if user %}Only fill this field to replace the current password.{% else %}Minimum four characters; store securely outside this system.{% endif %}</div>
+                    </div>
+
+                    <hr class="uf-divider">
+
+                    <div class="uf-section-label">Access control</div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary" for="role-select">Role</label>
+                        <select name="role" class="form-select form-select-lg" id="role-select" aria-describedby="role-help">
+                            {% for key, label in roles %}
+                            <option value="{{ key }}" {{ 'selected' if (user and user.role == key) or (not user and key == 'operator') else '' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <div id="role-help" class="form-text">Determines which modules and data this user can reach.</div>
+                    </div>
+
+                    <div class="uf-agent-panel p-3 mb-3" id="agent-box" role="region" aria-labelledby="agent-heading">
+                        <h6 class="small fw-semibold mb-2" id="agent-heading"><i class="ri-links-line me-1 text-primary"></i>Linked sales agent</h6>
+                        <p class="small text-muted mb-3">When role is <strong>Agent</strong>, pick the agent record this user represents.</p>
+                        <label class="visually-hidden" for="agent-id">Agent</label>
+                        <select name="agent_id" class="form-select" id="agent-id">
+                            <option value="">Select agent…</option>
+                            {% for a in agents %}
+                            <option value="{{ a.id }}" {{ 'selected' if user and user.agent_id == a.id else '' }}>{{ a.agent_id }} — {{ a.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                        {% if user and user.role == 'agent' and not user.agent_id %}
+                        <div class="alert alert-warning py-2 px-3 small mb-0 mt-3" role="alert">
+                            <i class="ri-error-warning-line me-1"></i>No agent linked — assign one or change the role.
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if user %}
+                    <div class="rounded-3 border p-3 bg-light bg-opacity-50">
+                        <div class="form-check form-switch">
+                            <input type="checkbox" name="is_active" value="1" class="form-check-input" id="active" role="switch" {{ 'checked' if user.is_active else '' }}>
+                            <label class="form-check-label fw-semibold" for="active">Allow sign-in</label>
+                        </div>
+                        <p class="form-text mb-0 small">Turn off to block login without deleting the account.</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="col-lg-5">
+                    <div class="uf-sidebar p-3 p-md-4 h-100 sticky-lg-top" style="top: 1rem;">
+                        <h6 class="small fw-bold text-uppercase text-muted mb-3" style="letter-spacing: .08em;">Permission summary</h6>
+                        <div class="uf-perm-item">
+                            <div class="d-flex align-items-start gap-2">
+                                <span class="text-danger mt-1"><i class="ri-shield-user-line"></i></span>
+                                <div>
+                                    <div class="fw-semibold small">Administrator</div>
+                                    <p class="text-muted small mb-0">Users, backups, settings, profit distribution, full reporting.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="uf-perm-item">
+                            <div class="d-flex align-items-start gap-2">
+                                <span class="text-primary mt-1"><i class="ri-database-2-line"></i></span>
+                                <div>
+                                    <div class="fw-semibold small">Operator</div>
+                                    <p class="text-muted small mb-0">Operational data: members, money in/out, investments — not user admin.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="uf-perm-item">
+                            <div class="d-flex align-items-start gap-2">
+                                <span class="text-secondary mt-1"><i class="ri-user-shared-line"></i></span>
+                                <div>
+                                    <div class="fw-semibold small">Agent</div>
+                                    <p class="text-muted small mb-0">Scoped to one agent; sees only that team’s members and activity.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <hr class="my-3 opacity-25">
+                        <div class="d-grid gap-2">
+                            <a href="{{ url_for('agents_list') }}" class="btn btn-sm btn-light border text-start"><i class="ri-team-line me-2 text-muted"></i>Agent directory</a>
+                            <a href="{{ url_for('users_list') }}" class="btn btn-sm btn-light border text-start"><i class="ri-group-line me-2 text-muted"></i>All users</a>
+                            <a href="{{ url_for('settings_page') }}" class="btn btn-sm btn-light border text-start"><i class="ri-settings-3-line me-2 text-muted"></i>System settings</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="uf-action-bar d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <span class="small text-muted d-none d-md-inline">Changes apply immediately after save.</span>
+                <div class="d-flex flex-wrap gap-2 ms-auto">
+                    <a href="{{ url_for('users_list') }}" class="btn btn-light border">Cancel</a>
+                    <button type="submit" class="btn btn-primary px-4 shadow-sm">
+                        <i class="ri-save-3-line me-1"></i>Save changes
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function () {
+    var roleSelect = document.getElementById('role-select');
+    var agentBox = document.getElementById('agent-box');
+    function syncAgent() {
+        if (!roleSelect || !agentBox) return;
+        var show = roleSelect.value === 'agent';
+        agentBox.classList.toggle('d-none', !show);
+        agentBox.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+    roleSelect?.addEventListener('change', syncAgent);
+    syncAgent();
+})();
+</script>
+{% endblock %}

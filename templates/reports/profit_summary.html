@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Profit summary{% endblock %}
+{% block page_heading %}Profit generated vs distributed{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th>Investment</th>
+                        <th>Status</th>
+                        <th>Profit generated</th>
+                        <th>Profit distributed</th>
+                        <th>Undistributed balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv, distributed, undistributed in rows %}
+                    <tr>
+                        <td>{{ inv.name }}</td>
+                        <td>{{ inv.status }}</td>
+                        <td>{{ inv.profit_generated|money }}</td>
+                        <td>{{ distributed|money }}</td>
+                        <td>{{ undistributed|money }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-muted p-3">No investments found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

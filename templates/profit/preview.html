@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Profit preview{% endblock %}
+{% block page_heading %}Confirm profit distribution{% endblock %}
+{% block extra_css %}
+<style>
+.pv-shell { max-width: 1000px; margin-left: auto; margin-right: auto; }
+.pv-hero { border-radius: 0.5rem; border: 1px solid rgba(13, 110, 253, 0.15); background: linear-gradient(135deg, rgba(13, 110, 253, 0.06) 0%, #fff 50%); }
+</style>
+{% endblock %}
+{% block content %}
+{% set cur = currency_code %}
+
+<nav aria-label="breadcrumb" class="mb-3 pv-shell">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('profit_distribute') }}">Profit distribution</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Preview</li>
+    </ol>
+</nav>
+
+<div class="pv-hero p-3 p-md-4 mb-4 pv-shell">
+    <div class="row g-3 align-items-start">
+        <div class="col-md-8">
+            <h5 class="mb-2">Review before recording</h5>
+            <p class="text-muted small mb-0">
+                <strong>Formula:</strong> ownership % = member paid ÷ total paid (all participants). Member share = ownership % × profit to distribute.
+                Denominator (total paid basis): <strong>{{ settings.currency_symbol }}{{ total_eligible|money }} {{ cur }}</strong> — real contributions only.
+                {% if profit_basis_verified %}<span class="badge text-bg-info ms-1">Verified payments only</span>{% endif %}
+            </p>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <a href="{{ url_for('investments_profile', id=investment.id) }}" class="btn btn-sm btn-outline-primary"><i class="ri-line-chart-line me-1"></i>Investment profile</a>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4 pv-shell">
+    <div class="card-body">
+        <div class="row g-3 small">
+            <div class="col-6 col-md-4 col-lg-2">
+                <p class="text-muted mb-1">Investment</p>
+                <p class="fw-semibold mb-0">{{ investment.name }}</p>
+                {% if investment.investment_code %}<p class="font-monospace text-muted mb-0 small">{{ investment.investment_code }}</p>{% endif %}
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <p class="text-muted mb-1">This distribution</p>
+                <p class="fw-semibold text-primary mb-0">{{ settings.currency_symbol }}{{ profit_amount|money }}</p>
+                <p class="small text-muted mb-0">{{ cur }}</p>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <p class="text-muted mb-1">Available before</p>
+                <p class="fw-semibold mb-0">{{ settings.currency_symbol }}{{ profit_available_before|money }}</p>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <p class="text-muted mb-1">Date</p>
+                <p class="fw-semibold mb-0">{{ distribution_date }}</p>
+            </div>
+            {% if batch_notes %}
+            <div class="col-12">
+                <p class="text-muted mb-1">Notes</p>
+                <p class="mb-0 small">{{ batch_notes }}</p>
+            </div>
+            {% endif %}
+            <div class="col-12 col-md-8 col-lg-4">
+                <p class="text-muted mb-1">Mode</p>
+                <p class="mb-0">
+                    {% if policy_used == 'paid_real_money_investment_scoped' %}
+                    <span class="badge text-bg-primary">Paid money — subscriptions linked to this investment</span>
+                    {% elif policy_used == 'paid_real_money_global_pool' %}
+                    <span class="badge text-bg-secondary">Paid money — global pool</span>
+                    {% else %}
+                    <span class="badge bg-light text-dark border">{{ policy_used }}</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm pv-shell">
+    <div class="card-header bg-white py-3 border-bottom">
+        <h6 class="mb-0">Member allocation</h6>
+        <p class="text-muted small mb-0">{{ preview_rows|length }} member line(s)</p>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Member</th>
+                        <th class="text-end">Paid basis</th>
+                        <th class="text-end">Ownership %</th>
+                        <th class="text-end">Profit share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in preview_rows %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('members_profile', id=r.member.id) }}" class="text-decoration-none">
+                                <span class="font-monospace small text-muted">{{ r.member.member_id }}</span>
+                                <span class="fw-medium">{{ r.member.full_name }}</span>
+                            </a>
+                        </td>
+                        <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ r.eligible_amount|money }}</td>
+                        <td class="text-end text-nowrap small">{{ '%.4f'|format(r.pct|float) }}%</td>
+                        <td class="text-end text-nowrap fw-medium">{{ settings.currency_symbol }}{{ r.share|money }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-muted p-4 text-center">No eligible members.</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if preview_rows %}
+                <tfoot class="table-light">
+                    <tr>
+                        <th colspan="3" class="text-end">Total allocated</th>
+                        <th class="text-end text-nowrap">{{ settings.currency_symbol }}{{ preview_shares_total|money }} {{ cur }}</th>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="mt-4 d-flex flex-wrap gap-2 align-items-center pv-shell">
+    <form method="post" class="d-inline" onsubmit="return confirm('Record this profit distribution? Saved rows are permanent.');">
+        <input type="hidden" name="action" value="confirm">
+        <input type="hidden" name="investment_id" value="{{ investment.id }}">
+        <input type="hidden" name="profit_amount" value="{{ profit_amount }}">
+        <input type="hidden" name="distribution_date" value="{{ distribution_date.isoformat() if distribution_date else '' }}">
+        <button type="submit" class="btn btn-success btn-lg px-4"><i class="ri-check-line me-1"></i>Confirm and record batch</button>
+    </form>
+    <a href="{{ url_for('profit_distribute') }}" class="btn btn-outline-secondary"><i class="ri-arrow-left-line me-1"></i>Back to form</a>
+</div>
+{% endblock %}

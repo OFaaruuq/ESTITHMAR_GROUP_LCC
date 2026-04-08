@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Profit statement{% endblock %}
+{% block page_heading %}Profit statement — {{ member.full_name }}{% endblock %}
+{% block content %}
+<p class="text-muted">Member ID: <strong>{{ member.member_id }}</strong></p>
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Investment</th>
+                        <th>Paid basis</th>
+                        <th>Share %</th>
+                        <th>Amount</th>
+                        <th>Pool</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr>
+                        <td>{{ r.distribution_date }}</td>
+                        <td>{{ r.investment.name }}</td>
+                        <td>{{ r.share_percentage }}%</td>
+                        <td>{{ r.amount|money }} USD</td>
+                        <td>{{ r.profit_pool_amount|money if r.profit_pool_amount else '—' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-muted p-3">No profit distributions recorded.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<p class="mt-3"><strong>Total profit received:</strong> {{ member.profit_received_total()|money }} USD</p>
+<a href="{{ url_for('export_profit_xlsx') }}" class="btn btn-soft-primary btn-sm">Export all distributions (Excel)</a>
+{% endblock %}

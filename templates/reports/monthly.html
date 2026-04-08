@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Monthly report{% endblock %}
+{% block page_heading %}Monthly contribution report{% endblock %}
+{% block content %}
+<form method="get" class="row g-2 mb-3 align-items-end flex-wrap">
+    <div class="col-auto">
+        <label class="form-label small mb-0">Year</label>
+        <select name="year" class="form-select">
+            {% for y in range(2020, 2031) %}
+            <option value="{{ y }}" {{ 'selected' if y == year else '' }}>{{ y }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0">Month</label>
+        <select name="month" class="form-select">
+            {% for m in range(1, 13) %}
+            <option value="{{ m }}" {{ 'selected' if m == month else '' }}>{{ m }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% if agents %}
+    <div class="col-auto">
+        <label class="form-label small mb-0">Agent</label>
+        <select name="agent_id" class="form-select">
+            <option value="">All</option>
+            {% for a in agents %}
+            <option value="{{ a.id }}" {{ 'selected' if agent_id == a.id else '' }}>{{ a.agent_id }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Show</button>
+    </div>
+</form>
+<p class="text-muted">Period: {{ start }} — {{ end }}</p>
+<p><strong>Total for month:</strong> {{ total|money }} USD</p>
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Receipt</th>
+                        <th>Member</th>
+                        <th>Amount</th>
+                        <th>Date</th>
+                        <th>Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in rows %}
+                    <tr>
+                        <td>{{ c.receipt_no }}</td>
+                        <td>{{ c.member.member_id }} — {{ c.member.full_name }}</td>
+                        <td>{{ c.amount|money }}</td>
+                        <td>{{ c.date }}</td>
+                        <td>{{ c.payment_type }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-muted p-3">No contributions in this month.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

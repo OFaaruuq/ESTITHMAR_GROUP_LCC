@@ -1,0 +1,517 @@
+                        <style>
+                        .dash-kpi-card { transition: transform .15s ease, box-shadow .15s ease; border-radius: .5rem; }
+                        .dash-kpi-card:hover { transform: translateY(-2px); box-shadow: 0 .35rem 1rem rgba(12,118,138,.12) !important; }
+                        .dash-kpi-icon { width: 2.5rem; height: 2.5rem; border-radius: .5rem; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
+                        .dash-overview-bar { background: linear-gradient(135deg, rgba(12,118,138,.08) 0%, rgba(56,199,134,.06) 100%); border-radius: .5rem; border: 1px solid rgba(12,118,138,.12); }
+                        .audiences-border { border-right: 1px solid rgba(0, 0, 0, .08); }
+                        @media (max-width: 1200px) {
+                            .audiences-border { border-right: 0; border-bottom: 1px solid rgba(0,0,0,.08); padding-bottom: 1rem; margin-bottom: 1rem; }
+                        }
+                        .biz-kpi-stat { border-radius: .5rem; border: 1px solid rgba(12,118,138,.12); background: #fff; padding: .75rem 1rem; height: 100%; }
+                        .biz-kpi-stat .label { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: #64748b; margin-bottom: .25rem; }
+                        .biz-kpi-stat .value { font-weight: 600; font-size: 1.05rem; color: #0f172a; }
+                        </style>
+                        {% set cur_code = settings.currency_code or 'USD' %}
+                        {% set cur_sym = settings.currency_symbol or '$' %}
+
+                        <div class="dash-overview-bar px-3 py-3 mb-3">
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                                <div>
+                                    <h4 class="mb-1">Overview</h4>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2 justify-content-end">
+                                    <a href="{{ url_for('members_new') }}" class="btn btn-sm btn-primary"><i class="ri-user-add-line align-middle me-1"></i>Add member</a>
+                                    <a href="{{ url_for('contributions_new') }}" class="btn btn-sm btn-soft-primary"><i class="ri-hand-coin-line align-middle me-1"></i>Contribution</a>
+                                    <a href="{{ url_for('subscriptions_new') }}" class="btn btn-sm btn-soft-primary"><i class="ri-stack-line align-middle me-1"></i>Subscription</a>
+                                    <a href="{{ url_for('invoices_list') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-file-list-3-line align-middle me-1"></i>Invoices</a>
+                                    <a href="{{ url_for('investments_list') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-line-chart-line align-middle me-1"></i>Investments</a>
+                                    <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-soft-info"><i class="ri-file-chart-line align-middle me-1"></i>Reports</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-6 col-md-4 col-lg-2">
+                                <div class="card border-0 shadow-sm h-100 dash-kpi-card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="text-muted text-uppercase small">Members</span>
+                                            <span class="dash-kpi-icon bg-success bg-opacity-10 text-success"><i class="ri-team-line"></i></span>
+                                        </div>
+                                        <h4 class="mb-0">{{ total_members }}</h4>
+                                        <p class="text-muted small mb-0">{{ active_members }} active</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4 col-lg-2">
+                                <div class="card border-0 shadow-sm h-100 dash-kpi-card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="text-muted text-uppercase small">Agents</span>
+                                            <span class="dash-kpi-icon bg-primary bg-opacity-10 text-primary"><i class="ri-map-pin-user-line"></i></span>
+                                        </div>
+                                        <h4 class="mb-0">{{ total_agents|default(0) }}</h4>
+                                        <p class="text-muted small mb-0">{% if current_user.role == 'agent' %}Your team{% else %}Registered{% endif %}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4 col-lg-2">
+                                <div class="card border-0 shadow-sm h-100 dash-kpi-card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="text-muted text-uppercase small">Collected</span>
+                                            <span class="dash-kpi-icon bg-primary bg-opacity-10 text-primary"><i class="ri-wallet-3-line"></i></span>
+                                        </div>
+                                        <h4 class="mb-1 text-primary">{{ total_collected|money }} <span class="fs-6 text-muted fw-normal">{{ cur_code }}</span></h4>
+                                        <p class="text-muted small mb-0">MTD {{ mtd_contributions|money }} {{ cur_code }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4 col-lg-2">
+                                <div class="card border-0 shadow-sm h-100 dash-kpi-card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="text-muted text-uppercase small">Invested</span>
+                                            <span class="dash-kpi-icon bg-warning bg-opacity-10 text-warning"><i class="ri-line-chart-line"></i></span>
+                                        </div>
+                                        <h4 class="mb-0">{{ total_invested|money }} <span class="fs-6 text-muted fw-normal">{{ cur_code }}</span></h4>
+                                        {% if current_user.role == 'agent' %}<p class="text-muted small mb-0">Org total</p>{% else %}<p class="text-muted small mb-0">Deployed</p>{% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4 col-lg-2">
+                                <div class="card border-0 shadow-sm h-100 dash-kpi-card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="text-muted text-uppercase small">Profit</span>
+                                            <span class="dash-kpi-icon bg-secondary bg-opacity-10 text-secondary"><i class="ri-funds-line"></i></span>
+                                        </div>
+                                        <h4 class="mb-0">{{ total_profit|money }} <span class="fs-6 text-muted fw-normal">{{ cur_code }}</span></h4>
+                                        <p class="text-muted small mb-0">Generated · Dist. {{ total_profit_distributed|money }} {{ cur_code }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4 col-lg-2">
+                                <div class="card border-0 shadow-sm h-100 dash-kpi-card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="text-muted text-uppercase small">Projects</span>
+                                            <span class="dash-kpi-icon bg-info bg-opacity-10 text-info"><i class="ri-folder-3-line"></i></span>
+                                        </div>
+                                        <h4 class="mb-0">{{ total_projects }}</h4>
+                                        {% if current_user.role == 'agent' %}<p class="text-muted small mb-0">Org total</p>{% else %}<p class="text-muted small mb-0">In system</p>{% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card border-0 shadow-sm mb-3">
+                            <div class="card-header bg-transparent border-bottom py-3">
+                                <h5 class="card-title mb-0">Business KPIs</h5>
+                                <p class="text-muted small mb-0">{% if current_user.role == 'agent' %}Your portfolio scope{% else %}Organization summary{% endif %} — financial scale, investment status, and certificates</p>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3 mb-3">
+                                    <div class="col-lg-7">
+                                        <h6 class="text-muted text-uppercase small mb-2">Financial totals ({{ cur_code }})</h6>
+                                        <div id="business-kpi-bar-chart" class="apex-charts dashboard-chart-clickable" style="min-height:300px" title="Click a bar to open the related list"></div>
+                                        <p class="text-muted small mb-0 mt-2">Click a bar to jump to contributions, investments, subscriptions, or overdue installments. Open <a href="{{ url_for('reports_hub') }}">Reports</a> for more.</p>
+                                    </div>
+                                    <div class="col-lg-5">
+                                        <div class="row g-3">
+                                            <div class="col-12">
+                                                <h6 class="text-muted text-uppercase small mb-2">Investments</h6>
+                                                <div id="business-kpi-inv-chart" class="apex-charts dashboard-chart-clickable" style="min-height:220px" title="Click a segment to filter investments"></div>
+                                            </div>
+                                            <div class="col-12">
+                                                <h6 class="text-muted text-uppercase small mb-2">Certificates</h6>
+                                                <div id="business-kpi-cert-chart" class="apex-charts dashboard-chart-clickable" style="min-height:220px" title="Click pending to see subscriptions awaiting a certificate"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-6 col-md-4 col-lg-2">
+                                        <div class="biz-kpi-stat">
+                                            <div class="label">Avg members / agent</div>
+                                            <div class="value">{{ avg_members_per_agent }}</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 col-md-4 col-lg-2">
+                                        <div class="biz-kpi-stat">
+                                            <div class="label">Today's contributions</div>
+                                            <div class="value">{{ contributions_today|money }} <span class="fs-6 text-muted fw-normal">{{ cur_code }}</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 col-md-4 col-lg-2">
+                                        <div class="biz-kpi-stat">
+                                            <div class="label">MTD vs last month</div>
+                                            <div class="value">
+                                                {% if contrib_pct_vs_last_mtd is not none %}
+                                                <span class="{% if contrib_pct_vs_last_mtd >= 0 %}text-success{% else %}text-danger{% endif %}">{{ contrib_pct_vs_last_mtd|abs|round(1) }}%</span>
+                                                {% else %}—{% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 col-md-4 col-lg-2">
+                                        <div class="biz-kpi-stat">
+                                            <div class="label">Active subscribers</div>
+                                            <div class="value">{{ active_investors_count }}</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 col-md-4 col-lg-2">
+                                        <div class="biz-kpi-stat">
+                                            <div class="label">Confirmed share value</div>
+                                            <div class="value text-truncate" title="{{ total_confirmed_share_value|money }}">{{ total_confirmed_share_value|money }}</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 col-md-4 col-lg-2">
+                                        <div class="biz-kpi-stat">
+                                            <div class="label">Profit distributed</div>
+                                            <div class="value text-truncate" title="{{ total_profit_distributed|money }}">{{ total_profit_distributed|money }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% if agent_member_breakdown %}
+                                <div class="border-top mt-3 pt-3">
+                                    <p class="small text-muted mb-2">Members per agent</p>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm mb-0">
+                                            <thead><tr><th>Agent</th><th class="text-end">Members</th></tr></thead>
+                                            <tbody>
+                                                {% for ag, mc in agent_member_breakdown %}
+                                                <tr><td>{{ ag.full_name }} <span class="text-muted">({{ ag.agent_id }})</span></td><td class="text-end">{{ mc }}</td></tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-12"><h6 class="text-muted text-uppercase small mb-0">More indicators</h6></div>
+                            <div class="col-md-4">
+                                <div class="card border-0 shadow-sm h-100 dash-kpi-card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="text-muted text-uppercase small">Subscriptions</span>
+                                            <span class="dash-kpi-icon bg-dark bg-opacity-10 text-dark"><i class="ri-stack-line"></i></span>
+                                        </div>
+                                        <h4 class="mb-1">{{ total_subscriptions|default(0) }}</h4>
+                                        <p class="text-muted small mb-0">Subscribed {{ total_share_subscribed_value|money }} {{ cur_code }}</p>
+                                        <p class="text-muted small mb-0">Confirmed {{ total_confirmed_share_value|money }} {{ cur_code }}</p>
+                                        <p class="text-muted small mb-0">Outstanding {{ subscriptions_outstanding_total|money }} {{ cur_code }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card border-0 shadow-sm h-100 dash-kpi-card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="text-muted text-uppercase small">Certificates</span>
+                                            <span class="dash-kpi-icon bg-success bg-opacity-10 text-success"><i class="ri-award-line"></i></span>
+                                        </div>
+                                        <h4 class="mb-1">{{ certificates_issued|default(0) }}</h4>
+                                        <p class="text-muted small mb-0">Issued · <a href="{{ url_for('subscriptions_list', certificate_pending=1) }}">Pending {{ pending_certificates|default(0) }}</a></p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card border-0 shadow-sm h-100 dash-kpi-card">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="text-muted text-uppercase small">Installments</span>
+                                            <span class="dash-kpi-icon bg-danger bg-opacity-10 text-danger"><i class="ri-alarm-warning-line"></i></span>
+                                        </div>
+                                        <h4 class="mb-1 {% if installment_overdue_count > 0 %}text-danger{% endif %}">{{ installment_overdue_count|default(0) }}</h4>
+                                        <p class="text-muted small mb-1">Overdue · Due {{ installment_due_balance|money }} {{ cur_code }}</p>
+                                        <a class="btn btn-sm btn-soft-danger" href="{{ url_for('subscriptions_list', overdue=1) }}">Follow up overdue</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {% if current_user.is_authenticated and current_user.role != 'agent' %}
+                        <div class="row g-3 mb-3">
+                            <div class="col-12">
+                                <div class="card border-0 shadow-sm">
+                                    <div class="card-header bg-transparent border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                        <div>
+                                            <h5 class="card-title mb-0">Top agents</h5>
+                                            <p class="text-muted small mb-0">By contribution volume (all time)</p>
+                                        </div>
+                                        <a href="{{ url_for('agents_list') }}" class="btn btn-sm btn-link">Manage</a>
+                                    </div>
+                                    <div class="card-body p-0">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover table-sm mb-0 align-middle">
+                                                <thead class="table-light"><tr><th>Agent ID</th><th>Name</th><th>Region</th><th>Members</th><th class="text-end">Volume</th></tr></thead>
+                                                <tbody>
+                                                    {% for ag, vol in (top_agents or []) %}
+                                                    <tr>
+                                                        <td class="font-monospace">{{ ag.agent_id }}</td>
+                                                        <td>{{ ag.full_name }}</td>
+                                                        <td>{{ ag.region or '—' }}</td>
+                                                        <td>{{ ag.members_count() }}</td>
+                                                        <td class="text-end fw-medium">{{ vol|money }} {{ cur_code }}</td>
+                                                    </tr>
+                                                    {% else %}
+                                                    <tr><td colspan="5" class="text-muted text-center py-4">No agents yet.</td></tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <div class="row">
+                            <div class="col-xl-8">
+                                <div class="card">
+                                    <div class="card-header border-0 align-items-center d-flex pb-0 flex-wrap gap-2">
+                                        <h4 class="card-title mb-0 flex-grow-1">Performance overview</h4>
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <span class="badge rounded-pill bg-primary bg-opacity-10 text-primary">Last 12 months</span>
+                                            <span class="text-muted small d-none d-md-inline">Click a month to open contributions for that period</span>
+                                            <a href="{{ url_for('reports_monthly') }}" class="btn btn-soft-primary btn-sm"><i class="ri-calendar-line me-1"></i>Monthly detail</a>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row align-items-center">
+                                            <div class="col-xl-8 audiences-border">
+                                                <div id="column-chart" class="apex-charts dashboard-chart-clickable{% if not chart_has_data %} d-none{% endif %}" style="min-height:300px" title="Click a month to see contributions in that period"></div>
+                                                <div id="column-chart-empty" class="text-center text-muted py-5{% if chart_has_data %} d-none{% endif %}">
+                                                    <i class="ri-line-chart-line display-4 d-block mb-2 opacity-50"></i>
+                                                    <p class="mb-0">No contribution history in this period.</p>
+                                                    <a href="{{ url_for('contributions_new') }}" class="btn btn-sm btn-primary mt-3">Record a contribution</a>
+                                                </div>
+                                            </div>
+                                            <div class="col-xl-4">
+                                                <div id="donut-chart" class="apex-charts w-100 dashboard-chart-clickable" style="min-height:280px" title="Click a payment type to filter contributions"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xl-4">
+                                <div class="card">
+                                    <div class="card-header border-0 align-items-center d-flex pb-1">
+                                        <h4 class="card-title mb-0 flex-grow-1">Agents &amp; regions</h4>
+                                        <div>
+                                            <a href="{{ url_for('agents_list') }}" class="btn btn-soft-primary btn-sm">Agents</a>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="world-map-markers" style="height: 280px;"></div>
+                                        {% if members_region_map.rows %}
+                                        <div class="table-responsive mt-2" style="max-height: 160px;">
+                                            <table class="table table-sm table-striped mb-0 align-middle">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Name</th>
+                                                        <th class="font-monospace small">ID</th>
+                                                        <th class="d-none d-md-table-cell">Region</th>
+                                                        <th class="d-none d-sm-table-cell">Country</th>
+                                                        <th class="text-end">Members</th>
+                                                        <th class="text-center" style="width:2rem;" title="On map">Map</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for row in members_region_map.rows %}
+                                                    <tr>
+                                                        <td class="small">{{ row.label }}</td>
+                                                        <td class="small font-monospace">{% if row.agent_id %}{{ row.agent_id }}{% else %}—{% endif %}</td>
+                                                        <td class="small d-none d-md-table-cell">{{ row.region or '—' }}</td>
+                                                        <td class="small d-none d-sm-table-cell">{{ row.country or '—' }}</td>
+                                                        <td class="text-end fw-medium">{{ row.count }}</td>
+                                                        <td class="text-center">{% if row.on_map %}<i class="ri-map-pin-fill text-success" title="Placed on map"></i>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        {% endif %}
+                                        <p class="text-muted small mb-0 mt-2">
+                                            <strong>{{ members_region_map.agents_on_map }}</strong> of {{ members_region_map.total_agents }} agent(s) placed on the map (set <strong>Country</strong> on each <a href="{{ url_for('agents_list') }}">agent</a>).
+                                            {% if members_region_map.agents_off_map %}<span class="text-warning">{{ members_region_map.agents_off_map }} agent(s) need a known country.</span>{% endif %}
+                                            Member counts respect your dashboard scope ({{ members_region_map.total_members }} member rows).
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mt-3">
+                            <div class="col-xl-7">
+                                <div class="row">
+                                    <div class="col-xl-6">
+                                        <div class="card">
+                                            <div class="card-header border-0 align-items-center d-flex pb-0">
+                                                <h4 class="card-title mb-0 flex-grow-1">Source of contributions</h4>
+                                                <div class="dropdown">
+                                                    <a class="dropdown-toggle text-reset" href="#" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                                        <span class="fw-semibold">Sort by:</span>
+                                                        <span class="text-muted">Yearly<i class="mdi mdi-chevron-down ms-1"></i></span>
+                                                    </a>
+                                                    <div class="dropdown-menu dropdown-menu-end">
+                                                        <a class="dropdown-item" href="{{ url_for('reports_monthly') }}">Monthly report</a>
+                                                        <a class="dropdown-item" href="{{ url_for('contributions_list') }}">All contributions</a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="card-body pt-0">
+                                                <div id="social-source" class="apex-charts dashboard-chart-clickable" title="Click a segment to filter by payment type"></div>
+                                                <div class="social-content text-center">
+                                                    <p class="text-uppercase mb-1">Cash vs mobile</p>
+                                                    <h3 class="mb-0">{{ total_collected|money }}</h3>
+                                                    <p class="text-muted small mb-0">Total collected ({{ cur_code }})</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-xl-6">
+                                        <div class="card">
+                                            <div class="card-header border-0 align-items-center d-flex pb-0">
+                                                <h4 class="card-title mb-0 flex-grow-1">Subscription status</h4>
+                                                <a class="text-muted small" href="{{ url_for('subscriptions_list') }}">View all</a>
+                                            </div>
+                                            <div class="card-body">
+                                                <h4 class="mb-0 mt-2">{{ total_subscriptions }}</h4>
+                                                <p class="mb-0 mt-2 text-muted">
+                                                    <span class="badge badge-soft-success mb-0"><i class="ri-arrow-up-line align-middle"></i> Active pipeline</span>
+                                                </p>
+                                                <div class="table-responsive mt-3">
+                                                    <table class="table align-middle table-centered table-nowrap mb-0">
+                                                        <thead>
+                                                            <tr>
+                                                                <th scope="col">Status</th>
+                                                                <th scope="col" class="text-end">Count</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {% for st in ['Pending', 'Partially Paid', 'Fully Paid', 'Cancelled'] %}
+                                                            <tr>
+                                                                <td><a href="{{ url_for('subscriptions_list', status=st) }}" class="text-dark">{{ st }}</a></td>
+                                                                <td class="text-end">{{ subscription_status_counts.get(st, 0) }}</td>
+                                                            </tr>
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <div class="text-center mt-4"><a href="{{ url_for('subscriptions_list') }}" class="btn btn-primary waves-effect waves-light btn-sm">View subscriptions <i class="mdi mdi-arrow-right ms-1"></i></a></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xl-5">
+                                <div class="card">
+                                    <div class="card-header border-0 align-items-center d-flex pb-0">
+                                        <h4 class="card-title mb-0 flex-grow-1">Top members</h4>
+                                        <div class="dropdown">
+                                            <a class="dropdown-toggle text-reset" href="#" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                                <span class="fw-semibold">By:</span>
+                                                <span class="text-muted">Volume<i class="mdi mdi-chevron-down ms-1"></i></span>
+                                            </a>
+                                            <div class="dropdown-menu dropdown-menu-end">
+                                                <a class="dropdown-item" href="{{ url_for('members_list') }}">Member list</a>
+                                                <a class="dropdown-item" href="{{ url_for('contributions_list') }}">Contributions</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-body pt-2">
+                                        <div class="table-responsive" data-simplebar style="max-height: 358px;">
+                                            <table class="table table-borderless table-centered align-middle table-nowrap mb-0">
+                                                <tbody>
+                                                    {% for m, vol in top_members %}
+                                                    <tr>
+                                                        <td style="width: 36px;">
+                                                            <div class="avatar-sm rounded-circle bg-primary bg-opacity-10 text-primary d-inline-flex align-items-center justify-content-center fw-semibold font-size-12">{{ (m.full_name or m.member_id or '?')[0]|upper }}</div>
+                                                        </td>
+                                                        <td>
+                                                            <h6 class="font-size-15 mb-1">{{ m.full_name }}</h6>
+                                                            <p class="text-muted mb-0 font-size-14 font-monospace">{{ m.member_id }}</p>
+                                                        </td>
+                                                        <td class="text-muted text-end"><i class="mdi mdi-trending-up text-success font-size-18 align-middle me-1"></i>{{ vol|money }} {{ cur_code }}</td>
+                                                        <td><span class="badge badge-soft-success font-size-12">{{ m.status }}</span></td>
+                                                        <td class="text-end"><a href="{{ url_for('members_profile', id=m.id) }}" class="btn btn-sm btn-soft-primary">Open</a></td>
+                                                    </tr>
+                                                    {% else %}
+                                                    <tr><td colspan="5" class="text-muted text-center py-4">No contribution data yet.</td></tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-2 mt-1">
+                            <div class="col-12">
+                                <div class="card border-0 shadow-sm">
+                                    <div class="card-header bg-transparent border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                        <div>
+                                            <h5 class="card-title mb-0">Recent contributions</h5>
+                                            <p class="text-muted small mb-0">Latest activity</p>
+                                        </div>
+                                        <a href="{{ url_for('contributions_list') }}" class="btn btn-sm btn-soft-primary">View all</a>
+                                    </div>
+                                    <div class="card-body p-0">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover mb-0 align-middle">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Txn</th>
+                                                        <th>Receipt</th>
+                                                        <th>Member</th>
+                                                        <th>Agent</th>
+                                                        <th class="text-end">Amount</th>
+                                                        <th>Date</th>
+                                                        <th>Type</th>
+                                                        <th></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for c in recent_contributions %}
+                                                    <tr>
+                                                        <td class="font-monospace small text-muted">{{ c.id }}</td>
+                                                        <td><span class="font-monospace">{{ c.receipt_no or '—' }}</span></td>
+                                                        <td>{{ c.member.member_id }} — {{ c.member.full_name }}</td>
+                                                        <td>{{ c.member.agent.agent_id if c.member.agent else '—' }}</td>
+                                                        <td class="text-end fw-medium">{{ c.amount|money }} <span class="text-muted small">{{ cur_code }}</span></td>
+                                                        <td>{{ c.date }}</td>
+                                                        <td><span class="badge rounded-pill bg-light text-dark border">{{ c.payment_type }}</span></td>
+                                                        <td class="text-end"><a href="{{ url_for('contributions_receipt', id=c.id) }}" class="btn btn-sm btn-link py-0" target="_blank" rel="noopener">Receipt</a></td>
+                                                    </tr>
+                                                    {% else %}
+                                                    <tr><td colspan="8" class="text-muted text-center py-5">No contributions yet.</td></tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <script type="application/json" id="istithmar-dashboard-data">{{ {
+                            'labels': chart_labels,
+                            'values': chart_values,
+                            'cash': donut_cash,
+                            'mobile': donut_mobile,
+                            'bank': donut_bank,
+                            'other': donut_other,
+                            'hasChartData': chart_has_data,
+                            'businessKpiBar': business_kpi_bar,
+                            'businessKpiInv': business_kpi_inv_donut,
+                            'businessKpiCert': business_kpi_cert_donut,
+                            'currencySymbol': cur_sym,
+                            'currencyCode': cur_code,
+                            'membersRegionMap': members_region_map,
+                            'chartLinks': dashboard_chart_links
+                        }|tojson }}</script>

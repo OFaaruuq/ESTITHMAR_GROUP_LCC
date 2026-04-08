@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Agents by geography{% endblock %}
+{% block page_heading %}Agent performance by geography{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Geography</li>
+    </ol>
+</nav>
+
+<p class="text-muted small mb-4">Collections and share value rolled up by <strong>country</strong> and <strong>region</strong> (agent <code>country</code> / <code>region</code> fields). Use agent profile to set territory detail.</p>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Agents</p>
+                <p class="fs-4 fw-semibold mb-0">{{ totals.agents }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Members (all agents)</p>
+                <p class="fs-4 fw-semibold mb-0">{{ totals.members }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Collections</p>
+                <p class="fs-4 fw-semibold mb-0">{{ settings.currency_symbol }}{{ totals.volume|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Subscribed value</p>
+                <p class="fs-4 fw-semibold mb-0">{{ settings.currency_symbol }}{{ totals.share_value|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% for block in country_rows %}
+<div class="card mb-4">
+    <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="mb-0">{{ block.country }}</h5>
+        <span class="badge bg-primary">{{ block.agents|length }} agent(s)</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Region</th>
+                        <th class="text-end">Agents</th>
+                        <th class="text-end">Members</th>
+                        <th class="text-end">Collections</th>
+                        <th class="text-end">Subscribed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for reg in block.regions %}
+                    <tr>
+                        <td>
+                            <strong>{{ reg.region }}</strong>
+                            <ul class="small text-muted mb-0 mt-1 ps-3">
+                                {% for ag in reg.agents %}
+                                <li><a href="{{ url_for('agents_profile', id=ag.id) }}">{{ ag.full_name }}</a>{% if ag.territory %} · {{ ag.territory }}{% endif %}</li>
+                                {% endfor %}
+                            </ul>
+                        </td>
+                        <td class="text-end">{{ reg.agents|length }}</td>
+                        <td class="text-end">{{ reg.members }}</td>
+                        <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ reg.volume|money }}</td>
+                        <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ reg.share_value|money }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <th>Country total</th>
+                        <th class="text-end">{{ block.agents|length }}</th>
+                        <th class="text-end">{{ block.members }}</th>
+                        <th class="text-end text-nowrap">{{ settings.currency_symbol }}{{ block.volume|money }}</th>
+                        <th class="text-end text-nowrap">{{ settings.currency_symbol }}{{ block.share_value|money }}</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<p class="text-muted">No agents registered.</p>
+{% endfor %}
+
+<p class="small text-muted"><a href="{{ url_for('reports_agents') }}">Flat agent performance</a> · <a href="{{ url_for('agents_list') }}">Agent directory</a></p>
+{% endblock %}

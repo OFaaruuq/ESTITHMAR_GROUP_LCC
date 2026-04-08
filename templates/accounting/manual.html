@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block title %}New journal entry{% endblock %}
+{% block page_heading %}Accounting — New journal entry{% endblock %}
+{% set cur_sym = currency_symbol if currency_symbol is defined else (settings.currency_symbol or '$') %}
+{% set cur_code = currency_code if currency_code is defined else (settings.currency_code or 'USD') %}
+{% block extra_css %}
+<style>
+.journal-page { max-width: 1140px; margin-left: auto; margin-right: auto; }
+.journal-hero {
+    border-radius: 0.6rem;
+    border: 1px solid rgba(25, 135, 84, 0.15);
+    background: linear-gradient(135deg, rgba(25, 135, 84, 0.06) 0%, #fff 55%);
+}
+.journal-card {
+    border-radius: 0.5rem;
+    border: 1px solid rgba(0,0,0,.08);
+    box-shadow: 0 0.2rem 0.85rem rgba(0,0,0,.06);
+}
+.journal-side-dr {
+    border-radius: 0.45rem;
+    border: 1px solid rgba(25, 135, 84, 0.25);
+    background: rgba(25, 135, 84, 0.04);
+}
+.journal-side-cr {
+    border-radius: 0.45rem;
+    border: 1px solid rgba(13, 110, 253, 0.22);
+    background: rgba(13, 110, 253, 0.04);
+}
+.journal-side-dr .form-select,
+.journal-side-cr .form-select {
+    font-size: 0.9rem;
+}
+.journal-preview-box {
+    font-size: 0.875rem;
+    border-radius: 0.4rem;
+    background: #f8f9fa;
+    border: 1px dashed rgba(0,0,0,.1);
+    min-height: 5.5rem;
+}
+.journal-preview-box .jp-line { padding: 0.35rem 0; border-bottom: 1px solid rgba(0,0,0,.06); }
+.journal-preview-box .jp-line:last-child { border-bottom: 0; }
+.journal-sticky { position: sticky; top: 1rem; }
+@media (max-width: 991.98px) { .journal-sticky { position: static; } }
+.journal-amt .input-group-text { font-weight: 600; min-width: 2.5rem; justify-content: center; }
+</style>
+{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2 journal-page">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('accounting_hub') }}">Accounting</a></li>
+        <li class="breadcrumb-item active" aria-current="page">New journal entry</li>
+    </ol>
+</nav>
+
+{% include 'accounting/_subnav.html' %}
+
+<div class="journal-hero px-3 py-3 px-md-4 py-md-4 mb-4 journal-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div class="d-flex gap-3">
+            <div class="rounded-3 bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center flex-shrink-0" style="width:3rem;height:3rem;">
+                <i class="ri-exchange-funds-line font-size-22"></i>
+            </div>
+            <div>
+                <h5 class="mb-1">Manual journal entry</h5>
+                <p class="text-muted small mb-0" style="max-width: 40rem;">
+                    Record a balanced two-line entry: <strong>debit</strong> increases the first account, <strong>credit</strong> increases the second (by the same amount). Currency: <span class="font-monospace">{{ cur_sym }} {{ cur_code }}</span>
+                    {% if current_user.role == 'admin' %}· <a href="{{ url_for('settings_page') }}" class="text-decoration-none">Change currency</a>{% endif %}
+                </p>
+            </div>
+        </div>
+        <a href="{{ url_for('accounting_journal') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-file-list-line me-1"></i>Journal list</a>
+    </div>
+</div>
+
+{% if accounting_gl_enabled is defined and not accounting_gl_enabled %}
+<div class="alert alert-warning border-0 shadow-sm journal-page">
+    <strong>Automated GL posting is off.</strong> You can still post manual journals. Turn posting on under <a href="{{ url_for('accounting_settings') }}">Account settings</a> if you expect system events to write journals.
+</div>
+{% endif %}
+
+<div class="row g-4 journal-page">
+    <div class="col-lg-8">
+        <div class="card journal-card border-0">
+            <div class="card-body p-3 p-md-4">
+                <form method="post" id="journal-manual-form" novalidate>
+                    <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing: .06em;">Entry header</h6>
+                    <div class="row g-3 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium" for="ej">Entry date <span class="text-danger">*</span></label>
+                            <input type="date" name="entry_date" id="ej" class="form-control" required
+                                value="{{ default_entry_date }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium" for="ref">Reference</label>
+                            <input type="text" name="reference" id="ref" class="form-control" maxlength="64" placeholder="e.g. ADJ-2024-01"
+                                value="{{ request.form.get('reference', '') if request.method == 'POST' else '' }}">
+                            <div class="form-text">Optional short code for audit trails.</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-medium" for="memo">Memo / description</label>
+                            <input type="text" name="memo" id="memo" class="form-control" maxlength="500" placeholder="What this adjustment is for"
+                                value="{{ request.form.get('memo', '') if request.method == 'POST' else '' }}">
+                        </div>
+                    </div>
+
+                    <hr class="text-muted opacity-25 my-4">
+
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <h6 class="text-uppercase text-muted small mb-0" style="letter-spacing: .06em;">Double entry</h6>
+                        <button type="button" class="btn btn-sm btn-soft-secondary" id="journal-swap-accounts" title="Swap debit and credit accounts">
+                            <i class="ri-arrow-left-right-line me-1"></i>Swap accounts
+                        </button>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="journal-side-dr p-3 h-100">
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <span class="badge bg-success rounded-pill">Debit</span>
+                                    <span class="small text-muted">Increases this side</span>
+                                </div>
+                                <label class="form-label fw-medium" for="ad">Account <span class="text-danger">*</span></label>
+                                <select name="account_debit_id" id="ad" class="form-select" required>
+                                    <option value="">Choose debit account…</option>
+                                    {% for label, group in accounts_grouped %}
+                                    <optgroup label="{{ label }}">
+                                        {% for a in group %}
+                                        <option value="{{ a.id }}" {% if request.method == 'POST' and request.form.get('account_debit_id') == a.id|string %}selected{% endif %}>{{ a.code }} — {{ a.name }}</option>
+                                        {% endfor %}
+                                    </optgroup>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="journal-side-cr p-3 h-100">
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <span class="badge bg-primary rounded-pill">Credit</span>
+                                    <span class="small text-muted">Increases this side</span>
+                                </div>
+                                <label class="form-label fw-medium" for="ac">Account <span class="text-danger">*</span></label>
+                                <select name="account_credit_id" id="ac" class="form-select" required>
+                                    <option value="">Choose credit account…</option>
+                                    {% for label, group in accounts_grouped %}
+                                    <optgroup label="{{ label }}">
+                                        {% for a in group %}
+                                        <option value="{{ a.id }}" {% if request.method == 'POST' and request.form.get('account_credit_id') == a.id|string %}selected{% endif %}>{{ a.code }} — {{ a.name }}</option>
+                                        {% endfor %}
+                                    </optgroup>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <label class="form-label fw-medium" for="amt">Amount <span class="text-danger">*</span></label>
+                        <div class="input-group journal-amt" style="max-width: 16rem;">
+                            <span class="input-group-text">{{ cur_sym }}</span>
+                            <input type="text" name="amount_debit" id="amt" class="form-control text-end font-monospace" inputmode="decimal" autocomplete="off"
+                                placeholder="0.00" required
+                                value="{{ request.form.get('amount_debit', '') if request.method == 'POST' else '' }}">
+                            <span class="input-group-text small text-muted">{{ cur_code }}</span>
+                        </div>
+                        <div class="form-text">One amount applies to both lines (debit = credit). Commas are accepted.</div>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2 mt-4 pt-2">
+                        <button type="submit" class="btn btn-primary px-4" id="journal-submit-btn">
+                            <i class="ri-check-line me-1"></i>Post journal entry
+                        </button>
+                        <a href="{{ url_for('accounting_journal') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card journal-card border-0 journal-sticky">
+            <div class="card-body p-3 p-md-4">
+                <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing: .06em;">Live preview</h6>
+                <div class="journal-preview-box p-3 mb-3" id="journal-preview" aria-live="polite">
+                    <div class="text-muted small" id="journal-preview-empty">Select accounts and enter an amount to see the journal lines.</div>
+                    <div id="journal-preview-body" class="d-none">
+                        <div class="jp-line"><span class="text-success fw-semibold">Dr</span> <span id="pv-dr-name">—</span></div>
+                        <div class="jp-line"><span class="text-primary fw-semibold">Cr</span> <span id="pv-cr-name">—</span></div>
+                        <div class="jp-line pt-2 mt-1"><span class="text-muted">Amount</span> <strong class="float-end font-monospace" id="pv-amt">—</strong></div>
+                    </div>
+                </div>
+                <h6 class="text-uppercase text-muted small mb-2" style="letter-spacing: .06em;">Tips</h6>
+                <ul class="small text-muted ps-3 mb-0">
+                    <li>Use <strong>Swap accounts</strong> if you picked debit/credit on the wrong side.</li>
+                    <li>Need another account? Add it under <a href="{{ url_for('accounting_chart') }}">Chart of accounts</a>.</li>
+                    <li>To remove a mistake, open the posted entry and use <strong>Void</strong> (manual entries only).</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+  var form = document.getElementById('journal-manual-form');
+  if (!form) return;
+  var ad = document.getElementById('ad');
+  var ac = document.getElementById('ac');
+  var amt = document.getElementById('amt');
+  var swap = document.getElementById('journal-swap-accounts');
+  var pe = document.getElementById('journal-preview-empty');
+  var pb = document.getElementById('journal-preview-body');
+  var pvDr = document.getElementById('pv-dr-name');
+  var pvCr = document.getElementById('pv-cr-name');
+  var pvAmt = document.getElementById('pv-amt');
+
+  function optText(sel) {
+    if (!sel || sel.selectedIndex < 0) return '';
+    var o = sel.options[sel.selectedIndex];
+    return o && o.value ? o.text : '';
+  }
+
+  function fmtAmt(raw) {
+    var s = (raw || '').replace(/,/g, '').trim();
+    if (!s) return '';
+    var n = parseFloat(s);
+    if (isNaN(n) || n <= 0) return '';
+    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function updatePreview() {
+    var dr = optText(ad);
+    var cr = optText(ac);
+    var a = fmtAmt(amt && amt.value);
+    if (dr && cr && a) {
+      pe.classList.add('d-none');
+      pb.classList.remove('d-none');
+      pvDr.textContent = dr;
+      pvCr.textContent = cr;
+      pvAmt.textContent = a;
+    } else {
+      pe.classList.remove('d-none');
+      pb.classList.add('d-none');
+    }
+  }
+
+  ['change', 'input'].forEach(function (ev) {
+    ad.addEventListener(ev, updatePreview);
+    ac.addEventListener(ev, updatePreview);
+    if (amt) amt.addEventListener(ev, updatePreview);
+  });
+
+  if (swap) {
+    swap.addEventListener('click', function () {
+      var t = ad.value;
+      ad.value = ac.value;
+      ac.value = t;
+      updatePreview();
+    });
+  }
+
+  form.addEventListener('submit', function (e) {
+    if (ad.value === ac.value) {
+      e.preventDefault();
+      alert('Debit and credit must be two different accounts.');
+      return false;
+    }
+    updatePreview();
+  });
+
+  updatePreview();
+})();
+</script>
+{% endblock %}

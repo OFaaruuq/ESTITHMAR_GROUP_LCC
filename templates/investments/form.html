@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit investment' if investment else 'New investment' }}{% endblock %}
+{% block page_heading %}{{ 'Edit investment' if investment else 'New investment' }}{% endblock %}
+{% block extra_css %}
+<style>
+.inv-form-shell { max-width: 960px; margin-left: auto; margin-right: auto; }
+.inv-form-card { border-radius: 0.5rem; border: 1px solid rgba(0,0,0,.08); box-shadow: 0 0.2rem 1rem rgba(0,0,0,.06); }
+.inv-form-accent { height: 4px; background: linear-gradient(90deg, #198754, #20c997); border-radius: 0.5rem 0.5rem 0 0; }
+.inv-pool-mini .progress { height: 8px; border-radius: 999px; }
+</style>
+{% endblock %}
+{% block content %}
+{% set cur = currency_code %}
+{% if investment %}
+{% set cancel_url = url_for('investments_profile', id=investment.id) %}
+{% else %}
+{% set cancel_url = url_for('investments_list', project_id=preselect_project_id) if preselect_project_id else url_for('investments_list') %}
+{% endif %}
+
+<nav aria-label="breadcrumb" class="mb-3 inv-form-shell">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('investments_list') }}">Investments</a></li>
+        {% if investment %}
+        <li class="breadcrumb-item"><a href="{{ url_for('investments_profile', id=investment.id) }}">{{ investment.investment_code or investment.name }}</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active" aria-current="page">New</li>
+        {% endif %}
+    </ol>
+</nav>
+
+{% if banner_project %}
+<div class="alert alert-light border py-2 mb-3 inv-form-shell d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <span class="small">Allocating into project <strong>{{ banner_project.name }}</strong>
+        <span class="text-muted font-monospace">({{ banner_project.project_code or banner_project.id }})</span></span>
+    <a href="{{ url_for('projects_profile', id=banner_project.id) }}" class="btn btn-sm btn-soft-primary">Project profile</a>
+</div>
+{% endif %}
+
+<div class="inv-form-shell">
+    <div class="row g-3 mb-3">
+        <div class="col-sm-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <p class="text-muted small mb-1">Pool collected</p>
+                    <p class="fs-5 fw-semibold mb-0">{{ settings.currency_symbol }}{{ pool.collected|money }}</p>
+                    <p class="small text-muted mb-0">{{ cur }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <p class="text-muted small mb-1">Already allocated</p>
+                    <p class="fs-5 fw-semibold mb-0">{{ settings.currency_symbol }}{{ pool.invested|money }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="card border-0 bg-success bg-opacity-10 h-100">
+                <div class="card-body py-3">
+                    <p class="text-muted small mb-1">Available to deploy</p>
+                    <p class="fs-5 fw-semibold text-success mb-0">{{ settings.currency_symbol }}{{ pool.available|money }}</p>
+                    <p class="small text-muted mb-0">{{ cur }}{% if pool.verified_only %} · verified only{% endif %}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if locked_completed %}
+    <div class="alert alert-warning small mb-3">
+        <i class="ri-lock-line me-1"></i>This investment is <strong>Completed</strong> and locked. {% if is_admin_view %}Enable <strong>Admin override</strong> below to save changes.{% else %}Only an administrator can edit it.{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="card inv-form-card border-0 mb-4">
+        <div class="inv-form-accent"></div>
+        <div class="card-header bg-white py-3 border-bottom">
+            <h5 class="mb-1">{{ 'Edit investment line' if investment else 'Create investment line' }}</h5>
+            <p class="text-muted small mb-0">
+                {% if investment %}
+                Update deployment, profit, and status. Member distributions are recorded separately under Profit distribution.
+                {% else %}
+                Allocate <strong>pooled member contributions</strong> into a named line. You may link a <strong>project</strong> for budget tracking.
+                {% endif %}
+            </p>
+        </div>
+        <div class="card-body p-0">
+            <form method="post" class="p-3 p-md-4">
+                <div class="row g-4">
+                    <div class="col-lg-8">
+                        {% if investment and investment.investment_code %}
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-2 rounded bg-light border">
+                            <span class="small text-muted">Code</span>
+                            <span class="font-monospace fw-semibold">{{ investment.investment_code }}</span>
+                            <span class="badge bg-secondary">{{ investment.status }}</span>
+                        </div>
+                        {% endif %}
+
+                        <div class="mb-3">
+                            <label class="form-label fw-medium" for="inv-name">Investment name <span class="text-danger">*</span></label>
+                            <input type="text" name="name" id="inv-name" class="form-control form-control-lg" required
+                                   value="{{ investment.name if investment else '' }}" placeholder="e.g. Phase 2 equity tranche" autocomplete="off">
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="inv-type">Investment type</label>
+                                <input type="text" name="investment_type" id="inv-type" class="form-control" list="investment-type-suggestions"
+                                       placeholder="e.g. Real estate, Trading" value="{{ investment.investment_type if investment else '' }}">
+                                <datalist id="investment-type-suggestions">
+                                    {% for key, label in categories %}
+                                    <option value="{{ label }}">
+                                    {% endfor %}
+                                </datalist>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="inv-status">Status</label>
+                                <select name="status" id="inv-status" class="form-select">
+                                    {% for key, label in investment_statuses %}
+                                    <option value="{{ key }}" {% if investment %}{{ 'selected' if investment.status == key else '' }}{% else %}{{ 'selected' if key == 'Planned' else '' }}{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Planned → Active → Completed. <strong>Suspended</strong> pauses activity; <strong>Closed</strong> when fully settled.</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3 mt-1">
+                            <label class="form-label fw-medium" for="inv-pid">Linked project</label>
+                            <select name="project_id" id="inv-pid" class="form-select">
+                                <option value="">— None (optional) —</option>
+                                {% for p in projects %}
+                                <option value="{{ p.id }}" {{ 'selected' if (investment and investment.project_id == p.id) or (not investment and preselect_project_id == p.id) else '' }}>
+                                    {{ p.name }}{% if p.total_budget is not none %} — budget {{ settings.currency_symbol }}{{ p.total_budget|money }}{% endif %} ({{ p.status }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Optional. If the project has a budget, this line’s deployed amount cannot exceed remaining headroom. <strong>Closed</strong> projects cannot be linked.</div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:.06em;">Amounts</h6>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-medium" for="inv-amt">Total amount deployed <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">{{ settings.currency_symbol }}</span>
+                                <input type="text" name="total_amount_invested" id="inv-amt" class="form-control" required inputmode="decimal" autocomplete="off"
+                                       placeholder="0.00" value="{% if investment and investment.total_amount_invested is not none %}{{ investment.total_amount_invested }}{% endif %}">
+                                <span class="input-group-text text-muted small">{{ cur }}</span>
+                            </div>
+                            <div class="form-text">Capital allocated from the central pool into this investment line (cannot exceed <strong>available</strong> above).</div>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="inv-cap">Capital returned</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">{{ settings.currency_symbol }}</span>
+                                    <input type="text" name="capital_returned" id="inv-cap" class="form-control" inputmode="decimal"
+                                           value="{% if investment and investment.capital_returned is not none %}{{ investment.capital_returned }}{% endif %}" placeholder="0.00">
+                                </div>
+                                <div class="form-text">Principal returned to the organization, if applicable.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="inv-profit">Profit generated (recorded)</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">{{ settings.currency_symbol }}</span>
+                                    <input type="text" name="profit_generated" id="inv-profit" class="form-control" inputmode="decimal"
+                                           value="{% if investment and investment.profit_generated is not none %}{{ investment.profit_generated }}{% endif %}" placeholder="0.00">
+                                </div>
+                                <div class="form-text">Operational profit total; distributions to members reduce the <em>remaining</em> balance, not this field.</div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-6">
+                                <label class="form-label" for="inv-ped">Profit entry date</label>
+                                <input type="date" name="profit_entry_date" id="inv-ped" class="form-control"
+                                       value="{{ investment.profit_entry_date.strftime('%Y-%m-%d') if investment and investment.profit_entry_date else '' }}">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="inv-pn">Profit notes</label>
+                            <textarea name="profit_notes" id="inv-pn" class="form-control" rows="2" placeholder="Optional context for auditors or your team">{{ investment.profit_notes if investment and investment.profit_notes else '' }}</textarea>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:.06em;">Schedule &amp; contacts</h6>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="inv-sd">Start date</label>
+                                <input type="date" name="start_date" id="inv-sd" class="form-control"
+                                       value="{{ investment.start_date.strftime('%Y-%m-%d') if investment and investment.start_date else '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="inv-ed">End date</label>
+                                <input type="date" name="end_date" id="inv-ed" class="form-control"
+                                       value="{{ investment.end_date.strftime('%Y-%m-%d') if investment and investment.end_date else '' }}">
+                            </div>
+                        </div>
+                        <div class="mb-0 mt-3">
+                            <label class="form-label" for="inv-pm">Investment / project manager</label>
+                            <input type="text" name="project_manager" id="inv-pm" class="form-control" value="{{ investment.project_manager if investment else '' }}" placeholder="Name or role">
+                        </div>
+
+                        <div class="row g-3 mt-2">
+                            <div class="col-md-6">
+                                <label class="form-label" for="inv-pfreq">Profit distribution cadence (reminder)</label>
+                                <select name="profit_distribution_frequency" id="inv-pfreq" class="form-select">
+                                    {% for key, label in profit_distribution_frequencies %}
+                                    <option value="{{ key }}" {{ 'selected' if investment and (investment.profit_distribution_frequency or '') == key else '' }}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Suggested rhythm for reviews (§13.3). Does not auto-post distributions.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="inv-nrev">Next distribution review date</label>
+                                <input type="date" name="next_distribution_review_date" id="inv-nrev" class="form-control"
+                                       value="{{ investment.next_distribution_review_date.strftime('%Y-%m-%d') if investment and investment.next_distribution_review_date else '' }}">
+                                <div class="form-text">Shown on the <a href="{{ url_for('profit_distribute') }}">Profit distribution</a> screen as a reminder.</div>
+                            </div>
+                        </div>
+
+                        {% if locked_completed and is_admin_view %}
+                        <div class="form-check mt-4 p-3 rounded border bg-light">
+                            <input class="form-check-input" type="checkbox" name="admin_override_completed" value="1" id="adm_ovr">
+                            <label class="form-check-label" for="adm_ovr"><strong>Admin override</strong> — allow editing this completed investment</label>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="col-lg-4">
+                        <div class="card border bg-light h-100">
+                            <div class="card-body">
+                                <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing: .06em;">Pool snapshot</h6>
+                                <p class="small text-muted mb-2">Allocations cannot exceed contributions minus amounts already invested elsewhere.</p>
+                                {% set pct = (pool.invested / pool.collected * 100) if pool.collected and pool.collected > 0 else 0 %}
+                                <div class="inv-pool-mini mb-2">
+                                    <div class="d-flex justify-content-between small mb-1">
+                                        <span class="text-muted">Pool utilization</span>
+                                        <span class="fw-semibold">{{ pct|money }}%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-success" role="progressbar" style="width: {{ pct if pct <= 100 else 100 }}%;" aria-valuenow="{{ pct|float }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                </div>
+                                <dl class="small mb-3">
+                                    <dt class="text-muted fw-normal">Available</dt>
+                                    <dd class="fw-semibold text-success mb-2">{{ settings.currency_symbol }}{{ pool.available|money }} {{ cur }}</dd>
+                                </dl>
+                                {% if pool.verified_only %}
+                                <p class="small text-muted border-start border-3 border-info ps-2 mb-3">Only <strong>verified</strong> contributions count (see <a href="{{ url_for('settings_page') }}">Settings</a>).</p>
+                                {% endif %}
+
+                                <a href="{{ url_for('investments_list') }}" class="btn btn-sm btn-outline-secondary w-100 mb-2"><i class="ri-list-check me-1"></i>All investments</a>
+                                {% if banner_project %}
+                                <a href="{{ url_for('projects_profile', id=banner_project.id) }}" class="btn btn-sm btn-outline-primary w-100 mb-2"><i class="ri-folder-3-line me-1"></i>Project profile</a>
+                                <a href="{{ url_for('investments_list', project_id=banner_project.id) }}" class="btn btn-sm btn-soft-primary w-100 mb-2"><i class="ri-filter-3-line me-1"></i>Lines on this project</a>
+                                {% endif %}
+                                {% if investment %}
+                                <a href="{{ url_for('subscriptions_list', investment_id=investment.id) }}" class="btn btn-sm btn-soft-primary w-100 mb-2"><i class="ri-stack-line me-1"></i>Subscriptions</a>
+                                <a href="{{ url_for('subscriptions_new', investment_id=investment.id) }}" class="btn btn-sm btn-success w-100 mb-2"><i class="ri-user-add-line me-1"></i>New subscription</a>
+                                {% endif %}
+
+                                <hr class="my-3">
+                                <div class="accordion accordion-flush" id="invFormHelp">
+                                    <div class="accordion-item bg-transparent border-0">
+                                        <h2 class="accordion-header">
+                                            <button class="accordion-button collapsed px-0 py-2 small bg-transparent shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#invFormHelp1">
+                                                How funding works
+                                            </button>
+                                        </h2>
+                                        <div id="invFormHelp1" class="accordion-collapse collapse" data-bs-parent="#invFormHelp">
+                                            <p class="small text-muted mb-0">Member payments form a <strong>central pool</strong>. This form records how much pool money is assigned to this line. Link <strong>share subscriptions</strong> to the investment so profit sharing is scoped correctly.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="small text-muted mb-0 mt-2"><i class="ri-information-line me-1"></i>Currency: <strong>{{ cur }}</strong> · <a href="{{ url_for('settings_page') }}">Change in settings</a></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 align-items-center pt-4 mt-2 border-top">
+                    {% if not (locked_completed and not is_admin_view) %}
+                    <button type="submit" class="btn btn-primary px-4"><i class="ri-save-line me-1"></i>Save</button>
+                    {% else %}
+                    <p class="text-muted small mb-0">This record is read-only for your role.</p>
+                    {% endif %}
+                    <a href="{{ cancel_url }}" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

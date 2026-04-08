@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}Istithmar{% endblock %} | Investment Management</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='assets/images/favicon.ico') }}">
+    <script src="{{ url_for('static', filename='assets/js/layout.js') }}"></script>
+    <link href="{{ url_for('static', filename='assets/css/bootstrap.min.css') }}" rel="stylesheet" id="bootstrap-style">
+    <link href="{{ url_for('static', filename='assets/css/icons.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='assets/css/app.min.css') }}" rel="stylesheet" id="app-style">
+    <link href="{{ url_for('static', filename='assets/css/istithmar-sidebar.css') }}" rel="stylesheet">
+    {% block extra_css %}{% endblock %}
+</head>
+<body data-sidebar="colored">
+<div id="layout-wrapper">
+    <header id="page-topbar">
+        <div class="navbar-header">
+            <div class="d-flex align-items-center w-100">
+                <div class="navbar-brand-box">
+                    <a href="{{ url_for('dashboard') }}" class="logo logo-light">
+                        <span class="logo-sm"><img src="{{ brand_logo_light_sm }}" alt="logo-light" height="24"></span>
+                        <span class="logo-lg"><img src="{{ brand_logo_light_lg }}" alt="logo-light" height="22"></span>
+                    </a>
+                </div>
+                <div class="page-title-box align-self-center d-none d-md-block ms-3">
+                    <h4 class="page-title mb-0">{% block page_heading %}Istithmar{% endblock %}</h4>
+                </div>
+                {% if current_user.is_authenticated %}
+                <div class="ms-auto d-flex align-items-center gap-2 me-2">
+                    <span class="text-muted small d-none d-md-inline">{{ current_user.username }} · {{ current_user.role }}</span>
+                    <a href="{{ url_for('pages_profile') }}" class="btn btn-sm btn-soft-primary d-none d-sm-inline-block">Profile</a>
+                    <a href="{{ url_for('logout') }}" class="btn btn-sm btn-soft-secondary">Logout</a>
+                </div>
+                {% endif %}
+                <form class="app-search d-none d-lg-block me-3" method="get" action="{{ url_for('members_list') }}">
+                    <div class="position-relative">
+                        <input type="text" name="q" class="form-control" placeholder="Search members…" value="">
+                        <span class="ri-search-line"></span>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    {% include 'include/sidebar.html' %}
+
+    <div class="main-content">
+        <div class="page-content">
+            <div class="container-fluid">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+        <footer class="footer">
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-sm-6"><script>document.write(new Date().getFullYear())</script> © Istithmar Investment Management.</div>
+                    <div class="col-sm-6 text-sm-end d-none d-sm-block">Offline community investment system</div>
+                </div>
+            </div>
+        </footer>
+    </div>
+</div>
+<script src="{{ url_for('static', filename='assets/libs/jquery/jquery.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/libs/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/libs/metismenu/metisMenu.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/libs/simplebar/simplebar.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/libs/node-waves/waves.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/js/app.js') }}"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

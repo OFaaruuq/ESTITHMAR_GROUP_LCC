@@ -1,0 +1,24 @@
+/*
+ * Istithmar — radius on navigation and page sidebars.
+ */
+.vertical-menu {
+  border-radius: 0.75rem;
+  background-clip: padding-box;
+}
+
+.contrib-sidebar .card,
+.contrib-sidebar .alert,
+.uf-sidebar,
+.card.sticky-lg-top,
+.main-content .col-lg-4 > .card {
+  border-radius: 0.5rem;
+}
+
+/* Accounting module horizontal sub-navigation */
+.accounting-subnav .nav-pills .nav-link {
+  color: inherit;
+  opacity: 0.85;
+}
+.accounting-subnav .nav-pills .nav-link.active {
+  opacity: 1;
+}

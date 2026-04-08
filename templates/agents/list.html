@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}Agents{% endblock %}
+{% block page_heading %}Agents{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <p class="text-muted small mb-0 flex-grow-1" style="max-width: 720px;">
+        Agents do <strong>not</strong> hold member funds—they support <strong>relationships and reporting</strong> (territory, team metrics, introductions).
+        Metrics use the same rules as each agent profile and are loaded in bulk for speed.
+    </p>
+    <a href="{{ url_for('agents_new') }}" class="btn btn-success"><i class="ri-user-add-line me-1"></i>Register agent</a>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1"><i class="ri-filter-3-line me-1"></i>Matching agents</p>
+                <p class="fs-4 fw-semibold mb-0">{{ total_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Active (system-wide)</p>
+                <p class="fs-4 fw-semibold mb-0 text-success">{{ active_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Members (filtered)</p>
+                <p class="fs-4 fw-semibold mb-0">{{ filtered_totals.members }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Collected (filtered)</p>
+                <p class="fs-5 fw-semibold mb-0">{{ filtered_totals.contrib|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Share value (filtered)</p>
+                <p class="fs-5 fw-semibold mb-0">{{ filtered_totals.share|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 bg-primary bg-opacity-10 h-100">
+            <div class="card-body py-3 d-flex flex-column justify-content-center h-100">
+                <span class="small text-muted mb-2">Analytics</span>
+                <a href="{{ url_for('reports_agents') }}" class="btn btn-sm btn-primary stretched-link">Agent performance</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="card-title mb-0"><i class="ri-search-line me-2 text-primary"></i>Search &amp; filters</h5>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0">Search</label>
+                <input type="search" name="q" class="form-control" placeholder="ID, name, phone, region, country" value="{{ q }}" autocomplete="off">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Status</label>
+                <select name="status" class="form-select">
+                    <option value="" {{ 'selected' if not status_filter else '' }}>All</option>
+                    <option value="Active" {{ 'selected' if status_filter == 'Active' else '' }}>Active</option>
+                    <option value="Inactive" {{ 'selected' if status_filter == 'Inactive' else '' }}>Inactive</option>
+                </select>
+            </div>
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0">Sort by</label>
+                <select name="sort" class="form-select">
+                    <option value="created_desc" {{ 'selected' if sort == 'created_desc' else '' }}>Created (newest)</option>
+                    <option value="created_asc" {{ 'selected' if sort == 'created_asc' else '' }}>Created (oldest)</option>
+                    <option value="name_asc" {{ 'selected' if sort == 'name_asc' else '' }}>Name (A–Z)</option>
+                    <option value="name_desc" {{ 'selected' if sort == 'name_desc' else '' }}>Name (Z–A)</option>
+                    <option value="agent_id" {{ 'selected' if sort == 'agent_id' else '' }}>Agent ID</option>
+                </select>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Rows per page</label>
+                <select name="per_page" class="form-select">
+                    {% for n in (25, 50, 100, 200) %}
+                    <option value="{{ n }}" {{ 'selected' if per_page == n else '' }}>{{ n }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary"><i class="ri-check-line me-1"></i>Apply</button>
+                <a href="{{ url_for('agents_list') }}" class="btn btn-outline-secondary">Clear</a>
+                <a href="{{ export_url }}" class="btn btn-soft-primary"><i class="ri-file-excel-2-line me-1"></i>Export Excel</a>
+                <a href="{{ url_for('reports_hub') }}" class="btn btn-link">Reports hub</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div class="text-muted small">
+        {% if total_count %}
+        Showing <strong>{{ row_start }}</strong>–<strong>{{ row_end }}</strong> of <strong>{{ total_count }}</strong>
+        {% else %}
+        No rows
+        {% endif %}
+        · Page {{ page }} / {{ total_pages }}
+    </div>
+    {% if total_pages > 1 %}
+    <nav aria-label="Agents pages">
+        <ul class="pagination pagination-sm mb-0 flex-wrap">
+            <li class="page-item {{ 'disabled' if not first_page_url else '' }}">
+                <a class="page-link" href="{{ first_page_url or '#' }}" title="First page">«</a>
+            </li>
+            <li class="page-item {{ 'disabled' if not prev_page_url else '' }}">
+                <a class="page-link" href="{{ prev_page_url or '#' }}">Previous</a>
+            </li>
+            <li class="page-item {{ 'disabled' if not next_page_url else '' }}">
+                <a class="page-link" href="{{ next_page_url or '#' }}">Next</a>
+            </li>
+            <li class="page-item {{ 'disabled' if not last_page_url else '' }}">
+                <a class="page-link" href="{{ last_page_url or '#' }}" title="Last page">»</a>
+            </li>
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Agent ID</th>
+                        <th scope="col">Name</th>
+                        <th scope="col">Phone</th>
+                        <th scope="col">Region</th>
+                        <th scope="col">Country</th>
+                        <th scope="col" class="text-end">Members</th>
+                        <th scope="col" class="text-end">Collected</th>
+                        <th scope="col" class="text-end">Share value</th>
+                        <th scope="col">Status</th>
+                        <th scope="col" class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in agents %}
+                    {% set am = metrics.get(a.id) or {} %}
+                    <tr>
+                        <td><strong class="font-monospace">{{ a.agent_id }}</strong></td>
+                        <td>
+                            <a href="{{ url_for('agents_profile', id=a.id) }}" class="text-reset fw-medium text-decoration-none">{{ a.full_name }}</a>
+                        </td>
+                        <td>
+                            {% if a.phone %}
+                            <a href="tel:{{ a.phone }}">{{ a.phone }}</a>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>{{ a.region or '—' }}</td>
+                        <td>{{ a.country or '—' }}</td>
+                        <td class="text-end">{{ am.get('members', 0) }}</td>
+                        <td class="text-end">{{ am.get('contrib', 0)|money }}</td>
+                        <td class="text-end">{{ am.get('share', 0)|money }}</td>
+                        <td><span class="badge bg-{{ 'success' if a.status == 'Active' else 'secondary' }}">{{ a.status }}</span></td>
+                        <td class="text-end text-nowrap">
+                            <a href="{{ url_for('agents_profile', id=a.id) }}" class="btn btn-sm btn-soft-primary">Profile</a>
+                            <a href="{{ url_for('agents_edit', id=a.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="10" class="p-5 text-center">
+                            <p class="text-muted mb-3">No agents match these filters.</p>
+                            <a href="{{ url_for('agents_new') }}" class="btn btn-success">Register your first agent</a>
+                            <a href="{{ url_for('agents_list') }}" class="btn btn-outline-secondary ms-2">Clear filters</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% if agents %}
+                <tfoot class="table-light">
+                    <tr>
+                        <td colspan="5" class="text-end small text-muted">This page subtotal</td>
+                        <td class="text-end fw-semibold">{{ page_members }}</td>
+                        <td class="text-end fw-semibold">{{ page_contrib|money }}</td>
+                        <td class="text-end fw-semibold">{{ page_share|money }}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+<p class="text-muted small mt-2 mb-0">
+    Amounts in <strong>{{ currency_code }}</strong>.
+    <strong>Collected</strong> = sum of contributions from members assigned to this agent.
+    <strong>Share value</strong> = subscribed amounts on non-cancelled share subscriptions for those members.
+    <strong>Filtered</strong> totals sum every agent that matches the current search/filters (not only this page).
+</p>
+{% endblock %}

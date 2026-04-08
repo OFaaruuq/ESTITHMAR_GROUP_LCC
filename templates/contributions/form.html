@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Record contribution{% endblock %}
+{% block page_heading %}Record contribution{% endblock %}
+{% set cur_code = settings.currency_code or 'USD' %}
+{% set cur_sym = settings.currency_symbol or '$' %}
+{% set pay_type = request.form.get('payment_type', 'Cash') if request.method == 'POST' else 'Cash' %}
+{% set date_val = request.form.get('date') if request.method == 'POST' and request.form.get('date') else today.strftime('%Y-%m-%d') %}
+{% block extra_css %}
+<style>
+.contrib-page { max-width: 1100px; margin-left: auto; margin-right: auto; }
+.contrib-hero {
+    border-radius: 0.5rem;
+    border: 1px solid rgba(13, 110, 253, 0.12);
+    background: linear-gradient(135deg, rgba(13, 110, 253, 0.07) 0%, #fff 52%);
+}
+.contrib-card {
+    border-radius: 0.5rem;
+    border: 1px solid rgba(0,0,0,.08);
+    box-shadow: 0 0.15rem 0.75rem rgba(0,0,0,.05);
+}
+.contrib-pay-btns .btn-check + label {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.2rem; padding: 0.6rem 0.4rem; min-height: 4rem; font-size: 0.8rem;
+}
+.contrib-pay-btns .btn-check + label i { font-size: 1.25rem; }
+.contrib-pay-btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+@media (min-width: 576px) { .contrib-pay-btns { grid-template-columns: repeat(4, 1fr); } }
+.contrib-amount .input-group-text { font-weight: 600; min-width: 2.75rem; justify-content: center; }
+.contrib-sidebar { position: sticky; top: 1rem; }
+</style>
+{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3 contrib-page">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('contributions_list') }}">Contributions</a></li>
+        <li class="breadcrumb-item active" aria-current="page">New</li>
+    </ol>
+</nav>
+
+<div class="contrib-hero px-3 py-3 px-md-4 py-md-4 mb-4 contrib-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div class="d-flex gap-3">
+            <div class="rounded-3 bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center flex-shrink-0" style="width:3rem;height:3rem;">
+                <i class="ri-hand-coin-line font-size-22"></i>
+            </div>
+            <div>
+                <h5 class="mb-1">Record a payment</h5>
+                <p class="text-muted small mb-0" style="max-width: 36rem;">
+                    Link payments to a <strong>share subscription</strong> when they should reduce balance and update status.
+                    General member payments stay unlinked. Currency: <span class="font-monospace">{{ cur_sym }}{{ cur_code }}</span>
+                    {% if current_user.role == 'admin' %}· <a href="{{ url_for('settings_page') }}" class="text-decoration-none">Change in Settings</a>{% endif %}
+                </p>
+            </div>
+        </div>
+        <a href="{{ url_for('contributions_list') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-list-unordered me-1"></i>All contributions</a>
+    </div>
+</div>
+
+<div class="row g-4 contrib-page">
+    <div class="col-lg-8">
+        <div class="card contrib-card border-0">
+            <div class="card-body p-3 p-md-4">
+                <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing: .06em;">Payment details</h6>
+                <form method="post" id="contrib-form" novalidate>
+                    <div class="mb-4">
+                        <label class="form-label fw-medium" for="member_id">Member <span class="text-danger">*</span></label>
+                        <select name="member_id" id="member_id" class="form-select form-select-lg" required>
+                            <option value="">Choose an active member…</option>
+                            {% for m in members %}
+                            <option value="{{ m.id }}" {{ 'selected' if preselect == m.id else '' }}>{{ m.member_id }} — {{ m.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Changing the member reloads this page to load their subscriptions.</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-medium" for="subscription_id">Share subscription <span class="text-muted fw-normal">(optional)</span></label>
+                        <select name="subscription_id" id="subscription_id" class="form-select">
+                            <option value="">Not linked — general member payment</option>
+                            {% for s in subscriptions %}
+                            <option value="{{ s.id }}" {{ 'selected' if preselect_subscription == s.id else '' }}>
+                                {{ s.subscription_no }} · {{ s.status }} · subscr. {{ s.subscribed_amount|money }} {{ cur_code }} · balance {{ s.outstanding_balance()|money }} {{ cur_code }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            To update subscription <strong>paid amount</strong>, <strong>balance</strong>, and <strong>status</strong>, select the correct subscription.
+                            Unlinked payments do not change share subscription totals.
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-medium" for="amount">Amount <span class="text-danger">*</span></label>
+                        <div class="input-group input-group-lg contrib-amount">
+                            <span class="input-group-text">{{ cur_sym }}</span>
+                            <input type="text" name="amount" id="amount" class="form-control font-monospace" required
+                                placeholder="0.00" inputmode="decimal" autocomplete="transaction-amount"
+                                aria-describedby="amount-help"
+                                value="{{ request.form.get('amount', '') if request.method == 'POST' else '' }}">
+                            <span class="input-group-text text-muted small">{{ cur_code }}</span>
+                        </div>
+                        <div id="amount-help" class="form-text">Enter a positive amount. Decimals are allowed (e.g. 1,250.50).</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-medium" for="pay_date">Payment date</label>
+                        <input type="date" name="date" id="pay_date" class="form-control form-control-lg" value="{{ date_val }}">
+                    </div>
+
+                    <div class="mb-4">
+                        <span class="form-label fw-medium d-block mb-2">Payment method</span>
+                        <div class="contrib-pay-btns" role="group" aria-label="Payment type">
+                            <input type="radio" class="btn-check" name="payment_type" id="pt_cash" value="Cash" autocomplete="off" {% if pay_type == 'Cash' %}checked{% endif %}>
+                            <label class="btn btn-outline-secondary border" for="pt_cash"><i class="ri-money-dollar-circle-line d-block"></i>Cash</label>
+                            <input type="radio" class="btn-check" name="payment_type" id="pt_mobile" value="Mobile" autocomplete="off" {% if pay_type == 'Mobile' %}checked{% endif %}>
+                            <label class="btn btn-outline-secondary border" for="pt_mobile"><i class="ri-smartphone-line d-block"></i>Mobile money</label>
+                            <input type="radio" class="btn-check" name="payment_type" id="pt_bank" value="Bank" autocomplete="off" {% if pay_type == 'Bank' %}checked{% endif %}>
+                            <label class="btn btn-outline-secondary border" for="pt_bank"><i class="ri-bank-line d-block"></i>Bank transfer</label>
+                            <input type="radio" class="btn-check" name="payment_type" id="pt_other" value="Other" autocomplete="off" {% if pay_type == 'Other' %}checked{% endif %}>
+                            <label class="btn btn-outline-secondary border" for="pt_other"><i class="ri-more-line d-block"></i>Other</label>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-medium" for="method_ref">Reference</label>
+                        <input type="text" name="method_ref" id="method_ref" class="form-control" placeholder="Transaction ID, transfer ref, mobile wallet ID…" autocomplete="off" value="{{ request.form.get('method_ref', '') if request.method == 'POST' else '' }}">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-medium" for="notes">Notes</label>
+                        <textarea name="notes" id="notes" class="form-control" rows="2" placeholder="Internal note (optional)">{{ request.form.get('notes', '') if request.method == 'POST' else '' }}</textarea>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2 pt-2 border-top">
+                        <button type="submit" class="btn btn-primary btn-lg px-4">
+                            <i class="ri-save-line me-1"></i> Save &amp; open receipt
+                        </button>
+                        <a href="{{ url_for('contributions_list') }}" class="btn btn-outline-secondary btn-lg">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="contrib-sidebar">
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-2" style="letter-spacing: .06em;">Before you save</h6>
+                    <ul class="small text-muted ps-3 mb-0">
+                        <li class="mb-2">Amount must be <strong>positive</strong>.</li>
+                        <li class="mb-2">If a subscription is selected, amount cannot exceed the <strong>remaining balance</strong> (no overpayment past subscribed total).</li>
+                        <li class="mb-0">After save, a <strong>receipt</strong> opens with running paid, balance, and %.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="alert alert-light border mb-0 small">
+                <strong class="d-block mb-1 text-body"><i class="ri-lightbulb-line me-1 text-warning"></i>Tip</strong>
+                Open a member’s profile or subscription first and use <strong>Add contribution</strong> — member and subscription can be pre-filled.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var member = document.getElementById('member_id');
+    if (!member) return;
+    member.addEventListener('change', function () {
+        var v = member.value;
+        if (!v) return;
+        var base = {{ url_for('contributions_new')|tojson }};
+        window.location.href = base + '?preselect=' + encodeURIComponent(v);
+    });
+})();
+</script>
+{% endblock %}

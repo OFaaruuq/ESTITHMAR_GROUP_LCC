@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Installment report{% endblock %}
+{% block page_heading %}Installment completion &amp; unpaid balances{% endblock %}
+{% block extra_css %}
+<style>
+.inst-hero { border-radius: 0.5rem; border: 1px solid rgba(25, 135, 84, 0.12); background: linear-gradient(135deg, rgba(25, 135, 84, 0.06) 0%, rgba(255,255,255,0.98) 50%); }
+.inst-kpi { transition: transform .12s ease; }
+.inst-kpi:hover { transform: translateY(-1px); }
+</style>
+{% endblock %}
+{% block content %}
+{% set cur = currency_code %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Installments</li>
+    </ol>
+</nav>
+
+<div class="inst-hero p-3 p-md-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h5 class="mb-2"><i class="ri-calendar-todo-line me-2 text-success"></i>Installment schedule health</h5>
+            <p class="text-muted small mb-0" style="max-width: 46rem;">
+                <strong>Overdue</strong> rows are unpaid lines that are past due or marked overdue.
+                <strong>Unpaid</strong> includes every installment row with a positive balance (including future due dates).
+                Open a subscription to record payments and manage installment lines.
+            </p>
+            <p class="text-muted small mb-0 mt-2"><i class="ri-time-line me-1"></i>As of <strong>{{ report_date }}</strong>.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('subscriptions_list') }}" class="btn btn-sm btn-soft-primary"><i class="ri-stack-line me-1"></i>Subscriptions</a>
+            <a href="{{ url_for('contributions_list') }}" class="btn btn-sm btn-outline-primary"><i class="ri-hand-coin-line me-1"></i>Contributions</a>
+            <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-folder-chart-line me-1"></i>Reports hub</a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100 inst-kpi border-start border-danger border-3">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Overdue rows</p>
+                <p class="fs-4 fw-semibold mb-0 text-danger">{{ totals.overdue_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100 inst-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Overdue balance</p>
+                <p class="fs-5 fw-semibold mb-0 text-danger">{{ settings.currency_symbol }}{{ totals.overdue_balance|money }}</p>
+                <p class="small text-muted mb-0">{{ cur }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100 inst-kpi border-start border-warning border-3">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">All unpaid rows</p>
+                <p class="fs-4 fw-semibold mb-0 text-warning">{{ totals.unpaid_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100 inst-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Unpaid balance</p>
+                <p class="fs-5 fw-semibold mb-0">{{ settings.currency_symbol }}{{ totals.unpaid_balance|money }}</p>
+                <p class="small text-muted mb-0">{{ cur }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm border-danger border-opacity-25 mb-4">
+    <div class="card-header bg-white py-3 border-bottom">
+        <div class="row align-items-center g-2">
+            <div class="col">
+                <h6 class="mb-0 text-danger"><i class="ri-alarm-warning-line me-1"></i>Overdue installments</h6>
+                <p class="text-muted small mb-0">Past due or flagged overdue — follow up first.</p>
+            </div>
+            <div class="col-12 col-md-auto">
+                <label class="visually-hidden" for="inst-search-overdue">Search overdue</label>
+                <div class="position-relative">
+                    <span class="ri-search-line position-absolute top-50 start-0 translate-middle-y ms-2 text-muted small"></span>
+                    <input type="search" id="inst-search-overdue" class="form-control form-control-sm ps-4" placeholder="Search…" autocomplete="off" {% if not overdue_rows %}disabled{% endif %}>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="table-overdue">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Subscription</th>
+                        <th scope="col">Member</th>
+                        <th class="d-none d-lg-table-cell" scope="col">Investment</th>
+                        <th scope="col">Due</th>
+                        <th class="text-end" scope="col">Balance</th>
+                        <th class="text-end" scope="col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r, bal in overdue_rows %}
+                    {% set sub = r.subscription %}
+                    {% set m = sub.member %}
+                    {% set inv = sub.investment %}
+                    {% set search_blob = ((sub.subscription_no or '') ~ ' ' ~ (m.member_id or '') ~ ' ' ~ (m.full_name or '') ~ ' ' ~ (inv.name if inv else ''))|lower %}
+                    <tr data-inst-row data-search="{{ search_blob|e }}">
+                        <td class="text-muted small">{{ r.sequence_no }}</td>
+                        <td>
+                            <a href="{{ url_for('subscriptions_profile', id=sub.id) }}" class="font-monospace small text-decoration-none fw-semibold">{{ sub.subscription_no }}</a>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('members_profile', id=m.id) }}" class="text-decoration-none">{{ m.member_id }}</a>
+                            <span class="text-muted d-none d-md-inline"> — </span>
+                            <span class="d-none d-md-inline">{{ m.full_name }}</span>
+                            <span class="d-md-none d-block small text-muted">{{ m.full_name }}</span>
+                        </td>
+                        <td class="d-none d-lg-table-cell small">
+                            {% if inv %}
+                            <a href="{{ url_for('investments_profile', id=inv.id) }}" class="text-decoration-none text-muted">{{ inv.name }}</a>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-nowrap">
+                            <span class="small">{{ r.due_date }}</span>
+                            {% if r.due_date and r.due_date < report_date %}
+                            {% set late = (report_date - r.due_date).days %}
+                            {% if late > 0 %}
+                            <span class="badge bg-danger-subtle text-danger border border-danger border-opacity-25 ms-0 ms-md-1">{{ late }}d late</span>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="text-end fw-semibold text-danger text-nowrap">{{ settings.currency_symbol }}{{ bal|money }} <span class="text-muted small fw-normal">{{ cur }}</span></td>
+                        <td class="text-end text-nowrap">
+                            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-primary">Schedule</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="ri-checkbox-circle-line fs-3 d-block mb-2 text-success"></i>
+                            No overdue installments. Great — or no installment plans with balances.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if overdue_rows %}
+    <div class="card-footer bg-light py-2 small text-muted" id="inst-overdue-count">Showing <strong id="inst-visible-overdue">{{ overdue_rows|length }}</strong> of {{ overdue_rows|length }} rows.</div>
+    {% endif %}
+</div>
+
+<div class="card border-0 shadow-sm border-warning border-opacity-25">
+    <div class="card-header bg-white py-3 border-bottom">
+        <div class="row align-items-center g-2">
+            <div class="col">
+                <h6 class="mb-0 text-body"><i class="ri-wallet-3-line me-1 text-warning"></i>All unpaid installment balances</h6>
+                <p class="text-muted small mb-0">Every row with amount still owed (including not yet due).</p>
+            </div>
+            <div class="col-12 col-md-auto">
+                <label class="visually-hidden" for="inst-search-unpaid">Search unpaid</label>
+                <div class="position-relative">
+                    <span class="ri-search-line position-absolute top-50 start-0 translate-middle-y ms-2 text-muted small"></span>
+                    <input type="search" id="inst-search-unpaid" class="form-control form-control-sm ps-4" placeholder="Search…" autocomplete="off" {% if not unpaid_rows %}disabled{% endif %}>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="table-unpaid">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Subscription</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Due</th>
+                        <th class="text-end" scope="col">Balance</th>
+                        <th class="text-end" scope="col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r, bal in unpaid_rows %}
+                    {% set sub = r.subscription %}
+                    {% set m = sub.member %}
+                    {% set search_blob = ((sub.subscription_no or '') ~ ' ' ~ (m.member_id or '') ~ ' ' ~ (m.full_name or '') ~ ' ' ~ (r.status or ''))|lower %}
+                    <tr data-inst-row data-search="{{ search_blob|e }}">
+                        <td class="text-muted small">{{ r.sequence_no }}</td>
+                        <td>
+                            <a href="{{ url_for('subscriptions_profile', id=sub.id) }}" class="font-monospace small text-decoration-none fw-semibold">{{ sub.subscription_no }}</a>
+                            <span class="d-none d-sm-block small text-muted">{{ m.member_id }} — {{ m.full_name }}</span>
+                        </td>
+                        <td>
+                            {% if r.status == 'Overdue' %}
+                            <span class="badge bg-danger-subtle text-danger border border-danger border-opacity-25">Overdue</span>
+                            {% elif r.status == 'Partially Paid' %}
+                            <span class="badge bg-warning-subtle text-warning border">Partial</span>
+                            {% elif r.status == 'Pending' %}
+                            <span class="badge bg-secondary-subtle text-secondary border">Pending</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark border">{{ r.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-nowrap small">{{ r.due_date }}</td>
+                        <td class="text-end fw-semibold text-nowrap">{{ settings.currency_symbol }}{{ bal|money }} <span class="text-muted small fw-normal">{{ cur }}</span></td>
+                        <td class="text-end text-nowrap">
+                            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-primary">Schedule</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="ri-inbox-line fs-3 d-block mb-2"></i>
+                            No unpaid installment rows (or no installment plans in scope).
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if unpaid_rows %}
+    <div class="card-footer bg-light py-2 small text-muted" id="inst-unpaid-count">Showing <strong id="inst-visible-unpaid">{{ unpaid_rows|length }}</strong> of {{ unpaid_rows|length }} rows.</div>
+    {% endif %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function() {
+    function wire(tableId, inputId, countId) {
+        var table = document.getElementById(tableId);
+        var input = document.getElementById(inputId);
+        var countEl = document.getElementById(countId);
+        if (!table || !input) return;
+        var rows = table.querySelectorAll('tbody tr[data-inst-row]');
+        function run() {
+            var q = (input.value || '').trim().toLowerCase();
+            var n = 0;
+            rows.forEach(function(tr) {
+                var hay = tr.getAttribute('data-search') || '';
+                var show = !q || hay.indexOf(q) !== -1;
+                tr.style.display = show ? '' : 'none';
+                if (show) n++;
+            });
+            if (countEl) countEl.textContent = String(n);
+        }
+        input.addEventListener('input', run);
+        input.addEventListener('search', run);
+    }
+    wire('table-overdue', 'inst-search-overdue', 'inst-visible-overdue');
+    wire('table-unpaid', 'inst-search-unpaid', 'inst-visible-unpaid');
+})();
+</script>
+{% endblock %}

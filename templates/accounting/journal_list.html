@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Journal entries{% endblock %}
+{% block page_heading %}Accounting — Journal entries{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('accounting_hub') }}">Accounting</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Journal entries</li>
+    </ol>
+</nav>
+
+{% include 'accounting/_subnav.html' %}
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-md-2">
+        <label class="form-label small mb-0" for="jf">From</label>
+        <input type="date" name="date_from" id="jf" class="form-control form-control-sm" value="{{ date_from.strftime('%Y-%m-%d') if date_from else '' }}">
+    </div>
+    <div class="col-md-2">
+        <label class="form-label small mb-0" for="jt">To</label>
+        <input type="date" name="date_to" id="jt" class="form-control form-control-sm" value="{{ date_to.strftime('%Y-%m-%d') if date_to else '' }}">
+    </div>
+    <div class="col-md-3">
+        <label class="form-label small mb-0" for="src">Source</label>
+        <select name="source_type" id="src" class="form-select form-select-sm">
+            {% for val, label in journal_source_types %}
+            <option value="{{ val or '' }}" {% if (val or '') == (source_type or '') %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3">
+        <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+        <a href="{{ url_for('accounting_journal') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+        <a href="{{ url_for('accounting_export_journal') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}" class="btn btn-sm btn-outline-secondary">Export CSV</a>
+    </div>
+</form>
+
+<div class="table-responsive card border-0 shadow-sm">
+    <table class="table table-hover table-sm mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Date</th>
+                <th>Reference</th>
+                <th>Source</th>
+                <th>Memo</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in entries %}
+            <tr>
+                <td class="text-nowrap">{{ e.entry_date }}</td>
+                <td class="font-monospace small">{{ e.reference or '—' }}</td>
+                <td class="small">{% if e.source_type %}{{ e.source_type }}{% if e.source_id %} #{{ e.source_id }}{% endif %}{% else %}—{% endif %}</td>
+                <td class="small text-muted">{{ (e.memo or '')[:80] }}{% if e.memo and e.memo|length > 80 %}…{% endif %}</td>
+                <td><a href="{{ url_for('accounting_journal_detail', entry_id=e.id) }}" class="btn btn-sm btn-outline-primary py-0">View</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-muted text-center py-4">No journal entries found. Try clearing filters or post activity from contributions, investments, or profit distribution.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

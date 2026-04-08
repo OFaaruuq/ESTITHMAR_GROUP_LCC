@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block page_heading %}User management{% endblock %}
+{% block extra_css %}
+<style>
+.um-hero { border-radius: 0.5rem; border: 1px solid rgba(13, 110, 253, 0.12); background: linear-gradient(135deg, rgba(13, 110, 253, 0.06) 0%, #fff 50%); }
+.um-kpi { transition: transform .12s ease; }
+.um-kpi:hover { transform: translateY(-1px); }
+</style>
+{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('settings_page') }}">Settings</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Users</li>
+    </ol>
+</nav>
+
+<div class="um-hero p-3 p-md-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h5 class="mb-2"><i class="ri-team-line me-2 text-primary"></i>App login accounts</h5>
+            <p class="text-muted small mb-0" style="max-width: 44rem;">
+                <strong>Admin</strong> — full access including this screen and database backup.
+                <strong>Operator</strong> — day-to-day data entry (no user management).
+                <strong>Agent</strong> — sees only members and activity tied to the assigned sales agent record.
+            </p>
+        </div>
+        <a href="{{ url_for('users_new') }}" class="btn btn-primary"><i class="ri-user-add-line me-1"></i>New user</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 um-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Total</p>
+                <p class="fs-4 fw-semibold mb-0">{{ counts.total }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 um-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Active</p>
+                <p class="fs-4 fw-semibold mb-0 text-success">{{ counts.active }}</p>
+                {% if counts.inactive %}<p class="small text-muted mb-0">{{ counts.inactive }} inactive</p>{% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 um-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Admins</p>
+                <p class="fs-4 fw-semibold mb-0 text-danger">{{ counts.admin }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 um-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Operators</p>
+                <p class="fs-4 fw-semibold mb-0 text-primary">{{ counts.operator }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 um-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Agents</p>
+                <p class="fs-4 fw-semibold mb-0">{{ counts.agent_role }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 bg-light h-100">
+            <div class="card-body py-3 d-flex flex-column justify-content-center">
+                <p class="text-muted small mb-2">Sales agents (directory)</p>
+                <a href="{{ url_for('agents_list') }}" class="btn btn-sm btn-outline-secondary">Agents</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h6 class="mb-0">All users</h6>
+            <p class="text-muted small mb-0">Sorted by username.</p>
+        </div>
+        <a href="{{ url_for('users_new') }}" class="btn btn-sm btn-primary d-none d-md-inline-flex"><i class="ri-user-add-line me-1"></i>New user</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Username</th>
+                        <th class="d-none d-md-table-cell">Display name</th>
+                        <th>Role</th>
+                        <th class="d-none d-lg-table-cell">Linked agent</th>
+                        <th>Status</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr class="{{ 'table-secondary' if not u.is_active else '' }}">
+                        <td>
+                            <span class="font-monospace fw-medium">{{ u.username }}</span>
+                            <span class="d-md-none d-block small text-muted">{{ u.full_name or '—' }}</span>
+                        </td>
+                        <td class="d-none d-md-table-cell">{{ u.full_name or '—' }}</td>
+                        <td>
+                            {% if u.role == 'admin' %}
+                            <span class="badge text-bg-danger">{{ role_labels.get(u.role, u.role) }}</span>
+                            {% elif u.role == 'operator' %}
+                            <span class="badge text-bg-primary">{{ role_labels.get(u.role, u.role) }}</span>
+                            {% elif u.role == 'agent' %}
+                            <span class="badge text-bg-secondary">{{ role_labels.get(u.role, u.role) }}</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark border">{{ u.role }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="d-none d-lg-table-cell small">
+                            {% if u.role == 'agent' and u.agent %}
+                            <span class="font-monospace text-muted">{{ u.agent.agent_id }}</span>
+                            <span class="text-body">· {{ u.agent.full_name }}</span>
+                            {% elif u.role == 'agent' %}
+                            <span class="text-warning">Not assigned</span>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if u.is_active %}
+                            <span class="badge text-bg-success">Active</span>
+                            {% else %}
+                            <span class="badge text-bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-nowrap">
+                            <a href="{{ url_for('users_edit', id=u.id) }}" class="btn btn-sm btn-soft-primary">Edit</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-muted p-4 text-center">No users yet. <a href="{{ url_for('users_new') }}">Create the first account</a>.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-transparent small text-muted">
+        Passwords are stored hashed. Use <strong>Edit</strong> to reset a password or deactivate an account.
+    </div>
+</div>
+{% endblock %}

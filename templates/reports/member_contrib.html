@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Member contributions{% endblock %}
+{% block page_heading %}Contribution report — {{ member.full_name }}{% endblock %}
+{% block content %}
+<p><strong>Member ID:</strong> {{ member.member_id }}</p>
+<p><strong>Total contributions:</strong> {{ member.contribution_total()|money }} USD</p>
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table mb-0">
+                <thead>
+                    <tr><th>Receipt</th><th>Date</th><th>Amount</th><th>Type</th></tr>
+                </thead>
+                <tbody>
+                    {% for c in rows %}
+                    <tr>
+                        <td>{{ c.receipt_no }}</td>
+                        <td>{{ c.date }}</td>
+                        <td>{{ c.amount|money }}</td>
+                        <td>{{ c.payment_type }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

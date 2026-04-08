@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Profit calculation summary{% endblock %}
+{% block page_heading %}Profit calculation summary{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Profit calculation</li>
+    </ol>
+</nav>
+
+<div class="alert alert-light border mb-4">
+    <h6 class="alert-heading">Basis of profit sharing</h6>
+    <p class="small mb-2">Ownership % for each active member = <strong>eligible paid amount</strong> ÷ <strong>sum of eligible paid amounts</strong> across all participating members. Member profit = ownership % × profit pool.</p>
+    <p class="small mb-2">Eligible paid amounts use <strong>actual contributions</strong> recorded against share subscriptions (and, in global pool mode, unlinked member contributions), never the promised subscription total — unless a subscription uses the <em>fully paid only</em> policy, in which case nothing counts until the subscription is fully paid.</p>
+    <ul class="small mb-0">
+        <li><strong>Verified-only basis:</strong> {{ 'On — only verified payments count.' if profit_basis_verified else 'Off — all recorded payments count.' }}</li>
+        <li><strong>Fully paid only (org-wide):</strong> {{ 'On — only Fully Paid subscriptions participate; unlinked contributions excluded from global pool.' if settings.get_extra().get('profit_global_fully_paid_only') else 'Off — per-subscription policy applies (paid proportional or fully paid only).' }}</li>
+        <li><strong>Investment-scoped pool:</strong> {{ 'On — only subscriptions linked to the selected investment participate.' if profit_investment_scoped else 'Off — organization-wide eligible pool for the chosen investment vehicle context.' }}</li>
+        <li><strong>Policy label:</strong> <code class="small">{{ policy_key }}</code></li>
+    </ul>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Hypothetical distribution preview</div>
+    <div class="card-body">
+        <p class="text-muted small">Select an investment and a sample profit amount. This does <strong>not</strong> post accounting entries — it mirrors the same calculation used on the <a href="{{ url_for('profit_distribute') }}">Profit distribution</a> screen.</p>
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label small mb-0">Investment</label>
+                <select name="investment_id" class="form-select" required>
+                    <option value="">Choose…</option>
+                    {% for inv in investments %}
+                    <option value="{{ inv.id }}" {{ 'selected' if selected and selected.id == inv.id else '' }}>{{ inv.name }} ({{ inv.investment_code or inv.id }}) — {{ inv.status }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-0">Sample profit amount ({{ currency_code }})</label>
+                <input type="text" name="sample_amount" class="form-control font-monospace" value="{{ sample_amount|money }}" inputmode="decimal" autocomplete="off">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Calculate</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if selected %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span>Preview — {{ selected.name }}</span>
+        <span class="badge bg-primary">Pool {{ total_eligible|money }} {{ currency_code }}</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Member</th>
+                    <th class="text-end">Eligible basis</th>
+                    <th class="text-end">Ownership %</th>
+                    <th class="text-end">Share of {{ sample_amount|money }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in preview_rows %}
+                <tr>
+                    <td>{{ row.member.member_id }} — {{ row.member.full_name }}</td>
+                    <td class="text-end">{{ row.eligible_amount|money }}</td>
+                    <td class="text-end">{{ row.pct }}%</td>
+                    <td class="text-end fw-medium">{{ row.share|money }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-muted text-center py-4">No eligible members for this investment under current settings and recorded payments.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<p class="small text-muted"><a href="{{ url_for('profit_history') }}">Distribution register</a> · <a href="{{ url_for('reports_profit_summary') }}">Undistributed profit by investment</a></p>
+{% endif %}
+{% endblock %}

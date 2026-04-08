@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Recover Password | Istithmar Investment Management</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content="Password recovery page." name="description" />
+    <meta content="Istithmar" name="author" />
+    <link rel="shortcut icon" href="{{ url_for('static', filename='assets/images/favicon.ico') }}">
+
+    <script src="{{ url_for('static', filename='assets/js/layout.js') }}"></script>
+    <link href="{{ url_for('static', filename='assets/css/bootstrap.min.css') }}" id="bootstrap-style" rel="stylesheet" type="text/css" />
+    <link href="{{ url_for('static', filename='assets/css/icons.min.css') }}" rel="stylesheet" type="text/css" />
+    <link href="{{ url_for('static', filename='assets/css/app.min.css') }}" id="app-style" rel="stylesheet" type="text/css" />
+</head>
+<body>
+    <div class="auth-maintenance d-flex align-items-center min-vh-100">
+        <div class="bg-overlay bg-light"></div>
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-md-10">
+                    <div class="auth-full-page-content d-flex min-vh-100 py-sm-5 py-4">
+                        <div class="w-100">
+                            <div class="d-flex flex-column h-100 py-0 py-xl-3">
+                                <div class="text-center mb-4">
+                                    <a href="{{ url_for('login') }}">
+                                        <img src="{{ brand_logo_dark_lg }}" alt="" height="22" class="auth-logo logo-dark mx-auto">
+                                        <img src="{{ brand_logo_light_lg }}" alt="" height="22" class="auth-logo logo-light mx-auto">
+                                    </a>
+                                    <p class="text-muted mt-2">Istithmar Investment Management System</p>
+                                </div>
+
+                                <div class="card my-auto overflow-hidden">
+                                    <div class="row g-0">
+                                        <div class="col-lg-6">
+                                            <div class="bg-overlay bg-primary"></div>
+                                            <div class="h-100 bg-auth align-items-end"></div>
+                                        </div>
+
+                                        <div class="col-lg-6">
+                                            <div class="p-lg-5 p-4">
+                                                <div class="text-center mt-1">
+                                                    <h4 class="font-size-18">Reset Password</h4>
+                                                    <p class="text-muted">Reset your password.</p>
+                                                </div>
+
+                                                <div class="alert alert-success mt-4 pt-2" role="alert">
+                                                    Enter your Email or Username. Since this system is offline, a temporary password will be generated instantly.
+                                                </div>
+
+                                                {% with messages = get_flashed_messages(with_categories=true) %}
+                                                    {% if messages %}
+                                                        {% for category, message in messages %}
+                                                            <div class="alert alert-{{ category }}">{{ message }}</div>
+                                                        {% endfor %}
+                                                    {% endif %}
+                                                {% endwith %}
+
+                                                {% if temp_password %}
+                                                <div class="alert alert-info">
+                                                    Temporary password: <strong>{{ temp_password }}</strong>
+                                                </div>
+                                                {% endif %}
+
+                                                <form method="post" action="{{ url_for('auth_recoverpw') }}" class="auth-input">
+                                                    <div class="mb-2">
+                                                        <label for="useremail" class="form-label">Email or Username</label>
+                                                        <input type="text" name="email" class="form-control" id="useremail" placeholder="Enter email or username" required>
+                                                    </div>
+
+                                                    <div class="mt-4">
+                                                        <button class="btn btn-primary w-100" type="submit">Reset</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 text-center">
+                                    <p class="mb-0">Remembered your password? <a href="{{ url_for('login') }}" class="fw-medium text-primary">Log in</a></p>
+                                </div>
+
+                                <div class="mt-4 text-center">
+                                    <p class="mb-0">
+                                        &copy; <script>document.write(new Date().getFullYear())</script> Istithmar.
+                                        Crafted with <i class="mdi mdi-heart text-danger"></i> for operations.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='assets/libs/jquery/jquery.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='assets/libs/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='assets/libs/metismenu/metisMenu.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='assets/libs/simplebar/simplebar.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='assets/libs/node-waves/waves.min.js') }}"></script>
+    <script src="https://unicons.iconscout.com/release/v2.0.1/script/monochrome/bundle.js"></script>
+    <script src="{{ url_for('static', filename='assets/js/app.js') }}"></script>
+</body>
+</html>

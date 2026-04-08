@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Distribution {{ batch.batch_no }}{% endblock %}
+{% block page_heading %}Profit batch recorded{% endblock %}
+{% block extra_css %}
+<style>
+.pbc-hero { border-radius: 0.5rem; border: 1px solid rgba(25, 135, 84, 0.2); background: linear-gradient(135deg, rgba(25, 135, 84, 0.08) 0%, #fff 55%); }
+.pbc-shell { max-width: 1100px; margin-left: auto; margin-right: auto; }
+</style>
+{% endblock %}
+{% block content %}
+{% set cur = currency_code %}
+
+<nav aria-label="breadcrumb" class="mb-3 pbc-shell">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('profit_distribute') }}">Profit distribution</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('profit_history') }}">History</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ batch.batch_no }}</li>
+    </ol>
+</nav>
+
+<div class="pbc-hero p-3 p-md-4 mb-4 pbc-shell">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h5 class="mb-2 text-success"><i class="ri-checkbox-circle-line me-2"></i>Batch <span class="font-monospace">{{ batch.batch_no }}</span> saved</h5>
+            <p class="text-muted small mb-0">
+                Distribution date <strong>{{ batch.distribution_date }}</strong> ·
+                Investment <a href="{{ url_for('investments_profile', id=batch.investment_id) }}">{{ batch.investment.name }}</a>
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('profit_distribute') }}" class="btn btn-sm btn-primary"><i class="ri-add-line me-1"></i>New distribution</a>
+            <a href="{{ url_for('profit_history') }}" class="btn btn-sm btn-soft-primary">Full history</a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4 pbc-shell">
+    <div class="col-6 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Total distributed</p>
+                <p class="fs-4 fw-semibold mb-0 text-success">{{ settings.currency_symbol }}{{ total_out|money }}</p>
+                <p class="small text-muted mb-0">{{ cur }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Members paid</p>
+                <p class="fs-4 fw-semibold mb-0">{{ member_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Pool input</p>
+                <p class="fw-semibold mb-0">{{ settings.currency_symbol }}{{ batch.total_profit_input|money }} {{ cur }}</p>
+                <p class="small text-muted mb-0">Policy:
+                    {% if policy_used == 'paid_real_money_investment_scoped' %}
+                    <span class="badge text-bg-primary">Investment-scoped</span>
+                    {% elif policy_used == 'paid_real_money_global_pool' %}
+                    <span class="badge text-bg-secondary">Global pool</span>
+                    {% else %}
+                    <span class="badge bg-light text-dark border">{{ policy_used or '—' }}</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if batch.notes %}
+<div class="alert alert-light border pbc-shell mb-4">
+    <p class="small text-muted mb-1">Batch notes</p>
+    <p class="mb-0 small">{{ batch.notes }}</p>
+</div>
+{% endif %}
+
+{% if highest %}
+<div class="alert alert-light border pbc-shell mb-4">
+    <strong>Highest allocation:</strong>
+    <a href="{{ url_for('members_profile', id=highest.member_id) }}">{{ highest.member.member_id }} — {{ highest.member.full_name }}</a>
+    · {{ settings.currency_symbol }}{{ highest.amount|money }} {{ cur }}
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm pbc-shell mb-4">
+    <div class="card-header bg-white py-3 border-bottom">
+        <h6 class="mb-0">Member lines</h6>
+        <p class="text-muted small mb-0">Permanent records; amounts reconcile to the batch pool (rounding may apply on the last line).</p>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Member</th>
+                        <th class="text-end">Paid basis</th>
+                        <th class="text-end">Share %</th>
+                        <th class="text-end">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('members_profile', id=r.member_id) }}" class="text-decoration-none">
+                                <span class="font-monospace small text-muted">{{ r.member.member_id }}</span>
+                                <span class="fw-medium">{{ r.member.full_name }}</span>
+                            </a>
+                        </td>
+                        <td class="text-end text-nowrap small">{% if r.eligible_amount_basis is not none %}{{ settings.currency_symbol }}{{ r.eligible_amount_basis|money }}{% else %}—{% endif %}</td>
+                        <td class="text-end text-nowrap small">{% if r.share_percentage is not none %}{{ '%.4f'|format(r.share_percentage|float) }}%{% else %}—{% endif %}</td>
+                        <td class="text-end text-nowrap fw-medium">{{ settings.currency_symbol }}{{ r.amount|money }} {{ cur }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted small pbc-shell mb-3">Rows cannot be edited after save. To correct mistakes, use accounting adjustments outside this tool or contact support.</p>
+{% endblock %}

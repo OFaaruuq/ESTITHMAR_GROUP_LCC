@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}Subscriptions{% endblock %}
+{% block page_heading %}Share subscriptions{% endblock %}
+{% block content %}
+<p class="text-muted small mb-3">
+    Share subscriptions define how much each member committed toward shares, how payments are applied, and (optionally) which <strong>investment</strong> they participate in.
+    Use row actions to open <strong>payments</strong> for a single subscription. The shortcut below opens the contributions list with the same <strong>member, agent, and search</strong> (where applicable).
+</p>
+{% if filter_project_sub %}
+<div class="alert alert-info border-0 py-2 mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2" style="--bs-alert-bg: rgba(13, 110, 253, 0.08);">
+    <span class="small mb-0">Showing subscriptions linked to investments under project <strong>{{ filter_project_sub.name }}</strong> <span class="text-muted font-monospace">({{ filter_project_sub.project_code or filter_project_sub.id }})</span></span>
+    <a href="{{ url_for('projects_profile', id=filter_project_sub.id) }}" class="btn btn-sm btn-soft-primary">Project profile</a>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1"><i class="ri-stack-line me-1"></i>Matching subscriptions</p>
+                <p class="fs-4 fw-semibold mb-0">{{ total_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Subscribed (filtered)</p>
+                <p class="fs-4 fw-semibold mb-0">{{ settings.currency_symbol }}{{ sum_subscribed|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Paid toward subs (filtered)</p>
+                <p class="fs-4 fw-semibold mb-0 text-success">{{ settings.currency_symbol }}{{ sum_paid|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card border-0 bg-primary bg-opacity-10 h-100">
+            <div class="card-body py-3 d-flex flex-column justify-content-center">
+                <p class="text-muted small mb-1">Outstanding balance (filtered)</p>
+                <p class="fs-4 fw-semibold mb-2 text-primary">{{ settings.currency_symbol }}{{ sum_outstanding|money }}</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('contributions_list') }}" class="btn btn-sm btn-primary">All payments</a>
+                    <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-soft-primary">Reports</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header py-3">
+        <h5 class="card-title mb-0"><i class="ri-filter-3-line me-2 text-primary"></i>Filters</h5>
+        <p class="text-muted small mb-0">Member, agent, investment, status, subscription dates, text search, and overdue installments.</p>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0">Member</label>
+                <select name="member_id" class="form-select">
+                    <option value="">All members</option>
+                    {% for m in members %}
+                    <option value="{{ m.id }}" {{ 'selected' if member_id == m.id else '' }}>{{ m.member_id }} — {{ m.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if agents %}
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Agent</label>
+                <select name="agent_id" class="form-select">
+                    <option value="">All agents</option>
+                    {% for a in agents %}
+                    <option value="{{ a.id }}" {{ 'selected' if filter_agent_id == a.id else '' }}>{{ a.agent_id }} — {{ a.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0">Investment</label>
+                <select name="investment_id" class="form-select" {% if uninvested_only %}disabled{% endif %}>
+                    <option value="">All investments</option>
+                    {% for inv in investments %}
+                    <option value="{{ inv.id }}" {{ 'selected' if investment_id == inv.id else '' }}>{{ inv.name }}</option>
+                    {% endfor %}
+                </select>
+                {% if uninvested_only %}<input type="hidden" name="investment_id" value="">{% endif %}
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" name="uninvested" value="1" id="subUninv" {{ 'checked' if uninvested_only else '' }}>
+                    <label class="form-check-label small" for="subUninv">Not linked to investment</label>
+                </div>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Status</label>
+                <select name="status" class="form-select" {% if certificate_pending|default(false) %}disabled{% endif %}>
+                    <option value="" {{ 'selected' if not status else '' }}>All</option>
+                    <option value="Pending" {{ 'selected' if status == 'Pending' else '' }}>Pending</option>
+                    <option value="Partially Paid" {{ 'selected' if status == 'Partially Paid' else '' }}>Partially Paid</option>
+                    <option value="Fully Paid" {{ 'selected' if status == 'Fully Paid' else '' }}>Fully Paid</option>
+                    <option value="Cancelled" {{ 'selected' if status == 'Cancelled' else '' }}>Cancelled</option>
+                </select>
+                {% if certificate_pending|default(false) %}<input type="hidden" name="status" value="">{% endif %}
+            </div>
+            <div class="col-md-4 col-lg-3">
+                <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" name="certificate_pending" value="1" id="subCertPend" {{ 'checked' if certificate_pending|default(false) else '' }}>
+                    <label class="form-check-label small" for="subCertPend">Certificate pending <span class="text-muted">(fully paid, no issued certificate)</span></label>
+                </div>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Subscribed from</label>
+                <input type="date" name="date_from" class="form-control" value="{{ date_from.strftime('%Y-%m-%d') if date_from else '' }}">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Subscribed to</label>
+                <input type="date" name="date_to" class="form-control" value="{{ date_to.strftime('%Y-%m-%d') if date_to else '' }}">
+            </div>
+            <div class="col-md-6 col-lg-3">
+                <label class="form-label small mb-0">Search</label>
+                <input type="search" name="q" class="form-control" placeholder="Subscription no., member ID, name" value="{{ q or '' }}" autocomplete="off">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Rows per page</label>
+                <select name="per_page" class="form-select">
+                    {% for n in (25, 50, 100, 200) %}
+                    <option value="{{ n }}" {{ 'selected' if per_page == n else '' }}>{{ n }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" name="overdue" value="1" id="subOverdue" {{ 'checked' if overdue_only else '' }}>
+                    <label class="form-check-label small" for="subOverdue">Only subscriptions with <strong>overdue</strong> installments</label>
+                </div>
+            </div>
+            <div class="col-12 d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary">Apply filters</button>
+                <a href="{{ url_for('subscriptions_list') }}" class="btn btn-outline-secondary">Clear</a>
+                <a href="{{ url_for('subscriptions_new') }}{% if member_id %}?member_id={{ member_id }}{% endif %}" class="btn btn-success">New subscription</a>
+                <a href="{{ contributions_filter_url }}" class="btn btn-soft-primary">Payments (member / agent / search)</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if overdue_only %}
+<div class="alert alert-warning py-2 mb-3"><i class="ri-alarm-warning-line me-1"></i>Showing only subscriptions that have at least one overdue installment line.</div>
+{% endif %}
+{% if filter_agent %}
+<div class="alert alert-light border py-2 small mb-3">Filtered to members of agent <strong>{{ filter_agent.agent_id }}</strong> — {{ filter_agent.full_name }}.</div>
+{% endif %}
+{% if uninvested_only %}
+<div class="alert alert-info py-2 mb-3"><i class="ri-links-off-line me-1"></i>Showing subscriptions with no investment link (pool / assignment can be set on the subscription profile).</div>
+{% endif %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div class="text-muted small">
+        {% if total_count %}
+        Showing <strong>{{ row_start }}</strong>–<strong>{{ row_end }}</strong> of <strong>{{ total_count }}</strong>
+        {% else %}
+        No rows match.
+        {% endif %}
+    </div>
+    {% if total_pages > 1 %}
+    <nav aria-label="Subscriptions pages">
+        <ul class="pagination pagination-sm mb-0 flex-wrap">
+            <li class="page-item {{ 'disabled' if not first_page_url else '' }}"><a class="page-link" href="{{ first_page_url or '#' }}">First</a></li>
+            <li class="page-item {{ 'disabled' if not prev_page_url else '' }}"><a class="page-link" href="{{ prev_page_url or '#' }}">Previous</a></li>
+            <li class="page-item disabled"><span class="page-link">Page {{ page }} / {{ total_pages }}</span></li>
+            <li class="page-item {{ 'disabled' if not next_page_url else '' }}"><a class="page-link" href="{{ next_page_url or '#' }}">Next</a></li>
+            <li class="page-item {{ 'disabled' if not last_page_url else '' }}"><a class="page-link" href="{{ last_page_url or '#' }}">Last</a></li>
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Subscription</th>
+                        <th>Member</th>
+                        <th class="d-none d-lg-table-cell">Agent</th>
+                        <th class="d-none d-xl-table-cell">Investment</th>
+                        <th>Plan</th>
+                        <th>Status</th>
+                        <th class="text-end">Subscribed</th>
+                        <th class="text-end d-none d-md-table-cell">Paid</th>
+                        <th class="text-end">Balance</th>
+                        <th class="text-end d-none d-lg-table-cell">%</th>
+                        <th class="text-center d-none d-md-table-cell">Inst.</th>
+                        <th class="text-center">Late</th>
+                        <th class="d-none d-lg-table-cell">Date</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in rows %}
+                    {% set st = sub_stats.get(s.id, {'rows': 0, 'overdue': 0, 'balance': 0}) %}
+                    {% set m = subscription_row_metrics.get(s.id, {'paid': 0, 'outstanding': 0, 'pct': 0}) %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('subscriptions_profile', id=s.id) }}" class="fw-semibold text-decoration-none">{{ s.subscription_no }}</a>
+                            {% if s.certificate %}
+                            <a href="{{ url_for('certificates_print', id=s.certificate.id) }}" class="d-block small text-success text-decoration-none" title="Certificate"><i class="ri-award-line me-1"></i>Certificate</a>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('members_profile', id=s.member_id) }}" class="text-decoration-none">{{ s.member.member_id }}</a>
+                            <div class="small text-muted text-truncate" style="max-width: 200px;">{{ s.member.full_name }}</div>
+                        </td>
+                        <td class="d-none d-lg-table-cell small">
+                            {% if s.member.agent %}{{ s.member.agent.agent_id }}{% else %}—{% endif %}
+                        </td>
+                        <td class="d-none d-xl-table-cell small">
+                            {% if s.investment %}
+                            <a href="{{ url_for('investments_profile', id=s.investment.id) }}" class="text-decoration-none">{{ s.investment.name }}</a>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-light text-dark border">{{ 'Installment' if s.payment_plan == 'installment' else 'Full' }}</span></td>
+                        <td>
+                            {% if s.status == 'Fully Paid' %}
+                            <span class="badge text-bg-success">{{ s.status }}</span>
+                            {% elif s.status == 'Partially Paid' %}
+                            <span class="badge text-bg-warning text-dark">{{ s.status }}</span>
+                            {% elif s.status == 'Cancelled' %}
+                            <span class="badge text-bg-secondary">{{ s.status }}</span>
+                            {% else %}
+                            <span class="badge text-bg-info">{{ s.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-nowrap small">{{ settings.currency_symbol }}{{ s.subscribed_amount|money }}</td>
+                        <td class="text-end text-nowrap small d-none d-md-table-cell text-success">{{ settings.currency_symbol }}{{ m.paid|money }}</td>
+                        <td class="text-end text-nowrap small fw-medium">{{ settings.currency_symbol }}{{ m.outstanding|money }}</td>
+                        <td class="text-end d-none d-lg-table-cell small text-muted">{{ m.pct|money }}%</td>
+                        <td class="text-center d-none d-md-table-cell small">{{ st.rows }}</td>
+                        <td class="text-center">
+                            {% if st.overdue > 0 %}
+                            <span class="badge text-bg-danger">{{ st.overdue }}</span>
+                            {% else %}
+                            <span class="text-muted">0</span>
+                            {% endif %}
+                        </td>
+                        <td class="d-none d-lg-table-cell small text-muted">{{ s.subscription_date }}</td>
+                        <td class="text-end text-nowrap">
+                            <a class="btn btn-sm btn-soft-primary" href="{{ url_for('subscriptions_profile', id=s.id) }}">Open</a>
+                            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('contributions_list', subscription_id=s.id) }}" title="Payments for this subscription">Payments</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="14" class="text-muted p-4 text-center">No subscriptions match these filters.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-transparent small text-muted">
+        Amounts in <strong>{{ currency_code }}</strong>. Balance is subscription commitment minus payments recorded toward this subscription.
+    </div>
+</div>
+{% endblock %}

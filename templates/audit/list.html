@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block page_heading %}Audit log{% endblock %}
+
+{% macro entity_record_link(log) -%}
+{%- if log.entity_id -%}
+  {%- if log.entity_type == 'Member' -%}
+    <a href="{{ url_for('members_profile', id=log.entity_id) }}" class="text-decoration-none">{{ log.entity_type }} #{{ log.entity_id }}</a>
+  {%- elif log.entity_type == 'Agent' -%}
+    <a href="{{ url_for('agents_profile', id=log.entity_id) }}" class="text-decoration-none">{{ log.entity_type }} #{{ log.entity_id }}</a>
+  {%- elif log.entity_type == 'Project' -%}
+    <a href="{{ url_for('projects_profile', id=log.entity_id) }}" class="text-decoration-none">{{ log.entity_type }} #{{ log.entity_id }}</a>
+  {%- elif log.entity_type == 'Investment' -%}
+    <a href="{{ url_for('investments_profile', id=log.entity_id) }}" class="text-decoration-none">{{ log.entity_type }} #{{ log.entity_id }}</a>
+  {%- elif log.entity_type == 'ShareSubscription' -%}
+    <a href="{{ url_for('subscriptions_profile', id=log.entity_id) }}" class="text-decoration-none">Subscription #{{ log.entity_id }}</a>
+  {%- elif log.entity_type == 'ShareCertificate' -%}
+    <a href="{{ url_for('certificates_print', id=log.entity_id) }}" class="text-decoration-none">Certificate #{{ log.entity_id }}</a>
+  {%- elif log.entity_type == 'ProfitDistributionBatch' -%}
+    <a href="{{ url_for('profit_batch_detail', batch_id=log.entity_id) }}" class="text-decoration-none">Profit batch #{{ log.entity_id }}</a>
+  {%- elif log.entity_type == 'InstallmentPlan' -%}
+    <span class="font-monospace small">InstallmentPlan #{{ log.entity_id }}</span>
+  {%- elif log.entity_type == 'AppUser' -%}
+    <a href="{{ url_for('users_edit', id=log.entity_id) }}" class="text-decoration-none">User #{{ log.entity_id }}</a>
+  {%- else -%}
+    <span class="font-monospace small">{{ log.entity_type or '—' }}</span>
+    <span class="text-muted">#{{ log.entity_id }}</span>
+  {%- endif -%}
+{%- else -%}
+  {%- if log.entity_type == 'AppSettings' -%}
+    <a href="{{ url_for('settings_page') }}" class="text-decoration-none">App settings</a>
+  {%- else -%}
+  <span class="text-muted">{{ log.entity_type or '—' }}</span>
+  {%- endif -%}
+  {%- if log.entity_type == 'Contribution' -%}
+  <a href="{{ url_for('contributions_list') }}" class="small ms-1">Contributions</a>
+  {%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro action_badge(action) -%}
+{%- set a = (action or '')|lower -%}
+{%- if 'profit' in a or 'distribution' in a -%}
+<span class="badge rounded-pill text-bg-success text-truncate" style="max-width: 14rem" title="{{ action }}">{{ action }}</span>
+{%- elif 'member' in a -%}
+<span class="badge rounded-pill text-bg-primary text-truncate" style="max-width: 14rem" title="{{ action }}">{{ action }}</span>
+{%- elif 'investment' in a or 'project' in a -%}
+<span class="badge rounded-pill text-bg-info text-truncate" style="max-width: 14rem" title="{{ action }}">{{ action }}</span>
+{%- elif 'subscription' in a or 'certificate' in a or 'installment' in a -%}
+<span class="badge rounded-pill text-bg-secondary text-truncate" style="max-width: 14rem" title="{{ action }}">{{ action }}</span>
+{%- elif 'contribution' in a or 'payment' in a -%}
+<span class="badge rounded-pill text-bg-dark text-truncate" style="max-width: 14rem" title="{{ action }}">{{ action }}</span>
+{%- elif 'settings' in a or 'branding' in a -%}
+<span class="badge rounded-pill text-bg-warning text-truncate" style="max-width: 14rem" title="{{ action }}">{{ action }}</span>
+{%- else -%}
+<span class="badge rounded-pill bg-light text-dark border text-truncate" style="max-width: 14rem" title="{{ action }}">{{ action }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% block extra_css %}
+<style>
+.al-hero { border-radius: 0.75rem; border: 1px solid rgba(15, 23, 42, 0.08); background: linear-gradient(145deg, #f8fafc 0%, #ffffff 55%, #f1f5f9 100%); }
+.al-shell { max-width: 1320px; margin-left: auto; margin-right: auto; }
+.al-kpi { transition: transform .12s ease; }
+.al-kpi:hover { transform: translateY(-1px); }
+.al-details { max-width: 36rem; word-break: break-word; }
+@media (min-width: 1200px) {
+  .al-details { max-width: 42rem; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3 al-shell">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Audit log</li>
+    </ol>
+</nav>
+
+<div class="al-hero p-3 p-md-4 mb-3 al-shell">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h5 class="mb-2"><i class="ri-shield-keyhole-line me-2 text-primary"></i>Security &amp; activity audit</h5>
+            <p class="text-muted small mb-0" style="max-width: 46rem;">
+                Immutable trail of sensitive actions across <strong>members</strong>, <strong>money</strong>, <strong>projects</strong>, <strong>investments</strong>,
+                <strong>subscriptions</strong>, <strong>certificates</strong>, and <strong>profit</strong>. Filter by time, entity, or text; use <strong>Open</strong> to jump to the resolved record when a link is available.
+                Timestamps are stored in <strong>UTC</strong>.
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ export_url }}" class="btn btn-sm btn-primary"><i class="ri-download-2-line me-1"></i>Export CSV</a>
+            <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-soft-secondary">Reports hub</a>
+            <a href="{{ url_for('settings_page') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-settings-3-line me-1"></i>Settings</a>
+        </div>
+    </div>
+</div>
+
+{% set has_filters = action_filter or entity_type_filter or date_from or date_to or q %}
+{% if has_filters %}
+<div class="al-shell mb-3">
+    <div class="d-flex flex-wrap align-items-center gap-2 small">
+        <span class="text-muted">Active filters:</span>
+        {% if action_filter %}<span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25">Action ~ {{ action_filter }}</span>{% endif %}
+        {% if entity_type_filter %}<span class="badge bg-info-subtle text-info border">{{ entity_type_filter }}</span>{% endif %}
+        {% if date_from %}<span class="badge bg-light text-dark border">From {{ date_from }}</span>{% endif %}
+        {% if date_to %}<span class="badge bg-light text-dark border">To {{ date_to }}</span>{% endif %}
+        {% if q %}<span class="badge bg-light text-dark border">Search “{{ q[:48] }}{% if q|length > 48 %}…{% endif %}”</span>{% endif %}
+        <a href="{{ url_for('audit_logs') }}" class="btn btn-sm btn-outline-secondary py-0">Clear all</a>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4 al-shell">
+    <div class="col-6 col-md-4 col-lg-3">
+        <div class="card border-0 shadow-sm h-100 al-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Matching entries</p>
+                <p class="fs-4 fw-semibold mb-0">{{ total_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-3">
+        <div class="card border-0 shadow-sm h-100 al-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">This page</p>
+                <p class="small mb-0 text-muted">Size <strong>{{ per_page }}</strong> · Page <strong>{{ page }}</strong> / {{ total_pages }}</p>
+                <div class="d-flex flex-wrap gap-1 mt-2">
+                    <a href="{{ url_for('members_list') }}" class="badge text-bg-light border text-decoration-none">Members</a>
+                    <a href="{{ url_for('contributions_list') }}" class="badge text-bg-light border text-decoration-none">Contributions</a>
+                    <a href="{{ url_for('investments_list') }}" class="badge text-bg-light border text-decoration-none">Investments</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4 col-lg-6">
+        <div class="card border-0 bg-light h-100">
+            <div class="card-body py-3 small text-muted">
+                <strong class="text-body">CSV export</strong> uses the <strong>same filters</strong> as this page (up to 10,000 rows), UTF-8 with BOM for Excel.
+                <strong>Search</strong> matches action, entity type, and details text.
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3 al-shell">
+    <div class="card-header bg-white py-3 border-bottom">
+        <h6 class="mb-0">Filters</h6>
+        <p class="text-muted small mb-0">Combine action keyword, entity type, UTC date range, free text, and page size. Submit applies filters and returns to page 1.</p>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end" id="audit-filter-form">
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0">Action contains</label>
+                <input type="search" name="action" class="form-control" list="audit-actions" placeholder="e.g. profit, member" value="{{ action_filter }}" autocomplete="off">
+                <datalist id="audit-actions">
+                    {% for a in action_choices %}
+                    <option value="{{ a }}">
+                    {% endfor %}
+                </datalist>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Entity type</label>
+                <select name="entity_type" class="form-select">
+                    <option value="">All types</option>
+                    {% for et in entity_type_choices %}
+                    <option value="{{ et }}" {{ 'selected' if entity_type_filter == et else '' }}>{{ et }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">From (UTC)</label>
+                <input type="date" name="date_from" class="form-control" value="{{ date_from.strftime('%Y-%m-%d') if date_from else '' }}">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">To (UTC)</label>
+                <input type="date" name="date_to" class="form-control" value="{{ date_to.strftime('%Y-%m-%d') if date_to else '' }}">
+            </div>
+            <div class="col-md-6 col-lg-3">
+                <label class="form-label small mb-0">Search details / action / type</label>
+                <input type="search" name="q" class="form-control" placeholder="Free text" value="{{ q or '' }}" autocomplete="off">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">Rows / page</label>
+                <select name="per_page" class="form-select">
+                    {% for n in (25, 50, 100, 200) %}
+                    <option value="{{ n }}" {{ 'selected' if per_page == n else '' }}>{{ n }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <span class="text-muted small me-1">Quick dates (UTC):</span>
+                    <a href="{{ audit_preset_urls.today }}" class="btn btn-sm btn-outline-secondary">Today</a>
+                    <a href="{{ audit_preset_urls['7d'] }}" class="btn btn-sm btn-outline-secondary">Last 7 days</a>
+                    <a href="{{ audit_preset_urls['30d'] }}" class="btn btn-sm btn-outline-secondary">Last 30 days</a>
+                    <a href="{{ audit_preset_urls.clear_dates }}" class="btn btn-sm btn-link text-muted px-2">Clear dates</a>
+                </div>
+            </div>
+            <div class="col-12 d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary">Apply filters</button>
+                <a href="{{ url_for('audit_logs') }}" class="btn btn-outline-secondary">Reset all</a>
+                <a href="{{ export_url }}" class="btn btn-soft-primary"><i class="ri-file-download-line me-1"></i>Download CSV (filtered)</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 al-shell">
+    <div class="text-muted small">
+        {% if total_count %}
+        Showing <strong>{{ row_start }}</strong>–<strong>{{ row_end }}</strong> of <strong>{{ total_count }}</strong>
+        {% else %}
+        No entries match.
+        {% endif %}
+    </div>
+    {% if total_pages > 1 %}
+    <nav aria-label="Audit pages">
+        <ul class="pagination pagination-sm mb-0 flex-wrap">
+            <li class="page-item {{ 'disabled' if not first_page_url else '' }}"><a class="page-link" href="{{ first_page_url or '#' }}">First</a></li>
+            <li class="page-item {{ 'disabled' if not prev_page_url else '' }}"><a class="page-link" href="{{ prev_page_url or '#' }}">Prev</a></li>
+            <li class="page-item disabled"><span class="page-link">Page {{ page }} / {{ total_pages }}</span></li>
+            <li class="page-item {{ 'disabled' if not next_page_url else '' }}"><a class="page-link" href="{{ next_page_url or '#' }}">Next</a></li>
+            <li class="page-item {{ 'disabled' if not last_page_url else '' }}"><a class="page-link" href="{{ last_page_url or '#' }}">Last</a></li>
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<div class="card border-0 shadow-sm al-shell">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-muted small" scope="col">#</th>
+                        <th style="min-width: 11rem;" scope="col">Time (UTC)</th>
+                        <th style="min-width: 12rem;" scope="col">Action</th>
+                        <th style="min-width: 10rem;" scope="col">Entity</th>
+                        <th scope="col">Details</th>
+                        <th class="text-end">Open</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    {% set href = audit_href(log) %}
+                    <tr>
+                        <td class="text-muted small font-monospace">{{ log.id }}</td>
+                        <td>
+                            <div class="small font-monospace text-muted text-nowrap">{% if log.created_at %}{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}—{% endif %}</div>
+                            {% if log.created_at %}<div class="small text-muted">{{ fmt_time_ago(log.created_at) }}</div>{% endif %}
+                        </td>
+                        <td>{{ action_badge(log.action) }}</td>
+                        <td class="small">{{ entity_record_link(log) }}</td>
+                        <td class="small text-muted al-details"><code class="small user-select-all d-block bg-light rounded px-2 py-1" style="white-space: pre-wrap;">{{ log.details or '—' }}</code></td>
+                        <td class="text-end text-nowrap">
+                            {% if href != audit_self_href %}
+                            <a href="{{ href }}" class="btn btn-sm btn-soft-primary">Open</a>
+                            {% else %}
+                            <span class="text-muted small">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-muted p-4 text-center">No audit entries match these filters.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-transparent small text-muted border-top-0">
+        <strong>Admin only.</strong> Open links resolve from <code>entity_id</code> and parsed <code>details</code> (e.g. <code>subscription_id=</code>, <code>member_id=</code>, <code>certificate_no=</code>).
+        When no target is found, Open is unavailable.
+    </div>
+</div>
+{% endblock %}

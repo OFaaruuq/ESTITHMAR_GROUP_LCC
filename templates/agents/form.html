@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit agent' if is_edit else 'Register agent' }}{% endblock %}
+{% block page_heading %}{{ 'Edit agent' if is_edit else 'Register agent' }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('agents_list') }}">Agents</a></li>
+        {% if is_edit %}
+        <li class="breadcrumb-item"><a href="{{ url_for('agents_profile', id=agent.id) }}">{{ agent.agent_id }}</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Edit</li>
+        {% else %}
+        <li class="breadcrumb-item active" aria-current="page">New</li>
+        {% endif %}
+    </ol>
+</nav>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="alert alert-info border-0 mb-3">
+            <div class="d-flex gap-2">
+                <i class="ri-shield-user-line fs-5"></i>
+                <div>
+                    <strong>Non-financial role.</strong> Agents do not hold or own member funds. They support <strong>assignment, territory, and reporting</strong> (who introduced whom, team volume).
+                </div>
+            </div>
+        </div>
+
+        <form method="post" class="needs-validation" novalidate>
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="mb-0"><i class="ri-user-star-line me-2 text-primary"></i>Identity</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-0">
+                        <label class="form-label" for="full_name">Full name <span class="text-danger">*</span></label>
+                        <input type="text" name="full_name" id="full_name" class="form-control form-control-lg" required
+                               maxlength="200" autocomplete="name" value="{{ agent.full_name if agent else '' }}" placeholder="Display name">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="mb-0"><i class="ri-map-2-line me-2 text-primary"></i>Territory &amp; contact</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="phone">Phone</label>
+                        <input type="tel" name="phone" id="phone" class="form-control" autocomplete="tel"
+                               inputmode="tel" maxlength="22"
+                               title="7–15 digits; use + and country code for international numbers"
+                               placeholder="+252 63 1234567"
+                               value="{{ agent.phone if agent else '' }}">
+                        <div class="form-text">Optional. Digits only (7–15), with optional +. Spaces, hyphens, and parentheses allowed. No letters.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="region">Region</label>
+                        <input type="text" name="region" id="region" class="form-control" maxlength="120"
+                               value="{{ agent.region if agent else '' }}" placeholder="e.g. East Africa">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="territory">Territory</label>
+                        <input type="text" name="territory" id="territory" class="form-control" maxlength="120"
+                               value="{{ agent.territory if agent else '' }}" placeholder="Optional sub-area or office">
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label" for="country">Country</label>
+                        <input type="text" name="country" id="country" class="form-control" maxlength="120"
+                               value="{{ agent.country if agent else '' }}" autocomplete="country-name">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="mb-0"><i class="ri-toggle-line me-2 text-primary"></i>Status</h5>
+                </div>
+                <div class="card-body">
+                    <label class="form-label" for="status">Operational status</label>
+                    <select name="status" id="status" class="form-select">
+                        <option value="Active" {{ 'selected' if not agent or agent.status == 'Active' else '' }}>Active — can be assigned to new members</option>
+                        <option value="Inactive" {{ 'selected' if agent and agent.status == 'Inactive' else '' }}>Inactive — hidden from default pickers; existing member links stay until changed</option>
+                    </select>
+                    <p class="form-text mb-0">Setting inactive does not remove members from this agent automatically.</p>
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 align-items-center pt-2 border-top">
+                <button type="submit" class="btn btn-primary btn-lg px-4"><i class="ri-save-3-line me-1"></i>Save</button>
+                {% if is_edit %}
+                <a href="{{ url_for('agents_profile', id=agent.id) }}" class="btn btn-outline-secondary">Cancel</a>
+                {% else %}
+                <a href="{{ url_for('agents_list') }}" class="btn btn-outline-secondary">Cancel</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-4">
+        {% if is_edit %}
+        <div class="card border-0 shadow-sm sticky-lg-top" style="top: 1rem;">
+            <div class="card-body">
+                <h6 class="text-muted text-uppercase small mb-3">Record</h6>
+                <p class="mb-2">
+                    <span class="text-muted small d-block">Agent ID</span>
+                    <span class="font-monospace fs-5 fw-semibold">{{ agent.agent_id }}</span>
+                </p>
+                <p class="mb-2">
+                    <span class="text-muted small d-block">Internal ID</span>
+                    <span class="font-monospace text-muted">#{{ agent.id }}</span>
+                </p>
+                {% if agent.created_at %}
+                <p class="mb-2 small"><span class="text-muted d-block">Created</span>{{ agent.created_at.strftime('%d %b %Y, %H:%M') }} UTC</p>
+                {% endif %}
+                {% if agent.updated_at %}
+                <p class="mb-3 small"><span class="text-muted d-block">Last updated</span>{{ agent.updated_at.strftime('%d %b %Y, %H:%M') }} UTC</p>
+                {% endif %}
+                <hr>
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('agents_profile', id=agent.id) }}" class="btn btn-soft-primary btn-sm"><i class="ri-eye-line me-1"></i>View profile</a>
+                    <a href="{{ url_for('members_list') }}?agent_id={{ agent.id }}" class="btn btn-outline-secondary btn-sm"><i class="ri-team-line me-1"></i>Members</a>
+                    <a href="{{ url_for('contributions_list') }}?agent_id={{ agent.id }}" class="btn btn-outline-secondary btn-sm"><i class="ri-hand-coin-line me-1"></i>Contributions</a>
+                    <a href="{{ url_for('reports_agents') }}" class="btn btn-outline-secondary btn-sm"><i class="ri-bar-chart-line me-1"></i>Performance report</a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card border-0 shadow-sm bg-light">
+            <div class="card-body">
+                <h6 class="mb-2"><i class="ri-information-line me-1"></i>After you save</h6>
+                <p class="small text-muted mb-0">A unique <strong>agent ID</strong> is generated. You can assign members when registering or editing people.</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+  var form = document.querySelector('form.needs-validation');
+  if (!form) return;
+  form.addEventListener('submit', function (e) {
+    if (!form.checkValidity()) { e.preventDefault(); e.stopPropagation(); }
+    form.classList.add('was-validated');
+  }, false);
+})();
+</script>
+{% endblock %}

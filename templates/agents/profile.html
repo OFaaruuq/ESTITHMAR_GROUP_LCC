@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% set kind_labels = dict(member_kinds) %}
+{% block title %}{{ agent.full_name }} — {{ agent.agent_id }}{% endblock %}
+{% block page_heading %}Agent profile{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('agents_list') }}">Agents</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ agent.agent_id }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div class="d-flex gap-3 align-items-center">
+        <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center flex-shrink-0" style="width:56px;height:56px;font-size:1.1rem;font-weight:700;">
+            {{ agent.full_name[:2]|upper }}
+        </div>
+        <div>
+            <h4 class="mb-1">{{ agent.full_name }}</h4>
+            <p class="mb-0 text-muted small font-monospace">{{ agent.agent_id }}</p>
+            <div class="mt-2">
+                <span class="badge bg-{{ 'success' if agent.status == 'Active' else 'secondary' }}">{{ agent.status }}</span>
+                {% if agent.region %}<span class="badge bg-light text-dark border">{{ agent.region }}</span>{% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{{ url_for('agents_edit', id=agent.id) }}" class="btn btn-primary"><i class="ri-pencil-line me-1"></i>Edit</a>
+        <div class="btn-group">
+            <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Open data</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{{ url_for('members_list') }}?agent_id={{ agent.id }}"><i class="ri-team-line me-2"></i>Members</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('subscriptions_list') }}?agent_id={{ agent.id }}"><i class="ri-stack-line me-2"></i>Subscriptions</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('contributions_list') }}?agent_id={{ agent.id }}"><i class="ri-hand-coin-line me-2"></i>Contributions</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{{ url_for('reports_agents') }}"><i class="ri-bar-chart-line me-2"></i>Agent performance report</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="alert alert-info border-0 mb-4" role="alert">
+    <div class="d-flex gap-2">
+        <i class="ri-information-line fs-5 flex-shrink-0"></i>
+        <div class="small">
+            <strong>Relationship role only.</strong> This agent does not own member funds. Totals below attribute <strong>members and transactions</strong> assigned to this agent for reporting and territory.
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Members (all assigned)</p>
+                <p class="fs-4 fw-semibold mb-0">{{ member_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Active members</p>
+                <p class="fs-4 fw-semibold mb-0 text-success">{{ active_members_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1" title="Active members with at least one non-cancelled share subscription">Active investors</p>
+                <p class="fs-4 fw-semibold mb-0">{{ active_investors_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Contributions collected</p>
+                <p class="fs-5 fw-semibold mb-0">{{ contrib_total|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Subscribed share value</p>
+                <p class="fs-5 fw-semibold mb-0">{{ share_total|money }}</p>
+                <p class="small text-muted mb-0">{{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Share units (recorded)</p>
+                <p class="fs-4 fw-semibold mb-0">{% if share_units > 0 %}{{ share_units }}{% else %}—{% endif %}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-5 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent py-3">
+                <h5 class="mb-0"><i class="ri-map-pin-user-line me-2 text-primary"></i>Contact &amp; territory</h5>
+            </div>
+            <div class="card-body">
+                <dl class="row small mb-0">
+                    <dt class="col-sm-4 text-muted">Phone</dt>
+                    <dd class="col-sm-8 mb-2">{% if agent.phone %}<a href="tel:{{ agent.phone }}">{{ agent.phone }}</a>{% else %}—{% endif %}</dd>
+                    <dt class="col-sm-4 text-muted">Region</dt>
+                    <dd class="col-sm-8 mb-2">{{ agent.region or '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">Territory</dt>
+                    <dd class="col-sm-8 mb-2">{{ agent.territory or '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">Country</dt>
+                    <dd class="col-sm-8 mb-2">{{ agent.country or '—' }}</dd>
+                    {% if agent.created_at %}
+                    <dt class="col-sm-4 text-muted">Record created</dt>
+                    <dd class="col-sm-8 mb-0">{{ agent.created_at.strftime('%d %b %Y, %H:%M') }} UTC</dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-7 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="mb-0"><i class="ri-team-line me-2 text-primary"></i>Members on this agent</h5>
+                <a href="{{ url_for('members_list') }}?agent_id={{ agent.id }}" class="btn btn-sm btn-soft-primary">View all{% if member_count > 50 %} ({{ member_count }}){% endif %}</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col">Member ID</th>
+                                <th scope="col">Name</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Status</th>
+                                <th scope="col">Join date</th>
+                                <th scope="col" class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in members_preview %}
+                            {% set mk = m.member_kind or 'member' %}
+                            <tr>
+                                <td class="font-monospace small">{{ m.member_id }}</td>
+                                <td><a href="{{ url_for('members_profile', id=m.id) }}" class="text-reset fw-medium">{{ m.full_name }}</a></td>
+                                <td><span class="badge text-bg-primary">{{ kind_labels.get(mk, mk) }}</span></td>
+                                <td><span class="badge bg-{{ 'success' if m.status == 'Active' else 'secondary' }}">{{ m.status }}</span></td>
+                                <td class="text-muted small">{{ m.join_date.strftime('%d %b %Y') if m.join_date else '—' }}</td>
+                                <td class="text-end text-nowrap"><a href="{{ url_for('members_profile', id=m.id) }}" class="btn btn-sm btn-soft-primary py-0">Profile</a></td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center p-5">
+                                    <p class="text-muted mb-3">No members assigned yet.</p>
+                                    <a href="{{ url_for('members_new') }}" class="btn btn-success btn-sm">Register member</a>
+                                    <span class="text-muted small d-block mt-2">Or assign this agent when editing an existing member.</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if members_preview %}
+                {% if member_count > 50 %}
+                <p class="small text-muted mb-0 px-3 py-2 border-top">Showing 50 most recent by join date. <a href="{{ url_for('members_list') }}?agent_id={{ agent.id }}">Full list</a>.</p>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if members_preview %}
+<div class="row">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body py-3 d-flex flex-wrap gap-2 align-items-center">
+                <span class="text-muted small me-2">Quick links:</span>
+                {% for m in members_preview[:8] %}
+                <a href="{{ url_for('members_profile', id=m.id) }}" class="btn btn-sm btn-outline-secondary">{{ m.member_id }}</a>
+                {% endfor %}
+                {% if member_count > 8 %}
+                <a href="{{ url_for('members_list') }}?agent_id={{ agent.id }}" class="btn btn-sm btn-link">+ {{ member_count - 8 }} more</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

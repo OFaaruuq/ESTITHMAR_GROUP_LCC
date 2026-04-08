@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Accounting settings{% endblock %}
+{% block page_heading %}Accounting — Account settings{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-2">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('accounting_hub') }}">Accounting</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Account settings</li>
+    </ol>
+</nav>
+
+{% include 'accounting/_subnav.html' %}
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3"><h6 class="mb-0">General ledger options</h6></div>
+            <div class="card-body">
+                <form method="post">
+                    <div class="mb-3">
+                        <label class="form-label" for="fiscal-m">Fiscal year start month</label>
+                        <select name="fiscal_year_start_month" id="fiscal-m" class="form-select" style="max-width: 280px;">
+                            {% for m in range(1, 13) %}
+                            <option value="{{ m }}" {{ 'selected' if (extra.get('accounting_fiscal_year_start_month') or 1) == m else '' }}>{{ m }} — {{ ['January','February','March','April','May','June','July','August','September','October','November','December'][m-1] }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="form-text small text-muted mb-0">Used for period-based reports and filters. Journal dates are not restricted by this setting.</p>
+                    </div>
+                    {% if current_user.role == 'admin' %}
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="accounting_enabled" value="1" id="acct_gl" {{ 'checked' if extra.get('accounting_enabled', True) else '' }}>
+                        <label class="form-check-label" for="acct_gl"><strong>Enable automated GL posting</strong> — contributions, deployments, and profit batches write journal entries when this is on.</label>
+                    </div>
+                    {% else %}
+                    <p class="small text-muted mb-3">Automated posting is <strong>{% if accounting_on %}enabled{% else %}disabled{% endif %}</strong>. Only an administrator can change this.</p>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white py-3"><h6 class="mb-0">Organization</h6></div>
+            <div class="card-body small">
+                <p class="mb-2">Reporting currency: <strong>{{ settings.currency_code }}</strong> ({{ settings.currency_symbol }})</p>
+                {% if current_user.role == 'admin' %}
+                <p class="mb-0"><a href="{{ url_for('settings_page') }}">Open organization settings</a> to change currency, branding, and other policies.</p>
+                {% else %}
+                <p class="mb-0 text-muted">Currency is set under organization settings (admin).</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-3">
+    <div class="card-header bg-white py-3"><h6 class="mb-0">Posting rules (reference)</h6></div>
+    <div class="card-body small text-muted mb-0">
+        <ul class="mb-0 ps-3">
+            <li>Verified contribution → <strong>Dr</strong> Cash · <strong>Cr</strong> Member funds</li>
+            <li>Investment deployment increase → <strong>Dr</strong> Deployed · <strong>Cr</strong> Member funds (reversal when deployment decreases)</li>
+            <li>Profit distribution batch → <strong>Dr</strong> Distribution expense · <strong>Cr</strong> Cash</li>
+            <li>Manual journals — use <a href="{{ url_for('accounting_manual_entry') }}">New journal entry</a> for adjustments.</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

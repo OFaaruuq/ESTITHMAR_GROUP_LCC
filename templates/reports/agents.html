@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Agents performance{% endblock %}
+{% block page_heading %}Agent performance{% endblock %}
+{% block extra_css %}
+<style>
+.ar-hero { border-radius: 0.5rem; border: 1px solid rgba(12, 118, 138, 0.15); background: linear-gradient(135deg, rgba(12, 118, 138, 0.07) 0%, rgba(255,255,255,0.98) 55%); }
+.ar-kpi { transition: transform .12s ease; }
+.ar-kpi:hover { transform: translateY(-1px); }
+#agents-report-table tbody tr[data-agent-row] { transition: opacity .15s ease; }
+</style>
+{% endblock %}
+{% block content %}
+{% set cur = currency_code %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Agent performance</li>
+    </ol>
+</nav>
+
+<div class="ar-hero p-3 p-md-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h5 class="mb-2"><i class="ri-team-line me-2 text-primary"></i>Performance by agent</h5>
+            <p class="text-muted small mb-0" style="max-width: 44rem;">
+                Ranked by <strong>contributions collected</strong> (managed volume). <strong>Subscribed share value</strong> is the sum of active share subscription commitments for members assigned to each agent.
+                Open an agent for members, subscriptions, and edits.
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('agents_list') }}" class="btn btn-sm btn-soft-primary"><i class="ri-contacts-line me-1"></i>Agent directory</a>
+            <a href="{{ url_for('export_agents_xlsx') }}" class="btn btn-sm btn-outline-primary"><i class="ri-file-excel-2-line me-1"></i>Export Excel</a>
+            <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-folder-chart-line me-1"></i>Reports hub</a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100 ar-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Agents</p>
+                <p class="fs-4 fw-semibold mb-0">{{ totals.agents }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100 ar-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Members (all agents)</p>
+                <p class="fs-4 fw-semibold mb-0">{{ totals.members }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100 ar-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Collected total</p>
+                <p class="fs-5 fw-semibold mb-0 text-primary">{{ settings.currency_symbol }}{{ totals.volume|money }}</p>
+                <p class="small text-muted mb-0">{{ cur }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100 ar-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Subscribed share value</p>
+                <p class="fs-5 fw-semibold mb-0">{{ settings.currency_symbol }}{{ totals.share_value|money }}</p>
+                <p class="small text-muted mb-0">{{ cur }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 border-bottom">
+        <div class="row align-items-center g-2">
+            <div class="col">
+                <h6 class="mb-0">All agents</h6>
+                <p class="text-muted small mb-0">Sorted by contribution volume (highest first). Use search to filter by name, ID, region, or country.</p>
+            </div>
+            <div class="col-12 col-lg-auto">
+                <label class="visually-hidden" for="agents-report-search">Search agents</label>
+                <div class="position-relative">
+                    <span class="ri-search-line position-absolute top-50 start-0 translate-middle-y ms-2 text-muted small"></span>
+                    <input type="search" id="agents-report-search" class="form-control form-control-sm ps-4" placeholder="Search…" autocomplete="off" aria-describedby="agents-report-count">
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="agents-report-table">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-nowrap" scope="col">#</th>
+                        <th scope="col">Agent ID</th>
+                        <th scope="col">Name</th>
+                        <th class="d-none d-md-table-cell" scope="col">Region</th>
+                        <th class="d-none d-lg-table-cell" scope="col">Country</th>
+                        <th scope="col">Status</th>
+                        <th class="text-end" scope="col">Members</th>
+                        <th class="text-end" scope="col">Collected</th>
+                        <th class="text-end d-none d-xl-table-cell" scope="col">Share value</th>
+                        <th class="text-end" scope="col"><span class="d-none d-md-inline">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    {% set ag = row.agent %}
+                    {% set st = (ag.status or '')|lower %}
+                    <tr data-agent-row
+                        data-search="{{ (ag.agent_id ~ ' ' ~ (ag.full_name or '') ~ ' ' ~ (ag.region or '') ~ ' ' ~ (ag.country or ''))|lower|e }}">
+                        <td class="text-muted small">{{ loop.index }}</td>
+                        <td class="font-monospace small">{{ ag.agent_id }}</td>
+                        <td>
+                            <a href="{{ url_for('agents_profile', id=ag.id) }}" class="fw-semibold text-decoration-none">{{ ag.full_name }}</a>
+                        </td>
+                        <td class="d-none d-md-table-cell small">{{ ag.region or '—' }}</td>
+                        <td class="d-none d-lg-table-cell small">{{ ag.country or '—' }}</td>
+                        <td>
+                            {% if st == 'active' %}
+                            <span class="badge bg-success-subtle text-success border border-success border-opacity-25">Active</span>
+                            {% else %}
+                            <span class="badge bg-secondary-subtle text-secondary border">{{ ag.status or '—' }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ row.members }}</td>
+                        <td class="text-end text-nowrap">{{ row.volume|money }} <span class="text-muted small">{{ cur }}</span></td>
+                        <td class="text-end text-nowrap d-none d-xl-table-cell">{{ row.share_value|money }} <span class="text-muted small">{{ cur }}</span></td>
+                        <td class="text-end text-nowrap">
+                            <a href="{{ url_for('agents_profile', id=ag.id) }}" class="btn btn-sm btn-soft-primary py-0 px-2" title="View agent">View</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="10" class="text-center py-5">
+                            <p class="text-muted mb-2"><i class="ri-inbox-line fs-3 d-block mb-2"></i>No agents in the system yet.</p>
+                            <a href="{{ url_for('agents_new') }}" class="btn btn-sm btn-primary">Register an agent</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-light border-top-0 py-2 small text-muted" id="agents-report-count">
+        {% if rows %}Showing <strong id="agents-visible-count">{{ rows|length }}</strong> of {{ rows|length }} agents.{% else %}&nbsp;{% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+{% if rows %}
+<script>
+(function() {
+    var input = document.getElementById('agents-report-search');
+    var table = document.getElementById('agents-report-table');
+    var countEl = document.getElementById('agents-visible-count');
+    if (!input || !table) return;
+    var rows = table.querySelectorAll('tbody tr[data-agent-row]');
+    var total = rows.length;
+    function run() {
+        var q = (input.value || '').trim().toLowerCase();
+        var n = 0;
+        rows.forEach(function(tr) {
+            var hay = tr.getAttribute('data-search') || '';
+            var show = !q || hay.indexOf(q) !== -1;
+            tr.style.display = show ? '' : 'none';
+            if (show) n++;
+        });
+        if (countEl) countEl.textContent = String(n);
+    }
+    input.addEventListener('input', run);
+    input.addEventListener('search', run);
+})();
+</script>
+{% endif %}
+{% endblock %}

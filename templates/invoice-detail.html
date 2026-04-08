@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% block title %}Invoice {{ invoice_no }}{% endblock %}
+{% block page_heading %}Invoice {{ invoice_no }}{% endblock %}
+{% block extra_css %}
+<style>
+.invoice-page { max-width: 920px; margin-left: auto; margin-right: auto; }
+.invoice-toolbar {
+  background: linear-gradient(135deg, rgba(13, 110, 253, 0.06) 0%, rgba(13, 110, 253, 0.02) 100%);
+  border: 1px solid rgba(13, 110, 253, 0.12);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+.invoice-card {
+  border-radius: 0.625rem;
+  border: 1px solid rgba(0,0,0,.08);
+  box-shadow: 0 0.25rem 1rem rgba(0,0,0,.06);
+  overflow: hidden;
+}
+.invoice-accent { height: 4px; background: linear-gradient(90deg, var(--bs-primary), #5b8cff); }
+.invoice-hero {
+  background: linear-gradient(145deg, rgba(13, 110, 253, 0.09) 0%, rgba(255,255,255,0.95) 55%);
+  border: 1px solid rgba(13, 110, 253, 0.1);
+  border-radius: 0.5rem;
+  padding: 1.25rem 1.35rem;
+}
+.invoice-hero-amount {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.invoice-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.65rem;
+  border-radius: 2rem;
+  border: 2px solid transparent;
+}
+.invoice-pill-paid { color: #146c43; background: rgba(25, 135, 84, 0.1); border-color: rgba(25, 135, 84, 0.35); }
+.invoice-pill-partial { color: #856404; background: rgba(255, 193, 7, 0.15); border-color: rgba(255, 193, 7, 0.5); }
+.invoice-pill-verified { color: #146c43; background: rgba(25, 135, 84, 0.08); border-color: rgba(25, 135, 84, 0.3); }
+.invoice-pill-pending { color: #495057; background: rgba(108, 117, 125, 0.1); border-color: rgba(108, 117, 125, 0.35); }
+.invoice-section-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--bs-secondary);
+  margin-bottom: 0.75rem;
+}
+.invoice-info-card {
+  height: 100%;
+  border: 1px solid rgba(0,0,0,.07);
+  border-radius: 0.5rem;
+  padding: 1rem 1.15rem;
+  background: #fff;
+}
+.invoice-dl dt { font-weight: 500; color: var(--bs-secondary); }
+.invoice-dl dd { margin-bottom: 0.5rem; }
+.invoice-dl dd:last-child { margin-bottom: 0; }
+.invoice-line-wrap {
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.invoice-table thead th {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bs-secondary);
+  border-bottom-width: 1px;
+}
+.invoice-table tbody td { vertical-align: middle; }
+.invoice-total-row td > div { border-top: 2px solid rgba(13, 110, 253, 0.2); background: rgba(13, 110, 253, 0.06); }
+.invoice-verify-panel {
+  border-radius: 0.5rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid transparent;
+}
+.invoice-verify-ok { background: rgba(25, 135, 84, 0.08); border-color: rgba(25, 135, 84, 0.25); }
+.invoice-verify-warn { background: rgba(108, 117, 125, 0.08); border-color: rgba(108, 117, 125, 0.22); }
+@media (max-width: 767.98px) {
+  .invoice-hero { text-align: center; }
+  .invoice-hero .invoice-hero-amount { font-size: 1.75rem !important; }
+  .invoice-toolbar .d-flex.gap-2 { width: 100%; }
+  .invoice-toolbar .btn { flex: 1 1 auto; justify-content: center; }
+}
+@media print {
+  @page { margin: 14mm; size: auto; }
+  #page-topbar, .vertical-menu, .footer, .no-print { display: none !important; }
+  .main-content { margin-left: 0 !important; padding-top: 0 !important; }
+  .invoice-card { box-shadow: none !important; border: 1px solid #ccc !important; }
+  .invoice-toolbar { display: none !important; }
+  .invoice-page { max-width: none; }
+  a[href]:after { content: none !important; }
+}
+</style>
+{% endblock %}
+{% block content %}
+<nav class="no-print mb-3 invoice-page" aria-label="breadcrumb">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}" class="text-decoration-none">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('invoices_list') }}" class="text-decoration-none">Invoices</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ invoice_no }}</li>
+    </ol>
+</nav>
+
+<div class="no-print invoice-toolbar invoice-page mb-3">
+    <div class="d-flex flex-wrap align-items-stretch align-items-md-center justify-content-between gap-3">
+        <div class="d-flex flex-wrap gap-2 flex-grow-1">
+            <a href="{{ url_for('invoices_list') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="ri-arrow-left-line me-1"></i><span class="d-none d-sm-inline">Back</span>
+            </a>
+            <button type="button" class="btn btn-primary btn-sm" onclick="window.print()" aria-label="Print invoice">
+                <i class="ri-printer-line me-1"></i>Print
+            </button>
+            <a href="{{ url_for('contributions_receipt', id=c.id) }}" class="btn btn-soft-primary btn-sm" target="_blank" rel="noopener">
+                <i class="ri-file-text-line me-1"></i><span class="d-none d-sm-inline">Official </span>Receipt
+            </a>
+        </div>
+        <div class="d-flex flex-wrap gap-2 justify-content-md-end">
+            <a href="{{ url_for('members_profile', id=c.member_id) }}" class="btn btn-outline-primary btn-sm">
+                <i class="ri-user-line me-1"></i>Member
+            </a>
+            {% if c.subscription %}
+            <a href="{{ url_for('subscriptions_profile', id=c.subscription.id) }}" class="btn btn-outline-primary btn-sm">
+                <i class="ri-stack-line me-1"></i>Subscription
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card invoice-card invoice-page border-0">
+    <div class="invoice-accent"></div>
+    <div class="card-body p-3 p-md-4 p-lg-5">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+            <div class="d-flex gap-3 align-items-start">
+                <img src="{{ brand_logo_light_lg }}" alt="" height="36" class="flex-shrink-0 mt-1"/>
+                <div>
+                    <h2 class="h5 mb-1 fw-semibold">{{ extra.company_name or 'Istithmar Investment Management' }}</h2>
+                    {% if extra.company_address %}
+                    <p class="text-muted small mb-0">{{ extra.company_address }}</p>
+                    {% endif %}
+                    {% if extra.company_registration %}
+                    <p class="text-muted small mb-0">{{ extra.company_registration }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="invoice-hero mb-4">
+            <div class="row g-3 align-items-center">
+                <div class="col-lg-7">
+                    <p class="small text-uppercase text-muted mb-1" style="letter-spacing: .12em;">Payment invoice</p>
+                    <h3 class="h4 mb-2 mb-lg-3 fw-bold">#{{ invoice_no }}</h3>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <span class="invoice-pill {% if status == 'Paid' %}invoice-pill-paid{% else %}invoice-pill-partial{% endif %}">{{ status }}</span>
+                        {% if c.verified %}
+                        <span class="invoice-pill invoice-pill-verified"><i class="ri-checkbox-circle-line me-1"></i>Verified</span>
+                        {% else %}
+                        <span class="invoice-pill invoice-pill-pending"><i class="ri-time-line me-1"></i>Pending verification</span>
+                        {% endif %}
+                        {% if c.receipt_no %}
+                        <span class="badge bg-light text-dark border font-monospace">Receipt {{ c.receipt_no }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-lg-5 text-lg-end">
+                    <p class="small text-muted mb-1">Amount (this document)</p>
+                    <p class="invoice-hero-amount display-6 fw-bold text-primary mb-0">
+                        {{ settings.currency_symbol }}{{ c.amount|money }}
+                        <span class="fs-5 fw-normal text-muted">{{ settings.currency_code or 'USD' }}</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <div class="invoice-info-card">
+                    <div class="invoice-section-title">Billed to</div>
+                    <p class="mb-1 fw-semibold fs-6">{{ c.member.full_name }}</p>
+                    <p class="mb-2 small text-muted">{{ c.member.address or '—' }}</p>
+                    <dl class="row small invoice-dl mb-0">
+                        <dt class="col-5">Member ID</dt>
+                        <dd class="col-7 font-monospace">{{ c.member.member_id }}</dd>
+                        <dt class="col-5">National ID</dt>
+                        <dd class="col-7">{{ c.member.national_id or '—' }}</dd>
+                        <dt class="col-5">Phone</dt>
+                        <dd class="col-7">{{ c.member.phone or '—' }}</dd>
+                        {% if c.member.agent %}
+                        <dt class="col-5">Agent</dt>
+                        <dd class="col-7">{{ c.member.agent.full_name }} <span class="text-muted">({{ c.member.agent.agent_id }})</span></dd>
+                        {% endif %}
+                    </dl>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="invoice-info-card">
+                    <div class="invoice-section-title">Document details</div>
+                    <dl class="small invoice-dl mb-0">
+                        <dt>Invoice date</dt>
+                        <dd>{{ c.date.strftime('%d %B %Y') if c.date else '—' }}</dd>
+                        <dt>Transaction ID</dt>
+                        <dd class="font-monospace">#{{ c.id }}</dd>
+                        <dt>Payment method</dt>
+                        <dd><span class="badge bg-light text-dark border">{{ c.payment_type }}</span></dd>
+                        <dt>Reference</dt>
+                        <dd class="mb-0">{{ c.method_ref or '—' }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <div class="invoice-section-title">Line items</div>
+        <div class="invoice-line-wrap mb-4">
+            <div class="table-responsive">
+                <table class="table table-hover invoice-table mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 48px;">#</th>
+                            <th>Description</th>
+                            <th class="d-none d-md-table-cell" style="min-width: 110px;">Method</th>
+                            <th class="d-none d-lg-table-cell" style="min-width: 100px;">Reference</th>
+                            <th class="text-end" style="min-width: 130px;">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="text-muted">1</td>
+                            <td>
+                                <div class="fw-medium">Contribution payment</div>
+                                <div class="small text-muted">Member contribution or installment</div>
+                                <div class="d-md-none small mt-1">
+                                    <span class="badge bg-light text-dark border">{{ c.payment_type }}</span>
+                                    {% if c.method_ref %}<span class="text-muted ms-1">Ref: {{ c.method_ref }}</span>{% endif %}
+                                </div>
+                            </td>
+                            <td class="d-none d-md-table-cell"><span class="badge bg-light text-dark border">{{ c.payment_type }}</span></td>
+                            <td class="d-none d-lg-table-cell text-muted">{{ c.method_ref or '—' }}</td>
+                            <td class="text-end fw-semibold text-nowrap">{{ settings.currency_symbol }}{{ c.amount|money }} <span class="text-muted small fw-normal">{{ settings.currency_code or 'USD' }}</span></td>
+                        </tr>
+                        <tr class="invoice-total-row">
+                            <td colspan="5" class="p-0 border-0">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-3">
+                                    <span class="fw-semibold mb-0">Total (this document)</span>
+                                    <span class="fs-5 fw-bold text-primary text-nowrap mb-0">{{ settings.currency_symbol }}{{ c.amount|money }} <span class="fs-6 fw-normal text-muted">{{ settings.currency_code or 'USD' }}</span></span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="invoice-verify-panel mb-4 {% if c.verified %}invoice-verify-ok{% else %}invoice-verify-warn{% endif %}">
+            <div class="d-flex flex-wrap align-items-start gap-2">
+                {% if c.verified %}
+                <i class="ri-shield-check-line text-success fs-5 flex-shrink-0"></i>
+                <div>
+                    <strong class="d-block">Payment verified</strong>
+                    {% if c.verified_at %}
+                    <span class="small text-muted">Confirmed {{ c.verified_at.strftime('%d %b %Y, %H:%M') }} UTC{% if c.verified_by %} · {{ c.verified_by.username }}{% endif %}</span>
+                    {% endif %}
+                </div>
+                {% else %}
+                <i class="ri-error-warning-line text-secondary fs-5 flex-shrink-0"></i>
+                <div>
+                    <strong class="d-block">Not yet verified</strong>
+                    <span class="small text-muted">Verification confirms this payment against your records. The official receipt page includes verification actions for authorized users.</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if c.notes %}
+        <div class="mb-4 p-3 rounded border-start border-4 border-secondary bg-light">
+            <p class="small text-muted mb-1">Internal notes</p>
+            <p class="mb-0 small">{{ c.notes }}</p>
+        </div>
+        {% endif %}
+
+        {% if c.subscription %}
+        <div class="alert alert-primary border-0 mb-0" style="--bs-alert-bg: rgba(13, 110, 253, 0.08); --bs-alert-border-color: rgba(13, 110, 253, 0.2);">
+            <div class="d-flex flex-wrap align-items-start gap-3 justify-content-between">
+                <div class="d-flex gap-2">
+                    <i class="ri-links-line fs-5 text-primary flex-shrink-0"></i>
+                    <div>
+                        <strong class="d-block">Linked subscription</strong>
+                        <span class="small text-muted">{{ c.subscription.subscription_no }}</span>
+                        {% if status == 'Partially Paid' %}
+                        <p class="small mb-0 mt-1">Additional amounts may still be outstanding on this subscription.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <a href="{{ url_for('subscriptions_profile', id=c.subscription.id) }}" class="btn btn-sm btn-primary flex-shrink-0 no-print">View subscription</a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="no-print text-center small text-muted mt-3 mb-2 invoice-page">
+    {% if c.created_at %}
+    <span><i class="ri-time-line me-1"></i>Recorded {{ c.created_at.strftime('%d %b %Y, %H:%M') }} UTC</span>
+    {% endif %}
+</div>
+{% endblock %}

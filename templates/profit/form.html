@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}Profit — Istithmar Investment Management{% endblock %}
+{% block page_heading %}Profit distribution{% endblock %}
+{% block extra_css %}
+<style>
+.pf-hero { border-radius: 0.5rem; border: 1px solid rgba(25, 135, 84, 0.15); background: linear-gradient(135deg, rgba(25, 135, 84, 0.08) 0%, rgba(255,255,255,0.98) 55%); }
+.pf-card { border-radius: 0.5rem; border: 1px solid rgba(0,0,0,.08); box-shadow: 0 0.2rem 1rem rgba(0,0,0,.05); }
+.pf-shell { max-width: 1100px; margin-left: auto; margin-right: auto; }
+</style>
+{% endblock %}
+{% block content %}
+{% set cur = currency_code %}
+
+<nav aria-label="breadcrumb" class="mb-3 pf-shell">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Profit distribution</li>
+    </ol>
+</nav>
+
+<div class="pf-hero p-3 p-md-4 mb-4 pf-shell">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h5 class="mb-1"><i class="ri-share-forward-line me-2 text-success"></i>Istithmar Investment Management — distribute profit to members</h5>
+            <p class="text-muted small mb-2" style="max-width: 42rem;">
+                Aligns with the platform business model (§11–13): <strong>Member ownership %</strong> = that member’s eligible paid amount ÷ <strong>sum of eligible paid amounts</strong> in the pool.
+                <strong>Member profit</strong> = ownership % × amount you distribute this run. Basis is <strong>actual contributions</strong> (and subscription policies), not promised subscription totals — partial payers participate on what they paid (§12).
+                Record operational profit on each <a href="{{ url_for('investments_list') }}">investment</a> before paying out.
+            </p>
+            {% if settings.profit_rules %}
+            <p class="small mb-0 p-2 rounded border bg-white bg-opacity-50" style="max-width: 42rem;"><strong>Organization profit rules:</strong> {{ settings.profit_rules }}</p>
+            {% endif %}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('reports_profit_calculation') }}" class="btn btn-sm btn-outline-success"><i class="ri-calculator-line me-1"></i>Calculation preview</a>
+            <a href="{{ url_for('profit_history') }}" class="btn btn-sm btn-soft-primary"><i class="ri-history-line me-1"></i>History</a>
+            <a href="{{ url_for('investments_list') }}" class="btn btn-sm btn-outline-primary"><i class="ri-line-chart-line me-1"></i>Investments</a>
+            <a href="{{ url_for('settings_page') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-settings-3-line me-1"></i>Settings</a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4 pf-shell">
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Open vehicles</p>
+                <p class="fs-4 fw-semibold mb-0">{{ open_investment_count }}</p>
+                <p class="small text-muted mb-0">Active / Completed + undistributed</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Undistributed (total)</p>
+                <p class="fs-4 fw-semibold mb-0 text-success">{{ settings.currency_symbol }}{{ total_undistributed_available|money }}</p>
+                <p class="small text-muted mb-0">{{ cur }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4 col-lg-8">
+        <div class="card border-0 bg-light h-100">
+            <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="small">
+                    {% if profit_basis_verified %}
+                    <span class="badge text-bg-info me-1">Verified payments only</span>
+                    {% endif %}
+                    {% if profit_global_fully_paid %}
+                    <span class="badge text-bg-warning text-dark me-1">Fully paid subs only (org)</span>
+                    {% endif %}
+                    <span class="text-muted">{% if profit_investment_scoped %}<span class="badge text-bg-primary me-1">Investment-scoped pool</span>{% else %}<span class="badge text-bg-secondary me-1">Global pool</span>{% endif %} Eligibility follows each subscription’s policy (paid proportional vs fully paid only). If investment-scoped profit is on in <a href="{{ url_for('settings_page') }}">Settings</a>, only subscriptions linked to the selected investment count toward the denominator.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 pf-shell">
+    <div class="col-lg-7">
+        <div class="card pf-card border-0 mb-4">
+            <div class="card-header bg-white py-3 border-bottom">
+                <h6 class="mb-0">New distribution</h6>
+                <p class="text-muted small mb-0">Choose an investment with remaining profit, enter the amount to pay out this run, then preview the split.</p>
+            </div>
+            <div class="card-body">
+                {% if not investments %}
+                <div class="alert alert-warning mb-4">
+                    <strong>No eligible investments right now.</strong> Undistributed profit must be greater than zero on at least one Active or Completed investment. Update recorded profit on an investment or complete contribution verification if required.
+                </div>
+                {% endif %}
+                <form method="post" id="pf-form">
+                    <input type="hidden" name="action" value="preview">
+                    <div class="mb-3">
+                        <label class="form-label fw-medium" for="pf-inv">Investment <span class="text-danger">*</span></label>
+                        <select name="investment_id" id="pf-inv" class="form-select form-select-lg" required {{ 'disabled' if not investments else '' }}>
+                            <option value="">— Select —</option>
+                            {% for inv in investments %}
+                            {% set av = inv_avail.get(inv.id) %}
+                            {% set pool = inv_eligible_pool.get(inv.id) %}
+                            <option value="{{ inv.id }}" data-available="{{ av }}" {{ 'selected' if preselect_investment_id == inv.id else '' }}>
+                                {{ inv.investment_code or inv.name }} — {{ inv.name }} · eligible pool {{ settings.currency_symbol }}{{ pool|money }} · to distribute {{ settings.currency_symbol }}{{ av|money }} {{ cur }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text" id="pf-avail-hint">Only vehicles with <strong>undistributed profit</strong> appear. <strong>Eligible pool</strong> is the sum of members’ paid basis for this investment (denominator for §11.1). Open <a href="{{ url_for('investments_list') }}">investments</a> to record profit.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-medium" for="pf-amt">Profit amount to distribute <span class="text-danger">*</span></label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text">{{ settings.currency_symbol }}</span>
+                            <input type="text" name="profit_amount" id="pf-amt" class="form-control" required placeholder="0.00" inputmode="decimal" autocomplete="off" {{ 'disabled' if not investments else '' }}>
+                            <button type="button" class="btn btn-outline-secondary" id="pf-fill-max" title="Fill with full available amount for selected investment" {{ 'disabled' if not investments else '' }}>Use max</button>
+                            <span class="input-group-text text-muted small">{{ cur }}</span>
+                        </div>
+                        <div class="form-text">Cannot exceed available profit for the selected investment.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="pf-date">Distribution date</label>
+                        <input type="date" name="distribution_date" id="pf-date" class="form-control" value="{{ today_iso }}" {{ 'disabled' if not investments else '' }}>
+                        <div class="form-text">Defaults to today if left empty on the server.</div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label" for="pf-notes">Batch notes (optional)</label>
+                        <textarea name="batch_notes" id="pf-notes" class="form-control" rows="2" maxlength="500" placeholder="Internal reference for this distribution run" {{ 'disabled' if not investments else '' }}></textarea>
+                        <div class="form-text">Stored on the batch record (§13.2).</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg px-4" {% if not investments %}disabled{% endif %}>
+                        <i class="ri-eye-line me-1"></i>Preview distribution
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card border bg-light h-100">
+            <div class="card-body">
+                <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing: .06em;">How it works</h6>
+                <ul class="small text-muted ps-3 mb-3">
+                    <li class="mb-2"><strong>Paid proportional</strong> — partial payers participate with what they actually paid.</li>
+                    <li class="mb-2"><strong>Fully paid only</strong> — member must be fully paid to participate; basis is still <em>paid</em> money.</li>
+                    <li class="mb-2">Distributing profit <strong>does not change</strong> the investment’s recorded <strong>profit generated</strong>; it reduces the remaining pool for members.</li>
+                </ul>
+                <div class="accordion accordion-flush" id="pfAcc">
+                    <div class="accordion-item bg-transparent border-0">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed px-0 py-2 small bg-transparent shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#pfAcc1">Investment-scoped vs global</button>
+                        </h2>
+                        <div id="pfAcc1" class="accordion-collapse collapse" data-bs-parent="#pfAcc">
+                            <p class="small text-muted mb-0">If <strong>Investment-scoped profit</strong> is enabled under <a href="{{ url_for('settings_page') }}">Settings</a>, only share subscriptions <strong>linked to this investment</strong> are in the denominator. Otherwise, global pool rules apply (subscriptions + unlinked payments as configured).</p>
+                        </div>
+                    </div>
+                </div>
+                <hr class="my-3">
+                <p class="small text-muted mb-2">Currency: <strong>{{ cur }}</strong> · <a href="{{ url_for('settings_page') }}">Organization settings</a></p>
+                <a href="{{ url_for('reports_investment_summary') }}" class="btn btn-sm btn-outline-secondary w-100 mb-2"><i class="ri-file-list-3-line me-1"></i>Investment summary report</a>
+                <a href="{{ url_for('reports_projects_profitability') }}" class="btn btn-sm btn-outline-secondary w-100"><i class="ri-bar-chart-grouped-line me-1"></i>Project profitability</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if upcoming_reviews %}
+<div class="card border-0 border-warning border-opacity-50 bg-warning bg-opacity-10 pf-shell mb-4">
+    <div class="card-body py-3">
+        <h6 class="mb-2"><i class="ri-calendar-check-line me-1"></i>Upcoming distribution reviews (next 90 days)</h6>
+        <p class="text-muted small mb-2">Based on each investment’s <strong>next review date</strong> and <a href="{{ url_for('investments_list') }}">investment</a> settings. Distributions are still recorded manually.</p>
+        <ul class="small mb-0 ps-3">
+            {% for inv in upcoming_reviews %}
+            <li>
+                <a href="{{ url_for('investments_profile', id=inv.id) }}">{{ inv.investment_code or inv.name }}</a>
+                — review <strong>{{ inv.next_distribution_review_date }}</strong>
+                {% if inv.profit_distribution_frequency %}
+                <span class="text-muted">({{ profit_review_labels.get(inv.profit_distribution_frequency, inv.profit_distribution_frequency) }})</span>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+{% if recent_batches %}
+<div class="card border-0 shadow-sm pf-shell mb-4">
+    <div class="card-header bg-white py-3 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h6 class="mb-0">Recent batches</h6>
+            <p class="text-muted small mb-0">Latest recorded distributions (newest first).</p>
+        </div>
+        <a href="{{ url_for('profit_history') }}" class="btn btn-sm btn-soft-primary">Full history</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Batch</th>
+                        <th>Date</th>
+                        <th>Investment</th>
+                        <th class="text-end">Pool</th>
+                        <th class="text-end">Distributed</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in recent_batches %}
+                    <tr>
+                        <td class="font-monospace fw-semibold">{{ b.batch_no }}</td>
+                        <td class="text-nowrap small">{{ b.distribution_date }}</td>
+                        <td class="small">{{ b.investment.name if b.investment else '—' }}</td>
+                        <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ b.total_profit_input|money }} <span class="text-muted">{{ cur }}</span></td>
+                        <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ b.total_profit_distributed|money }} <span class="text-muted">{{ cur }}</span></td>
+                        <td class="text-end text-nowrap">
+                            <a href="{{ url_for('profit_batch_detail', batch_id=b.id) }}" class="btn btn-sm btn-outline-primary py-0">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block extra_js %}
+{% if investments %}
+<script>
+(function() {
+    var sel = document.getElementById('pf-inv');
+    var amt = document.getElementById('pf-amt');
+    var hint = document.getElementById('pf-avail-hint');
+    var btn = document.getElementById('pf-fill-max');
+    var avail = {{ inv_avail_json|tojson }};
+    function fmt(n) {
+        var x = parseFloat(n);
+        if (isNaN(x)) return '';
+        return x.toFixed(2);
+    }
+    function updateHint() {
+        var id = sel && sel.value;
+        if (!id || !hint) return;
+        var a = avail[id];
+        if (a === undefined || a === null) return;
+        hint.innerHTML = 'Available for this run: <strong>' + fmt(a) + '</strong> {{ cur|e }}. Cannot exceed this amount.';
+    }
+    function fillMax() {
+        var id = sel && sel.value;
+        if (!id || !amt) return;
+        var a = avail[id];
+        if (a === undefined || a === null) return;
+        amt.value = fmt(a);
+    }
+    if (sel) sel.addEventListener('change', updateHint);
+    if (btn) btn.addEventListener('click', fillMax);
+    updateHint();
+})();
+</script>
+{% endif %}
+{% endblock %}

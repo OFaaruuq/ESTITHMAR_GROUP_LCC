@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Login | Istithmar Investment Management</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content="Members, contributions, projects, and investment administration dashboard." name="description" />
+    <meta content="Istithmar" name="author" />
+    <link rel="shortcut icon" href="{{ url_for('static', filename='assets/images/favicon.ico') }}">
+
+    <script src="{{ url_for('static', filename='assets/js/layout.js') }}"></script>
+    <link href="{{ url_for('static', filename='assets/css/bootstrap.min.css') }}" id="bootstrap-style" rel="stylesheet" type="text/css" />
+    <link href="{{ url_for('static', filename='assets/css/icons.min.css') }}" rel="stylesheet" type="text/css" />
+    <link href="{{ url_for('static', filename='assets/css/app.min.css') }}" id="app-style" rel="stylesheet" type="text/css" />
+</head>
+<body>
+    <div class="auth-maintenance d-flex align-items-center min-vh-100">
+        <div class="bg-overlay bg-light"></div>
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-md-10">
+                    <div class="auth-full-page-content d-flex min-vh-100 py-sm-5 py-4">
+                        <div class="w-100">
+                            <div class="d-flex flex-column h-100 py-0 py-xl-3">
+                                <div class="text-center mb-4">
+                                    <a href="{{ url_for('login') }}">
+                                        <img src="{{ brand_logo_dark_lg }}" alt="" height="22" class="auth-logo logo-dark mx-auto">
+                                        <img src="{{ brand_logo_light_lg }}" alt="" height="22" class="auth-logo logo-light mx-auto">
+                                    </a>
+                                    <p class="text-muted mt-2">Istithmar Investment Management System</p>
+                                </div>
+
+                                <div class="card my-auto overflow-hidden">
+                                    <div class="row g-0">
+                                        <div class="col-lg-6">
+                                            <div class="bg-overlay bg-primary"></div>
+                                            <div class="h-100 bg-auth align-items-end"></div>
+                                        </div>
+
+                                        <div class="col-lg-6">
+                                            <div class="p-lg-5 p-4">
+                                                <div class="text-center mt-1">
+                                                    <h4 class="font-size-18">Welcome Back!</h4>
+                                                    <p class="text-muted">Sign in to continue.</p>
+                                                </div>
+
+                                                {% with messages = get_flashed_messages(with_categories=true) %}
+                                                    {% if messages %}
+                                                        {% for category, message in messages %}
+                                                            <div class="alert alert-{{ category }} mt-3">{{ message }}</div>
+                                                        {% endfor %}
+                                                    {% endif %}
+                                                {% endwith %}
+
+                                                <form method="post" action="{{ url_for('login') }}" class="auth-input mt-3">
+                                                    <input type="hidden" name="next" value="{{ next or '' }}">
+                                                    <div class="mb-2">
+                                                        <label for="username" class="form-label">Username</label>
+                                                        <input type="text" name="username" class="form-control" id="username" placeholder="Enter username" required autocomplete="username">
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label" for="password-input">Password</label>
+                                                        <input type="password" name="password" id="password-input" class="form-control" placeholder="Enter password" required autocomplete="current-password">
+                                                    </div>
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" value="" id="auth-remember-check">
+                                                        <label class="form-check-label" for="auth-remember-check">Remember me</label>
+                                                    </div>
+                                                    <div class="mt-3">
+                                                        <button class="btn btn-primary w-100" type="submit">Sign In</button>
+                                                    </div>
+                                                    <div class="mt-3 text-center">
+                                                        <a href="{{ url_for('auth_recoverpw') }}" class="text-muted">Forgot password?</a>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-5 text-center">
+                                    <p class="mb-0">
+                                        &copy; <script>document.write(new Date().getFullYear())</script> Istithmar.
+                                        Crafted with <i class="mdi mdi-heart text-danger"></i> for operations.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='assets/libs/jquery/jquery.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='assets/libs/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='assets/libs/metismenu/metisMenu.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='assets/libs/simplebar/simplebar.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='assets/libs/node-waves/waves.min.js') }}"></script>
+    <script src="https://unicons.iconscout.com/release/v2.0.1/script/monochrome/bundle.js"></script>
+    <script src="{{ url_for('static', filename='assets/js/app.js') }}"></script>
+</body>
+</html>
