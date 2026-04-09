@@ -164,7 +164,7 @@ def get_istithmar_env() -> str:
 
 def get_database_uri() -> str:
     """
-    SQLAlchemy database URI (PostgreSQL for staging/development, SQL Server for production).
+    SQLAlchemy database URI (mixed support in development, strict by environment elsewhere).
 
     Resolution order:
 
@@ -175,11 +175,12 @@ def get_database_uri() -> str:
        - ``production`` → ``ISTITHMAR_PRODUCTION_DATABASE_URL``
        - ``development`` → ``ISTITHMAR_DEVELOPMENT_DATABASE_URL``
 
-    3. Else, if PostgreSQL is expected for this env, ``ISTITHMAR_PG_*`` (or ``POSTGRES_*``)
-       component variables may supply user, password, host, port, database (password is
-       URL-encoded automatically — avoids manual ``%40`` for ``@``).
+    3. Else, fallback component variables:
 
-    **Staging / development (PostgreSQL)**::
+       - PostgreSQL: ``ISTITHMAR_PG_*`` (or ``POSTGRES_*``)
+       - SQL Server: ``DB_*`` (and optional MSSQL tuning flags)
+
+    **Staging (PostgreSQL)**::
 
         postgresql+psycopg2://USER:PASSWORD@HOST:5432/DATABASE
 
@@ -190,8 +191,12 @@ def get_database_uri() -> str:
     Heroku-style ``postgres://`` is normalized to ``postgresql://``.
     URL-encode special characters in passwords.
 
+    **Development (flexible)**::
+
+        postgresql+psycopg2://...  OR  mssql+pyodbc://...
+
     Raises ``DatabaseConfigurationError`` if no URI is configured, or if the URI
-    does not match the expected backend for ``ISTITHMAR_ENV``.
+    does not match the expected backend policy for ``ISTITHMAR_ENV``.
     """
     uri = os.environ.get("ISTITHMAR_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not (uri and uri.strip()):
@@ -203,11 +208,16 @@ def get_database_uri() -> str:
         else:
             uri = os.environ.get("ISTITHMAR_DEVELOPMENT_DATABASE_URL")
 
-    if not (uri and str(uri).strip()) and get_istithmar_env() != ISTITHMAR_ENV_PRODUCTION:
-        uri = _try_postgres_uri_from_env_vars()
-
-    if not (uri and str(uri).strip()) and get_istithmar_env() == ISTITHMAR_ENV_PRODUCTION:
-        uri = _try_mssql_uri_from_db_env_vars()
+    if not (uri and str(uri).strip()):
+        env = get_istithmar_env()
+        if env == ISTITHMAR_ENV_STAGING:
+            uri = _try_postgres_uri_from_env_vars()
+        elif env == ISTITHMAR_ENV_PRODUCTION:
+            uri = _try_mssql_uri_from_db_env_vars()
+        else:
+            # Development accepts either backend. Prefer explicit PostgreSQL vars first
+            # for backward compatibility, then SQL Server DB_* vars.
+            uri = _try_postgres_uri_from_env_vars() or _try_mssql_uri_from_db_env_vars()
 
     if not uri or not str(uri).strip():
         raise DatabaseConfigurationError(
@@ -229,11 +239,17 @@ def get_database_uri() -> str:
                 "ISTITHMAR_ENV=production requires a Microsoft SQL Server URI "
                 "(e.g. mssql+pyodbc://...)."
             )
-    else:
+    elif env == ISTITHMAR_ENV_STAGING:
         if not _is_postgresql_uri(uri):
             raise DatabaseConfigurationError(
-                f"ISTITHMAR_ENV={env} requires PostgreSQL "
-                f"(e.g. postgresql+psycopg2://...), not this URI."
+                "ISTITHMAR_ENV=staging requires PostgreSQL "
+                "(e.g. postgresql+psycopg2://...), not this URI."
+            )
+    else:
+        if not (_is_postgresql_uri(uri) or _is_mssql_uri(uri)):
+            raise DatabaseConfigurationError(
+                "ISTITHMAR_ENV=development requires either PostgreSQL "
+                "(postgresql+psycopg2://...) or SQL Server (mssql+pyodbc://...)."
             )
 
     return uri
