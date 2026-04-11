@@ -25,6 +25,7 @@
                 <strong>Admin</strong> — full access including this screen and database backup.
                 <strong>Operator</strong> — day-to-day data entry (no user management).
                 <strong>Agent</strong> — sees only members and activity tied to the assigned sales agent record.
+                <strong>Member</strong> — investor portal for one linked member record (read-only, scoped data).
             </p>
         </div>
         <a href="{{ url_for('users_new') }}" class="btn btn-primary"><i class="ri-user-add-line me-1"></i>New user</a>
@@ -70,6 +71,14 @@
             <div class="card-body py-3">
                 <p class="text-muted small mb-1">Agents</p>
                 <p class="fs-4 fw-semibold mb-0">{{ counts.agent_role }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 um-kpi">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Members</p>
+                <p class="fs-4 fw-semibold mb-0 text-info">{{ counts.member_role }}</p>
             </div>
         </div>
     </div>

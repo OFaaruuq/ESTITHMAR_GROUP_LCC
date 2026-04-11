@@ -4,22 +4,58 @@ Offline community investment administration: members, agents, contributions, sub
 
 ## Layout
 
-This app expects to run from `Admin/istithmar_app` with the Tocly theme assets in `Admin/dist` (sibling folder). Static files are served from `../dist` when present.
+Run from the **project root** (the folder that contains `app.py`, `run.py`, and `venv/`). Static assets are served from `../dist` when present.
 
 ## Setup
 
 ```bash
-cd Admin/istithmar_app
+cd D:\ESTITHMAR_GROUP_LCC
 python -m venv venv
-venv\Scripts\activate   # Windows
+venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Run (development)
+## Run on Windows
+
+### Prerequisites
+
+1. **Python 3.11+** (64-bit recommended).
+2. **Microsoft ODBC Driver for SQL Server** (17 or 18) — required for `pyodbc`. Install from [Microsoft’s ODBC download page](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server).
+3. **Database**: install **SQL Server** (Express or full) locally, **or** start SQL Server in Docker with `docker compose up -d` (see `docker-compose.yml`). Ensure `DATABASE_URL` / `DB_*` in `.env` match your instance (host `127.0.0.1`, port `1433` when connecting from the host).
+
+### Configure
+
+Copy `.env.example` to `.env` and set at least `ISTITHMAR_SECRET_KEY`, `ISTITHMAR_ENV`, and your database URL or `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD`. For SQL Server in development, `DATABASE_URL` can look like:
+
+`mssql+pyodbc://USER:PASSWORD@127.0.0.1:1433/estithmar_db?driver=ODBC+Driver+17+for+SQL+Server`
+
+(Use **ODBC Driver 18** in the URL if that is what you installed; add `&TrustServerCertificate=yes` for local dev if needed.)
+
+Apply the schema (from project root, venv activated):
+
+```powershell
+flask db upgrade
+```
+
+### Development (auto-reload, single machine)
+
+```powershell
+.\run-dev.ps1
+```
+
+Or: `flask run` — open `http://127.0.0.1:5000`.
+
+### Production-style on Windows (Waitress, LAN access)
+
+`python run.py` serves with **Waitress** on `0.0.0.0:5000` by default, so other PCs on the same network can use `http://<this-pc-ip>:5000`. If Windows Firewall prompts, allow access for Python on private networks, or open TCP port **5000** manually.
+
+Optional environment variables: `WAITRESS_HOST`, `WAITRESS_PORT`, or `PORT`.
+
+## Run (quick reference)
 
 ```bash
 flask run
-# or
+# or (Waitress, binds all interfaces)
 python run.py
 ```
 
@@ -31,14 +67,14 @@ Open `http://127.0.0.1:5000` — default admin can be created on first run (see 
 
 ### Database
 
-The app uses **PostgreSQL** for staging/development and **Microsoft SQL Server** for production (see `.env.example` and `DEPLOYMENT.md`). Configure `ISTITHMAR_PG_*` or a full `DATABASE_URL`.
+**Development** can use **PostgreSQL** or **Microsoft SQL Server** (see `.env.example`). **Staging** expects PostgreSQL; **production** expects SQL Server. Configure `DATABASE_URL` or the `DB_*` / `ISTITHMAR_PG_*` variables as documented in `.env.example`.
 
 - Schema updates: **Flask-Migrate** (`flask db migrate` / `flask db upgrade`).
-- Backups: `pg_dump` / `pg_restore` or your host&rsquo;s tools (see Settings for a short reminder).
+- SQL Server in Docker: see comments in `docker-compose.yml` for creating the database the first time.
 
 **Tests** use PostgreSQL only: set `ISTITHMAR_TEST_DATABASE_URL`, or the same `ISTITHMAR_PG_USER` / `ISTITHMAR_PG_PASSWORD` as the app. By default the test DB name is `ISTITHMAR_PG_DATABASE` (same as the app) unless you set `ISTITHMAR_PG_TEST_DATABASE` (e.g. `estithmar_test`) — see `scripts/postgres_create_test_db.sql`.
 
-## Deployment (new server)
+## Deployment (Linux server)
 
 Step-by-step install, PostgreSQL, **gunicorn**, **systemd**, **nginx**, TLS, and updates: **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 

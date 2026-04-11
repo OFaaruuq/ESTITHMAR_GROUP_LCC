@@ -145,6 +145,16 @@
                         <div id="uf-user-help" class="form-text">{% if user %}Immutable login identifier.{% else %}Used to sign in; letters, numbers, and dots are typical.{% endif %}</div>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary" for="uf-email">Email <span class="text-danger">*</span></label>
+                        <div class="input-group uf-ig">
+                            <span class="input-group-text"><i class="ri-mail-line"></i></span>
+                            <input type="email" name="email" id="uf-email" class="form-control" required
+                                   value="{{ user.email if user and user.email else '' }}" autocomplete="email"
+                                   placeholder="name@company.com" maxlength="120">
+                        </div>
+                        <div class="form-text">Required for notifications and password recovery.</div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label small fw-semibold text-secondary" for="uf-name">Display name</label>
                         <div class="input-group uf-ig">
                             <span class="input-group-text"><i class="ri-id-card-line"></i></span>
@@ -192,6 +202,23 @@
                         {% endif %}
                     </div>
 
+                    <div class="uf-agent-panel p-3 mb-3 d-none" id="member-box" role="region" aria-labelledby="member-heading">
+                        <h6 class="small fw-semibold mb-2" id="member-heading"><i class="ri-user-heart-line me-1 text-primary"></i>Linked member record</h6>
+                        <p class="small text-muted mb-3">When role is <strong>Member</strong>, choose the investor/member profile this login can view.</p>
+                        <label class="visually-hidden" for="member-id">Member</label>
+                        <select name="member_id" class="form-select" id="member-id">
+                            <option value="">Select member…</option>
+                            {% for m in members %}
+                            <option value="{{ m.id }}" {{ 'selected' if user and user.member_id == m.id else '' }}>{{ m.member_id }} — {{ m.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                        {% if user and user.role == 'member' and not user.member_id %}
+                        <div class="alert alert-warning py-2 px-3 small mb-0 mt-3" role="alert">
+                            <i class="ri-error-warning-line me-1"></i>No member linked — assign one or change the role.
+                        </div>
+                        {% endif %}
+                    </div>
+
                     {% if user %}
                     <div class="rounded-3 border p-3 bg-light bg-opacity-50">
                         <div class="form-check form-switch">
@@ -233,6 +260,15 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="uf-perm-item">
+                            <div class="d-flex align-items-start gap-2">
+                                <span class="text-info mt-1"><i class="ri-user-smile-line"></i></span>
+                                <div>
+                                    <div class="fw-semibold small">Member</div>
+                                    <p class="text-muted small mb-0">Investor portal: own subscriptions, contributions, and certificates only.</p>
+                                </div>
+                            </div>
+                        </div>
                         <hr class="my-3 opacity-25">
                         <div class="d-grid gap-2">
                             <a href="{{ url_for('agents_list') }}" class="btn btn-sm btn-light border text-start"><i class="ri-team-line me-2 text-muted"></i>Agent directory</a>
@@ -260,14 +296,22 @@
 (function () {
     var roleSelect = document.getElementById('role-select');
     var agentBox = document.getElementById('agent-box');
-    function syncAgent() {
-        if (!roleSelect || !agentBox) return;
-        var show = roleSelect.value === 'agent';
-        agentBox.classList.toggle('d-none', !show);
-        agentBox.setAttribute('aria-hidden', show ? 'false' : 'true');
+    var memberBox = document.getElementById('member-box');
+    function syncRolePanels() {
+        if (!roleSelect) return;
+        var showAgent = roleSelect.value === 'agent';
+        var showMember = roleSelect.value === 'member';
+        if (agentBox) {
+            agentBox.classList.toggle('d-none', !showAgent);
+            agentBox.setAttribute('aria-hidden', showAgent ? 'false' : 'true');
+        }
+        if (memberBox) {
+            memberBox.classList.toggle('d-none', !showMember);
+            memberBox.setAttribute('aria-hidden', showMember ? 'false' : 'true');
+        }
     }
-    roleSelect?.addEventListener('change', syncAgent);
-    syncAgent();
+    roleSelect?.addEventListener('change', syncRolePanels);
+    syncRolePanels();
 })();
 </script>
 {% endblock %}

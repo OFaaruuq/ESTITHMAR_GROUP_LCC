@@ -22,6 +22,7 @@
         <thead class="table-light">
             <tr>
                 <th>Code</th>
+                <th>System key</th>
                 <th>Account</th>
                 <th>Type</th>
                 <th class="text-end">Debit</th>
@@ -33,6 +34,7 @@
             {% for r in trial_balance %}
             <tr>
                 <td class="font-monospace"><a href="{{ url_for('accounting_ledger', account_id=r.account_id) }}">{{ r.code }}</a></td>
+                <td class="font-monospace small text-muted">{% if r.system_key %}{{ r.system_key }}{% else %}—{% endif %}</td>
                 <td><a href="{{ url_for('accounting_ledger', account_id=r.account_id) }}" class="text-reset">{{ r.name }}</a></td>
                 <td class="small">{{ r.type }}</td>
                 <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ r.debit|money }}</td>
@@ -43,7 +45,7 @@
         </tbody>
         <tfoot class="table-light fw-semibold">
             <tr>
-                <td colspan="3">Totals</td>
+                <td colspan="4">Totals</td>
                 <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ total_debits|money }}</td>
                 <td class="text-end text-nowrap">{{ settings.currency_symbol }}{{ total_credits|money }}</td>
                 <td class="text-end">{% if total_debits == total_credits %}✓{% endif %}</td>

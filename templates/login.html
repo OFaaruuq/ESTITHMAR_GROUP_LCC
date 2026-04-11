@@ -55,8 +55,8 @@
                                                 <form method="post" action="{{ url_for('login') }}" class="auth-input mt-3">
                                                     <input type="hidden" name="next" value="{{ next or '' }}">
                                                     <div class="mb-2">
-                                                        <label for="username" class="form-label">Username</label>
-                                                        <input type="text" name="username" class="form-control" id="username" placeholder="Enter username" required autocomplete="username">
+                                                        <label for="username" class="form-label">Email or username</label>
+                                                        <input type="text" name="username" class="form-control" id="username" placeholder="you@company.com or username" required autocomplete="username">
                                                     </div>
                                                     <div class="mb-3">
                                                         <label class="form-label" for="password-input">Password</label>
@@ -71,6 +71,8 @@
                                                     </div>
                                                     <div class="mt-3 text-center">
                                                         <a href="{{ url_for('auth_recoverpw') }}" class="text-muted">Forgot password?</a>
+                                                        <span class="text-muted mx-1">·</span>
+                                                        <a href="{{ url_for('register') }}" class="text-muted">Create account</a>
                                                     </div>
                                                 </form>
                                             </div>

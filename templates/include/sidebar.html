@@ -31,7 +31,7 @@
                         <span>{% if current_user.role == 'agent' %}My team{% else %}Members{% endif %}</span>
                     </a>
                 </li>
-                {% if current_user.role != 'agent' %}
+                {% if current_user.role not in ('agent', 'member') %}
                 <li>
                     <a href="{{ url_for('agents_list') }}" class="waves-effect">
                         <i class="ri-map-pin-user-line"></i>
@@ -105,18 +105,24 @@
                     </a>
                 </li>
                 {% endif %}
+                {% if current_user.role != 'member' %}
                 <li>
                     <a href="{{ url_for('reports_hub') }}" class="waves-effect">
                         <i class="ri-file-chart-line"></i>
                         <span>Reports</span>
                     </a>
                 </li>
+                {% endif %}
                 {% if current_user.role == 'admin' %}
                 <li>
-                    <a href="{{ url_for('settings_page') }}" class="waves-effect">
+                    <a href="javascript:void(0);" class="has-arrow waves-effect">
                         <i class="ri-settings-3-line"></i>
                         <span>Settings</span>
                     </a>
+                    <ul class="sub-menu" aria-expanded="false">
+                        <li><a href="{{ url_for('settings_page') }}">General</a></li>
+                        <li><a href="{{ url_for('settings_notifications') }}">Notifications</a></li>
+                    </ul>
                 </li>
                 <li>
                     <a href="{{ url_for('users_list') }}" class="waves-effect">

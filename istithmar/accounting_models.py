@@ -8,12 +8,17 @@ from istithmar import db
 
 
 class Account(db.Model):
-    """Chart of accounts."""
+    """Chart of accounts.
+
+    ``system_key`` identifies accounts used by automated postings (cash, member pool,
+    deployed assets, etc.). Codes and names may be renamed; keys stay stable.
+    """
 
     __tablename__ = "accounts"
 
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(32), unique=True, nullable=False, index=True)
+    system_key = db.Column(db.String(64), unique=True, nullable=True, index=True)
     name = db.Column(db.String(200), nullable=False)
     account_type = db.Column(
         db.String(20), nullable=False
@@ -32,7 +37,7 @@ class JournalEntry(db.Model):
     entry_date = db.Column(db.Date, nullable=False, default=date.today)
     reference = db.Column(db.String(64))
     memo = db.Column(db.String(500))
-    # contribution | investment_deploy | profit_batch | manual | opening
+    # contribution | investment_deploy | profit_batch | profit_recognition | capital_return | manual | opening
     source_type = db.Column(db.String(40), nullable=True, index=True)
     source_id = db.Column(db.Integer, nullable=True, index=True)
     status = db.Column(db.String(20), nullable=False, default="posted")  # posted, void

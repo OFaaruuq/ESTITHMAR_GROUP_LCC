@@ -71,7 +71,7 @@
         <form method="get" class="row g-3 align-items-end">
             <div class="col-md-4 col-lg-3">
                 <label class="form-label small mb-0">Search</label>
-                <input type="search" name="q" class="form-control" placeholder="ID, name, phone, region, country" value="{{ q }}" autocomplete="off">
+                <input type="search" name="q" class="form-control" placeholder="ID, name, phone, email, region, country" value="{{ q }}" autocomplete="off">
             </div>
             <div class="col-md-4 col-lg-2">
                 <label class="form-label small mb-0">Status</label>
@@ -147,6 +147,7 @@
                         <th scope="col">Agent ID</th>
                         <th scope="col">Name</th>
                         <th scope="col">Phone</th>
+                        <th scope="col">Email</th>
                         <th scope="col">Region</th>
                         <th scope="col">Country</th>
                         <th scope="col" class="text-end">Members</th>
@@ -169,6 +170,7 @@
                             <a href="tel:{{ a.phone }}">{{ a.phone }}</a>
                             {% else %}—{% endif %}
                         </td>
+                        <td class="small text-break">{% if a.email %}<a href="mailto:{{ a.email }}">{{ a.email }}</a>{% else %}—{% endif %}</td>
                         <td>{{ a.region or '—' }}</td>
                         <td>{{ a.country or '—' }}</td>
                         <td class="text-end">{{ am.get('members', 0) }}</td>
@@ -182,7 +184,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="10" class="p-5 text-center">
+                        <td colspan="11" class="p-5 text-center">
                             <p class="text-muted mb-3">No agents match these filters.</p>
                             <a href="{{ url_for('agents_new') }}" class="btn btn-success">Register your first agent</a>
                             <a href="{{ url_for('agents_list') }}" class="btn btn-outline-secondary ms-2">Clear filters</a>

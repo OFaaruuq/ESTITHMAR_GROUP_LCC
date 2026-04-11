@@ -30,7 +30,7 @@
                     {% if current_user.role == 'admin' %}
                     <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" name="accounting_enabled" value="1" id="acct_gl" {{ 'checked' if extra.get('accounting_enabled', True) else '' }}>
-                        <label class="form-check-label" for="acct_gl"><strong>Enable automated GL posting</strong> — contributions, deployments, and profit batches write journal entries when this is on.</label>
+                        <label class="form-check-label" for="acct_gl"><strong>Enable automated GL posting</strong> — contributions, deployments, profit recognition, capital return, and profit distributions write journal entries when this is on.</label>
                     </div>
                     {% else %}
                     <p class="small text-muted mb-3">Automated posting is <strong>{% if accounting_on %}enabled{% else %}disabled{% endif %}</strong>. Only an administrator can change this.</p>
@@ -61,6 +61,8 @@
         <ul class="mb-0 ps-3">
             <li>Verified contribution → <strong>Dr</strong> Cash · <strong>Cr</strong> Member funds</li>
             <li>Investment deployment increase → <strong>Dr</strong> Deployed · <strong>Cr</strong> Member funds (reversal when deployment decreases)</li>
+            <li>Profit recognized on investment (<code>profit_generated</code>) → <strong>Dr</strong> Deployed · <strong>Cr</strong> Investment income (reversal when reduced)</li>
+            <li>Capital returned to members → <strong>Dr</strong> Deployed · <strong>Cr</strong> Cash (reversal when reduced)</li>
             <li>Profit distribution batch → <strong>Dr</strong> Distribution expense · <strong>Cr</strong> Cash</li>
             <li>Manual journals — use <a href="{{ url_for('accounting_manual_entry') }}">New journal entry</a> for adjustments.</li>
         </ul>

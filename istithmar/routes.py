@@ -33,6 +33,19 @@ from istithmar import db
 from istithmar.auth import admin_required, role_required
 from istithmar.config import PROJECT_ROOT, resolve_static_folder
 from istithmar.validators import validate_phone
+from istithmar.services.member_notify import (
+    notify_member_certificate_issued,
+    notify_member_new_subscription,
+    notify_member_payment,
+    notify_member_profit_share,
+)
+from istithmar.services.notifications import (
+    mail_configured,
+    notify_member_welcome,
+    notify_password_reset,
+    notify_user_credentials,
+    send_email,
+)
 from istithmar.models import (
     ELIGIBILITY_POLICIES,
     INVESTMENT_STATUSES,
@@ -96,16 +109,19 @@ from istithmar.services.certificate_pdf import build_share_certificate_pdf
 from istithmar.accounting_models import Account, JournalEntry, JournalLine
 from istithmar.services.accounting_service import (
     JOURNAL_SOURCE_TYPES,
-    SYSTEM_ACCOUNT_CODES,
+    SYSTEM_ACCOUNT_KEYS,
     accounting_enabled,
     ensure_chart_of_accounts,
+    gl_posting_error_message,
     journal_entries_filtered,
     ledger_lines_for_account,
     lines_for_entry,
+    post_capital_return_delta,
     post_contribution_unverified,
     post_contribution_verified,
     post_investment_deployment_delta,
     post_profit_distribution_batch,
+    post_profit_recognition_delta,
     trial_balance_rows,
     void_manual_journal_entry,
 )
@@ -115,6 +131,34 @@ from istithmar.share_policy import (
     SHARE_UNIT_PRICE,
     max_subscribed_amount,
     min_subscribed_amount,
+)
+
+# Member portal users: read-only, scoped data; block admin/ops/agent tools.
+_MEMBER_PORTAL_BLOCKED_ENDPOINTS = frozenset(
+    {
+        "settings_page",
+        "settings_notifications",
+        "members_new",
+        "members_edit",
+        "subscriptions_new",
+        "contributions_new",
+        "projects_new",
+        "projects_edit",
+        "investments_new",
+        "investments_edit",
+        "investments_delete",
+        "investments_ledger_snapshot",
+        "profit_distribute",
+        "profit_batch_detail",
+        "audit_logs",
+        "audit_export_csv",
+        "certificates_issue",
+        "certificates_revoke",
+        "contributions_verify",
+        "contributions_unverify",
+        "subscriptions_set_investment",
+        "subscriptions_cancel",
+    }
 )
 
 
@@ -195,10 +239,49 @@ def _funds_pool_summary():
     }
 
 
+def _member_scoped_member_pk() -> int | None:
+    if current_user.is_authenticated and current_user.role == "member" and current_user.member_id:
+        return int(current_user.member_id)
+    return None
+
+
+def _member_investment_ids_for_portal() -> list[int]:
+    mid = _member_scoped_member_pk()
+    if not mid:
+        return []
+    sub_ids = (
+        db.session.query(Investment.id)
+        .join(ShareSubscription, ShareSubscription.investment_id == Investment.id)
+        .filter(ShareSubscription.member_id == mid)
+        .distinct()
+        .all()
+    )
+    pr_ids = (
+        db.session.query(ProfitDistribution.investment_id)
+        .filter(ProfitDistribution.member_id == mid)
+        .distinct()
+        .all()
+    )
+    out = {row[0] for row in sub_ids if row[0]}
+    out.update(row[0] for row in pr_ids if row[0])
+    return list(out)
+
+
+def _member_project_ids_for_portal() -> list[int]:
+    iids = _member_investment_ids_for_portal()
+    if not iids:
+        return []
+    rows = Investment.query.filter(Investment.id.in_(iids)).with_entities(Investment.project_id).all()
+    return list({r[0] for r in rows if r[0]})
+
+
 def _dashboard_scoped_member_ids():
     """None = all members; list = restrict to these member PKs (agent scope)."""
     if current_user.is_authenticated and current_user.role == "agent" and current_user.agent_id:
         return [m.id for m in Member.query.filter_by(agent_id=current_user.agent_id).all()]
+    mid = _member_scoped_member_pk()
+    if mid is not None:
+        return [mid]
     return None
 
 
@@ -387,6 +470,8 @@ def _audit_href(log: AuditLog) -> str:
             return url_for("agents_profile", id=eid)
         if et == "ProfitDistributionBatch" and eid:
             return url_for("profit_batch_detail", batch_id=eid)
+        if log.action == "settings_notifications_updated":
+            return url_for("settings_notifications")
         if et == "AppSettings":
             return url_for("settings_page")
         if et == "InstallmentPlan" and eid:
@@ -434,6 +519,7 @@ def _audit_notification_item(log: AuditLog) -> dict | None:
         "subscription_cancelled": "Subscription cancelled",
         "subscription_investment_updated": "Subscription investment link updated",
         "settings_branding_updated": "Branding / logos updated",
+        "settings_notifications_updated": "Notification settings updated",
         "profit_distributed": "Profit distribution recorded",
         "investment_created": "Investment created",
         "investment_updated": "Investment updated",
@@ -668,6 +754,9 @@ def register_routes(app):
         q = Member.query
         if current_user.is_authenticated and current_user.role == "agent" and current_user.agent_id:
             q = q.filter(Member.agent_id == current_user.agent_id)
+        mpk = _member_scoped_member_pk()
+        if mpk is not None:
+            q = q.filter(Member.id == mpk)
         return q
 
     def _members_filtered_query():
@@ -685,6 +774,7 @@ def register_routes(app):
                     Member.full_name.ilike(like),
                     Member.phone.ilike(like),
                     Member.national_id.ilike(like),
+                    Member.email.ilike(like),
                 )
             )
         if st in ("Active", "Inactive"):
@@ -699,6 +789,9 @@ def register_routes(app):
         q = Contribution.query.join(Member, Contribution.member_id == Member.id)
         if current_user.is_authenticated and current_user.role == "agent" and current_user.agent_id:
             q = q.filter(Member.agent_id == current_user.agent_id)
+        mpk = _member_scoped_member_pk()
+        if mpk is not None:
+            q = q.filter(Member.id == mpk)
         return q
 
     def _contributions_filtered_query():
@@ -768,6 +861,13 @@ def register_routes(app):
             query = query.filter(or_(Project.start_date.is_(None), Project.start_date >= date_from))
         if date_to:
             query = query.filter(or_(Project.start_date.is_(None), Project.start_date <= date_to))
+        mpk = _member_scoped_member_pk()
+        if mpk is not None:
+            pids = _member_project_ids_for_portal()
+            if pids:
+                query = query.filter(Project.id.in_(pids))
+            else:
+                query = query.filter(Project.id < 0)
         return query
 
     def _investments_filtered_query():
@@ -799,6 +899,13 @@ def register_routes(app):
                     Project.project_code.ilike(like),
                 )
             )
+        mpk = _member_scoped_member_pk()
+        if mpk is not None:
+            iids = _member_investment_ids_for_portal()
+            if iids:
+                query = query.filter(Investment.id.in_(iids))
+            else:
+                query = query.filter(Investment.id < 0)
         return query
 
     def profit_rows_scope():
@@ -807,10 +914,13 @@ def register_routes(app):
         )
         if current_user.is_authenticated and current_user.role == "agent" and current_user.agent_id:
             q = q.filter(Member.agent_id == current_user.agent_id)
+        mpk = _member_scoped_member_pk()
+        if mpk is not None:
+            q = q.filter(Member.id == mpk)
         return q
 
     def forbid_agent():
-        if current_user.role == "agent":
+        if current_user.role in ("agent", "member"):
             flash("This section is not available for your role.", "warning")
             return redirect(url_for("dashboard"))
         return None
@@ -844,27 +954,153 @@ def register_routes(app):
 
     @app.before_request
     def _require_login():
-        if request.endpoint in (None, "login", "static", "admin_api_notifications_unread_count"):
+        if request.endpoint in (
+            None,
+            "login",
+            "static",
+            "admin_api_notifications_unread_count",
+            "auth_recoverpw",
+            "register",
+        ):
             return
         if not current_user.is_authenticated:
             return redirect(url_for("login", next=request.path))
+
+    @app.before_request
+    def _member_portal_guard():
+        if not current_user.is_authenticated or current_user.role != "member":
+            return
+        ep = request.endpoint
+        if not ep or ep == "static":
+            return
+        if ep in _MEMBER_PORTAL_BLOCKED_ENDPOINTS:
+            flash("This action is not available for your account.", "warning")
+            return redirect(url_for("dashboard"))
+        if ep.startswith(("agents_", "users_", "accounting_", "export_")):
+            flash("This section is not available for your account.", "warning")
+            return redirect(url_for("dashboard"))
+        if ep.startswith("reports_"):
+            flash("Reports are not available for your account.", "warning")
+            return redirect(url_for("dashboard"))
+        if ep == "subscriptions_installments" and request.method == "POST":
+            flash("You cannot modify installment plans.", "warning")
+            return redirect(url_for("dashboard"))
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if current_user.is_authenticated:
             return redirect(url_for("dashboard"))
         if request.method == "POST":
-            username = request.form.get("username", "").strip()
+            ident = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             nxt = request.form.get("next") or request.args.get("next") or ""
-            u = AppUser.query.filter_by(username=username).first()
+            u = None
+            if ident:
+                u = AppUser.query.filter(func.lower(AppUser.username) == ident.lower()).first()
+                if not u and "@" in ident:
+                    u = AppUser.query.filter(func.lower(AppUser.email) == ident.lower()).first()
             if u and u.is_active and check_password_hash(u.password_hash, password):
                 login_user(u)
                 if nxt.startswith("/"):
                     return redirect(nxt)
                 return redirect(url_for("dashboard"))
-            flash("Invalid username or password.", "danger")
+            flash("Invalid email/username or password.", "danger")
         return render_template("login.html", next=request.args.get("next", ""))
+
+    def _unique_username_from_email(email: str) -> str:
+        base = email.lower().strip()[:64]
+        if not AppUser.query.filter_by(username=base).first():
+            return base
+        for i in range(1, 1000):
+            suf = f"_{i}"
+            candidate = (base[: 64 - len(suf)] + suf)[:64]
+            if not AppUser.query.filter_by(username=candidate).first():
+                return candidate
+        return (base[:48] + secrets.token_hex(4))[:64]
+
+    def _allow_self_registration() -> bool:
+        return (os.environ.get("ISTITHMAR_ALLOW_SELF_REGISTRATION") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+
+    @app.route("/register", methods=["GET", "POST"])
+    def register():
+        if current_user.is_authenticated:
+            return redirect(url_for("dashboard"))
+        if not _allow_self_registration():
+            flash("Self-registration is disabled. Contact the office to open an account.", "warning")
+            return redirect(url_for("login"))
+        if request.method == "POST":
+            email = (request.form.get("email") or "").strip().lower()
+            pwd = request.form.get("password") or ""
+            fn = (request.form.get("full_name") or "").strip()
+            nid = (request.form.get("national_id") or "").strip()
+            phone_raw = (request.form.get("phone") or "").strip()
+            if not email or "@" not in email or len(email) < 5:
+                flash("A valid email address is required.", "danger")
+                return render_template("register.html")
+            if len(pwd) < 4:
+                flash("Password must be at least 4 characters.", "danger")
+                return render_template("register.html")
+            if not fn:
+                flash("Full name is required.", "danger")
+                return render_template("register.html")
+            if not nid:
+                flash("National ID or official document number is required.", "danger")
+                return render_template("register.html")
+            phone_norm, phone_err = validate_phone(phone_raw)
+            if phone_err:
+                flash(phone_err, "danger")
+                return render_template("register.html")
+            if AppUser.query.filter(func.lower(AppUser.email) == email).first():
+                flash("An account with this email already exists. Sign in or use Forgot password.", "warning")
+                return render_template("register.html")
+            s = get_or_create_settings()
+            if s.get_flag("require_agent_on_member"):
+                flash(
+                    "Registration currently requires an assigned agent. Contact the office to complete enrollment.",
+                    "warning",
+                )
+                return render_template("register.html")
+            m = Member(
+                member_id=next_member_id(),
+                full_name=fn,
+                phone=phone_norm,
+                email=email[:120],
+                national_id=nid,
+                join_date=date.today(),
+                status="Active",
+                member_kind="member",
+                agent_id=None,
+            )
+            db.session.add(m)
+            db.session.flush()
+            u = AppUser(
+                username=_unique_username_from_email(email),
+                email=email[:120],
+                password_hash=generate_password_hash(pwd),
+                full_name=fn,
+                phone=phone_norm,
+                role="member",
+                member_id=m.id,
+                is_active=True,
+            )
+            db.session.add(u)
+            db.session.commit()
+            log_audit("member_self_registered", "Member", m.id, f"member_id={m.member_id}")
+            notify_member_welcome(
+                member_name=fn,
+                member_code=m.member_id,
+                email=email,
+                phone=phone_norm,
+            )
+            login_user(u)
+            flash("Welcome — your member portal is ready.", "success")
+            return redirect(url_for("dashboard"))
+        return render_template("register.html")
 
     @app.route("/auth-recoverpw.html", methods=["GET", "POST"])
     def auth_recoverpw():
@@ -883,6 +1119,10 @@ def register_routes(app):
             temp_password = secrets.token_urlsafe(6)[:10]
             u.password_hash = generate_password_hash(temp_password)
             db.session.commit()
+            if u.email and mail_configured():
+                notify_password_reset(to_email=u.email, temp_password=temp_password)
+                flash("If your account exists, check your email for a temporary password.", "success")
+                return redirect(url_for("login"))
             flash("Password reset successful.", "success")
             return render_template("auth-recoverpw.html", temp_password=temp_password)
         return render_template("auth-recoverpw.html", temp_password=temp_password)
@@ -895,7 +1135,9 @@ def register_routes(app):
 
     @app.route("/pages-profile.html", methods=["GET", "POST"])
     def pages_profile():
-        u = AppUser.query.options(joinedload(AppUser.agent)).get_or_404(current_user.id)
+        u = AppUser.query.options(joinedload(AppUser.agent), joinedload(AppUser.member)).get_or_404(
+            current_user.id
+        )
 
         def _profile_ctx():
             settings = get_or_create_settings()
@@ -1260,6 +1502,7 @@ def register_routes(app):
                     Agent.agent_id.ilike(like),
                     Agent.full_name.ilike(like),
                     Agent.phone.ilike(like),
+                    Agent.email.ilike(like),
                     Agent.region.ilike(like),
                     Agent.country.ilike(like),
                 )
@@ -1267,6 +1510,14 @@ def register_routes(app):
         if st in ("Active", "Inactive"):
             query = query.filter(Agent.status == st)
         return query
+
+    def _parse_optional_agent_email(raw: str | None) -> tuple[str | None, str | None]:
+        s = (raw or "").strip()
+        if not s:
+            return None, None
+        if "@" not in s or len(s) < 5:
+            return None, "Enter a valid email or leave the field empty."
+        return s[:120], None
 
     def _batch_agent_metrics(agent_ids: list[int]) -> dict[int, dict]:
         """One round of aggregates per metric — avoids N+1 per-row totals on the agents table."""
@@ -1402,10 +1653,15 @@ def register_routes(app):
             if phone_err:
                 flash(phone_err, "danger")
                 return render_template("agents/form.html", **_agent_form_ctx(None))
+            em, em_err = _parse_optional_agent_email(request.form.get("email"))
+            if em_err:
+                flash(em_err, "danger")
+                return render_template("agents/form.html", **_agent_form_ctx(None))
             a = Agent(
                 agent_id=next_agent_id(),
                 full_name=request.form.get("full_name", "").strip(),
                 phone=phone_norm,
+                email=em,
                 region=request.form.get("region", "").strip(),
                 territory=request.form.get("territory", "").strip(),
                 country=request.form.get("country", "").strip(),
@@ -1472,9 +1728,14 @@ def register_routes(app):
             if phone_err:
                 flash(phone_err, "danger")
                 return render_template("agents/form.html", **_agent_form_ctx(a))
+            em, em_err = _parse_optional_agent_email(request.form.get("email"))
+            if em_err:
+                flash(em_err, "danger")
+                return render_template("agents/form.html", **_agent_form_ctx(a))
             old_status = a.status
             a.full_name = request.form.get("full_name", "").strip()
             a.phone = phone_norm
+            a.email = em
             a.region = request.form.get("region", "").strip()
             a.territory = request.form.get("territory", "").strip()
             a.country = request.form.get("country", "").strip()
@@ -1594,10 +1855,15 @@ def register_routes(app):
             if phone_err:
                 flash(phone_err, "danger")
                 return render_template("members/form.html", **_member_form_ctx(None, agents))
+            em_raw = (request.form.get("email") or "").strip()
+            if em_raw and ("@" not in em_raw or len(em_raw) < 5):
+                flash("Please enter a valid email or leave it empty.", "danger")
+                return render_template("members/form.html", **_member_form_ctx(None, agents))
             m = Member(
                 member_id=next_member_id(),
                 full_name=request.form.get("full_name", "").strip(),
                 phone=phone_norm,
+                email=em_raw[:120] if em_raw else None,
                 address=request.form.get("address", "").strip(),
                 national_id=request.form.get("national_id", "").strip(),
                 join_date=_parse_date(request.form.get("join_date")) or date.today(),
@@ -1617,6 +1883,12 @@ def register_routes(app):
             db.session.add(m)
             log_audit("member_created", "Member", None, f"member_id={m.member_id}")
             db.session.commit()
+            notify_member_welcome(
+                member_name=m.full_name,
+                member_code=m.member_id,
+                email=m.email,
+                phone=m.phone,
+            )
             flash(f"Registered ({m.member_kind}): {m.member_id}", "success")
             return redirect(url_for("members_profile", id=m.id))
         return render_template("members/form.html", **_member_form_ctx(None, agents))
@@ -1633,6 +1905,12 @@ def register_routes(app):
                 return render_template("members/form.html", **_member_form_ctx(m, agents))
             m.full_name = request.form.get("full_name", "").strip()
             m.phone = phone_norm
+            em_raw = (request.form.get("email") or "").strip()
+            if em_raw and ("@" not in em_raw or len(em_raw) < 5):
+                flash("Please enter a valid email or leave it empty.", "danger")
+                agents = _agents_for_member_form(m)
+                return render_template("members/form.html", **_member_form_ctx(m, agents))
+            m.email = em_raw[:120] if em_raw else None
             m.address = request.form.get("address", "").strip()
             m.national_id = request.form.get("national_id", "").strip()
             jd = _parse_date(request.form.get("join_date"))
@@ -1756,6 +2034,8 @@ def register_routes(app):
         query = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id)
         if current_user.role == "agent" and current_user.agent_id:
             query = query.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            query = query.filter(ShareSubscription.member_id == current_user.member_id)
         if filter_agent_id and current_user.role != "agent":
             query = query.filter(Member.agent_id == filter_agent_id)
         if member_id:
@@ -2069,6 +2349,10 @@ def register_routes(app):
                 )
             log_audit("subscription_created", "ShareSubscription", None, f"subscription_no={sub.subscription_no}")
             db.session.commit()
+            try:
+                notify_member_new_subscription(sub, mem)
+            except Exception:
+                pass
             flash(f"Subscription created: {sub.subscription_no}", "success")
             return redirect(url_for("subscriptions_profile", id=sub.id))
         return render_template(
@@ -2089,6 +2373,8 @@ def register_routes(app):
         )
         if current_user.role == "agent" and current_user.agent_id:
             q = q.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            q = q.filter(ShareSubscription.member_id == current_user.member_id)
         sub = q.filter(ShareSubscription.id == id).first_or_404()
         installments = (
             sub.installments.order_by(InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()).all()
@@ -2184,6 +2470,8 @@ def register_routes(app):
         q = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id)
         if current_user.role == "agent" and current_user.agent_id:
             q = q.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            q = q.filter(ShareSubscription.member_id == current_user.member_id)
         sub = q.filter(ShareSubscription.id == id).first_or_404()
 
         if request.method == "POST":
@@ -2281,6 +2569,8 @@ def register_routes(app):
         )
         if current_user.role == "agent" and current_user.agent_id:
             query = query.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            query = query.filter(Member.id == current_user.member_id)
         rows = query.order_by(ShareCertificate.issued_date.desc(), ShareCertificate.id.desc()).all()
         settings = get_or_create_settings()
         n_issued = sum(1 for c in rows if c.status == "Issued")
@@ -2319,6 +2609,12 @@ def register_routes(app):
                 f"certificate_no={cert.certificate_no} subscription_id={subscription_id}",
             )
             db.session.commit()
+            try:
+                cm = Member.query.get(cert.member_id)
+                if cm:
+                    notify_member_certificate_issued(cert, cm)
+            except Exception:
+                pass
             flash(f"Certificate issued: {cert.certificate_no}", "success")
             return redirect(url_for("certificates_print", id=cert.id))
         except ValueError as exc:
@@ -2338,6 +2634,8 @@ def register_routes(app):
         )
         if current_user.role == "agent" and current_user.agent_id:
             query = query.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            query = query.filter(Member.id == current_user.member_id)
         cert = query.filter(ShareCertificate.id == id).first_or_404()
         s = get_or_create_settings()
         ex = s.get_extra()
@@ -2390,6 +2688,8 @@ def register_routes(app):
         )
         if current_user.role == "agent" and current_user.agent_id:
             query = query.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            query = query.filter(Member.id == current_user.member_id)
         cert = query.filter(ShareCertificate.id == id).first_or_404()
         if cert.status != "Issued":
             flash("PDF is only available for issued certificates.", "warning")
@@ -2629,8 +2929,18 @@ def register_routes(app):
                 )
             log_audit("contribution_recorded", "Contribution", None, f"member_id={mid} amount={amount}")
             db.session.commit()
+            try:
+                notify_member_payment(c, mem)
+            except Exception:
+                pass
             if issued_auto:
                 flash("Share certificate issued automatically.", "success")
+                sub_reload = ShareSubscription.query.get(sub.id) if sub else None
+                if sub_reload and sub_reload.certificate:
+                    try:
+                        notify_member_certificate_issued(sub_reload.certificate, mem)
+                    except Exception:
+                        pass
             elif sub is not None:
                 sub_chk = ShareSubscription.query.get(sub.id)
                 if sub_chk and sub_chk.status == "Fully Paid":
@@ -2664,6 +2974,9 @@ def register_routes(app):
             .get_or_404(id)
         )
         if current_user.role == "agent" and current_user.agent_id and c.member.agent_id != current_user.agent_id:
+            flash("Access denied.", "danger")
+            return redirect(url_for("contributions_list"))
+        if current_user.role == "member" and current_user.member_id and c.member_id != current_user.member_id:
             flash("Access denied.", "danger")
             return redirect(url_for("contributions_list"))
         receipt_schedule = None
@@ -3142,16 +3455,20 @@ def register_routes(app):
                 )
             log_audit("investment_created", "Investment", None, inv.name)
             db.session.commit()
+            uid = current_user.id if current_user.is_authenticated else None
             try:
                 post_investment_deployment_delta(
                     inv.id,
                     Decimal("0"),
                     inv.total_amount_invested or Decimal("0"),
-                    user_id=current_user.id if current_user.is_authenticated else None,
+                    user_id=uid,
                 )
+                post_profit_recognition_delta(inv.id, Decimal("0"), prof, user_id=uid)
+                post_capital_return_delta(inv.id, Decimal("0"), cap_ret, user_id=uid)
                 db.session.commit()
-            except Exception:
+            except Exception as exc:
                 db.session.rollback()
+                flash(gl_posting_error_message(exc), "warning")
             flash("Investment saved.", "success")
             return redirect(url_for("investments_profile", id=inv.id))
         return render_template("investments/form.html", **ctx)
@@ -3177,6 +3494,7 @@ def register_routes(app):
         }
         if request.method == "POST":
             old_deployed = inv.total_amount_invested or Decimal("0")
+            old_cap = inv.capital_returned or Decimal("0")
             ctx["preselect_project_id"] = request.form.get("project_id", type=int) or inv.project_id
             ctx["banner_project"] = (
                 Project.query.get(ctx["preselect_project_id"]) if ctx["preselect_project_id"] else None
@@ -3267,16 +3585,20 @@ def register_routes(app):
             undist = inv.profit_undistributed_balance()
             log_audit("investment_updated", "Investment", inv.id)
             db.session.commit()
+            uid = current_user.id if current_user.is_authenticated else None
             try:
                 post_investment_deployment_delta(
                     inv.id,
                     old_deployed,
                     inv.total_amount_invested or Decimal("0"),
-                    user_id=current_user.id if current_user.is_authenticated else None,
+                    user_id=uid,
                 )
+                post_profit_recognition_delta(inv.id, old_profit, new_profit, user_id=uid)
+                post_capital_return_delta(inv.id, old_cap, cap_ret, user_id=uid)
                 db.session.commit()
-            except Exception:
+            except Exception as exc:
                 db.session.rollback()
+                flash(gl_posting_error_message(exc), "warning")
             if inv.status == "Closed" and undist > 0:
                 flash(
                     "Investment updated. Warning: recorded profit still exceeds amounts distributed to members.",
@@ -3604,14 +3926,35 @@ def register_routes(app):
                 f"batch_no={batch.batch_no} amount={profit_amt} members={len(preview_rows)} policy={policy}",
             )
             db.session.commit()
+            inv_nm = (inv.name or inv.investment_code or "Investment").strip()
+            for pr in preview_rows:
+                pm = pr["member"]
+                try:
+                    notify_member_profit_share(
+                        pm,
+                        amount=pr["share"],
+                        investment_name=inv_nm,
+                        batch_no=batch.batch_no,
+                        distribution_date=dist_date,
+                    )
+                except Exception:
+                    pass
             try:
-                post_profit_distribution_batch(
+                post_ok = post_profit_distribution_batch(
                     batch.id,
                     user_id=current_user.id if current_user.is_authenticated else None,
                 )
-                db.session.commit()
-            except Exception:
+                if post_ok:
+                    db.session.commit()
+                elif accounting_enabled():
+                    flash(
+                        "Profit batch was saved, but the cash distribution journal was not posted. "
+                        "Check that system accounts exist and are active in the chart of accounts.",
+                        "warning",
+                    )
+            except Exception as exc:
                 db.session.rollback()
+                flash(gl_posting_error_message(exc), "warning")
             flash(f"Profit batch {batch.batch_no} recorded successfully.", "success")
             return redirect(url_for("profit_batch_detail", batch_id=batch.id))
 
@@ -3758,12 +4101,80 @@ def register_routes(app):
             pool=_funds_pool_summary(),
         )
 
+    @app.route("/settings/notifications", methods=["GET", "POST"])
+    @admin_required
+    def settings_notifications():
+        s = get_or_create_settings()
+        ex = s.get_extra()
+        if request.method == "POST":
+            action = (request.form.get("action") or "").strip()
+            if action == "test_email":
+                test_to = (request.form.get("test_email_to") or "").strip()
+                if not test_to or "@" not in test_to:
+                    flash("Enter a valid email address for the test.", "danger")
+                elif not mail_configured():
+                    flash("SMTP is not fully configured (host and sender required).", "warning")
+                else:
+                    ok, err = send_email(
+                        test_to,
+                        "Istithmar — SMTP test",
+                        "This is a test message from your Istithmar notification settings.\n\nIf you received this, SMTP is configured correctly.",
+                    )
+                    if ok:
+                        flash("Test email sent.", "success")
+                    else:
+                        flash(f"Test email failed: {err}", "danger")
+                return redirect(url_for("settings_notifications"))
+
+            ex["smtp_host"] = (request.form.get("smtp_host") or "").strip()
+            pport = (request.form.get("smtp_port") or "").strip()
+            ex["smtp_port"] = pport if pport else "587"
+            ex["smtp_use_tls"] = request.form.get("smtp_use_tls") == "1"
+            ex["smtp_username"] = (request.form.get("smtp_username") or "").strip()
+            if request.form.get("smtp_password_clear") == "1":
+                ex.pop("smtp_password", None)
+            else:
+                pw = (request.form.get("smtp_password") or "").strip()
+                if pw:
+                    ex["smtp_password"] = pw
+            ex["smtp_sender"] = (request.form.get("smtp_sender") or "").strip()
+
+            if request.form.get("twilio_token_clear") == "1":
+                ex.pop("twilio_auth_token", None)
+            else:
+                twt = (request.form.get("twilio_auth_token") or "").strip()
+                if twt:
+                    ex["twilio_auth_token"] = twt
+            ex["twilio_account_sid"] = (request.form.get("twilio_account_sid") or "").strip()
+            ex["twilio_whatsapp_from"] = (request.form.get("twilio_whatsapp_from") or "").strip()
+            ex["whatsapp_default_cc"] = (request.form.get("whatsapp_default_cc") or "").strip().lstrip("+")
+
+            ex["notify_members_enabled"] = request.form.get("notify_members_enabled") == "1"
+            ex["notify_member_payment"] = request.form.get("notify_member_payment") == "1"
+            ex["notify_member_subscription"] = request.form.get("notify_member_subscription") == "1"
+            ex["notify_member_profit"] = request.form.get("notify_member_profit") == "1"
+            ex["notify_member_certificate"] = request.form.get("notify_member_certificate") == "1"
+            ex["notify_members_whatsapp"] = request.form.get("notify_members_whatsapp") == "1"
+
+            s.set_extra(ex)
+            db.session.commit()
+            log_audit("settings_notifications_updated", "AppSettings", s.id, "")
+            flash("Notification settings saved.", "success")
+            return redirect(url_for("settings_notifications"))
+
+        return render_template(
+            "settings/notifications.html",
+            settings=s,
+            extra=ex,
+            mail_ok=mail_configured(),
+        )
+
     # --- Users (admin) ---
     @app.route("/users")
     @admin_required
     def users_list():
         users = (
-            AppUser.query.options(joinedload(AppUser.agent))
+            AppUser.query.options(joinedload(AppUser.agent), joinedload(AppUser.member))
             .order_by(AppUser.username)
             .all()
         )
@@ -3775,6 +4186,7 @@ def register_routes(app):
             "admin": sum(1 for u in users if u.role == "admin"),
             "operator": sum(1 for u in users if u.role == "operator"),
             "agent_role": sum(1 for u in users if u.role == "agent"),
+            "member_role": sum(1 for u in users if u.role == "member"),
         }
         return render_template(
             "users/list.html",
@@ -3789,66 +4201,117 @@ def register_routes(app):
     @admin_required
     def users_new():
         agents = Agent.query.order_by(Agent.full_name).all()
+        members_choices = Member.query.order_by(Member.full_name.asc(), Member.id.asc()).all()
+
+        def _form(**kwargs):
+            return render_template(
+                "users/form.html",
+                agents=agents,
+                members=members_choices,
+                roles=USER_ROLES,
+                role_labels=dict(USER_ROLES),
+                **kwargs,
+            )
+
         if request.method == "POST":
             username = request.form.get("username", "").strip()
             pwd = request.form.get("password", "")
             role = request.form.get("role") or "operator"
-            if role not in ("admin", "operator", "agent"):
+            if role not in ("admin", "operator", "agent", "member"):
                 role = "operator"
             aid = request.form.get("agent_id", type=int) or None
+            membid = request.form.get("member_id", type=int) or None
             if role != "agent":
                 aid = None
+            if role != "member":
+                membid = None
+            email = (request.form.get("email") or "").strip()
+            if not email or "@" not in email or len(email) < 5:
+                flash("A valid email address is required.", "danger")
+                return _form(user=None)
+            if AppUser.query.filter(func.lower(AppUser.email) == email.lower()).first():
+                flash("That email is already in use.", "danger")
+                return _form(user=None)
             if not username or len(pwd) < 4:
                 flash("Username and password (min 4 chars) required.", "danger")
-                return render_template(
-                    "users/form.html",
-                    user=None,
-                    agents=agents,
-                    roles=USER_ROLES,
-                    role_labels=dict(USER_ROLES),
-                )
+                return _form(user=None)
             if AppUser.query.filter_by(username=username).first():
                 flash("Username already exists.", "danger")
-                return render_template(
-                    "users/form.html",
-                    user=None,
-                    agents=agents,
-                    roles=USER_ROLES,
-                    role_labels=dict(USER_ROLES),
-                )
+                return _form(user=None)
+            if role == "member" and not membid:
+                flash("Select the member record for this portal login.", "danger")
+                return _form(user=None)
+            if role == "member" and AppUser.query.filter_by(member_id=membid).first():
+                flash("That member already has a login account.", "danger")
+                return _form(user=None)
             u = AppUser(
                 username=username,
+                email=email[:120],
                 password_hash=generate_password_hash(pwd),
                 full_name=request.form.get("full_name", "").strip(),
                 role=role,
                 agent_id=aid,
+                member_id=membid,
                 is_active=True,
             )
             db.session.add(u)
             db.session.commit()
+            notify_user_credentials(
+                to_email=email,
+                username=username,
+                role_label=dict(USER_ROLES).get(role, role),
+                password_plain=pwd,
+            )
             flash("User created.", "success")
             return redirect(url_for("users_list"))
-        return render_template(
-            "users/form.html",
-            user=None,
-            agents=agents,
-            roles=USER_ROLES,
-            role_labels=dict(USER_ROLES),
-        )
+        return _form(user=None)
 
     @app.route("/users/<int:id>/edit", methods=["GET", "POST"])
     @admin_required
     def users_edit(id):
-        u = AppUser.query.options(joinedload(AppUser.agent)).get_or_404(id)
+        u = AppUser.query.options(joinedload(AppUser.agent), joinedload(AppUser.member)).get_or_404(id)
         agents = Agent.query.order_by(Agent.full_name).all()
+        members_choices = Member.query.order_by(Member.full_name.asc(), Member.id.asc()).all()
+
+        def _form(**kwargs):
+            return render_template(
+                "users/form.html",
+                agents=agents,
+                members=members_choices,
+                roles=USER_ROLES,
+                role_labels=dict(USER_ROLES),
+                **kwargs,
+            )
+
         if request.method == "POST":
             u.full_name = request.form.get("full_name", "").strip()
+            email = (request.form.get("email") or "").strip()
+            if not email or "@" not in email or len(email) < 5:
+                flash("A valid email address is required.", "danger")
+                return _form(user=u)
+            em_ex = AppUser.query.filter(
+                func.lower(AppUser.email) == email.lower(), AppUser.id != u.id
+            ).first()
+            if em_ex:
+                flash("That email is already in use.", "danger")
+                return _form(user=u)
+            u.email = email[:120]
             role = request.form.get("role") or "operator"
-            if role not in ("admin", "operator", "agent"):
+            if role not in ("admin", "operator", "agent", "member"):
                 role = "operator"
             u.role = role
             aid = request.form.get("agent_id", type=int) or None
+            membid = request.form.get("member_id", type=int) or None
             u.agent_id = aid if role == "agent" else None
+            u.member_id = membid if role == "member" else None
+            if role == "member" and not membid:
+                flash("Select the member record for this portal login.", "danger")
+                return _form(user=u)
+            if role == "member":
+                taken = AppUser.query.filter(AppUser.member_id == membid, AppUser.id != u.id).first()
+                if taken:
+                    flash("That member already has a login account.", "danger")
+                    return _form(user=u)
             pwd = request.form.get("password", "").strip()
             if pwd:
                 u.password_hash = generate_password_hash(pwd)
@@ -3856,13 +4319,7 @@ def register_routes(app):
             db.session.commit()
             flash("User updated.", "success")
             return redirect(url_for("users_list"))
-        return render_template(
-            "users/form.html",
-            user=u,
-            agents=agents,
-            roles=USER_ROLES,
-            role_labels=dict(USER_ROLES),
-        )
+        return _form(user=u)
 
     # --- Accounting (general ledger) ---
     @app.route("/accounting")
@@ -3872,6 +4329,7 @@ def register_routes(app):
         if r:
             return r
         ensure_chart_of_accounts()
+        db.session.commit()
         tb = trial_balance_rows()
         tb_summary = [r for r in tb if r["debit"] > 0 or r["credit"] > 0]
         total_dr = sum((r["debit"] for r in tb), Decimal("0"))
@@ -3925,6 +4383,7 @@ def register_routes(app):
         if r:
             return r
         ensure_chart_of_accounts()
+        db.session.commit()
         settings = get_or_create_settings()
         if request.method == "POST":
             if request.form.get("action") == "toggle_active":
@@ -3932,7 +4391,7 @@ def register_routes(app):
                 acc = db.session.get(Account, tid) if tid else None
                 if not acc:
                     flash("Account not found.", "danger")
-                elif acc.code in SYSTEM_ACCOUNT_CODES:
+                elif acc.system_key and acc.system_key in SYSTEM_ACCOUNT_KEYS:
                     flash("System accounts cannot be deactivated.", "warning")
                 else:
                     acc.is_active = not acc.is_active
@@ -3979,7 +4438,7 @@ def register_routes(app):
             settings=settings,
             currency_code=settings.currency_code or "USD",
             accounting_section="chart",
-            system_account_codes=SYSTEM_ACCOUNT_CODES,
+            system_account_keys=SYSTEM_ACCOUNT_KEYS,
         )
 
     @app.route("/accounting/ledger")
@@ -3989,6 +4448,7 @@ def register_routes(app):
         if r:
             return r
         ensure_chart_of_accounts()
+        db.session.commit()
         account_id = request.args.get("account_id", type=int)
         date_from = _parse_date(request.args.get("date_from"))
         date_to = _parse_date(request.args.get("date_to"))
@@ -4108,6 +4568,7 @@ def register_routes(app):
         if r:
             return r
         ensure_chart_of_accounts()
+        db.session.commit()
         tb = trial_balance_rows()
         total_dr = sum((r["debit"] for r in tb), Decimal("0"))
         total_cr = sum((r["credit"] for r in tb), Decimal("0"))
@@ -4129,14 +4590,27 @@ def register_routes(app):
         if r:
             return r
         ensure_chart_of_accounts()
+        db.session.commit()
         tb = trial_balance_rows()
         settings = get_or_create_settings()
         sym = settings.currency_symbol or "$"
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["Code", "Account", "Type", f"Debit ({sym})", f"Credit ({sym})", f"Balance ({sym})"])
+        w.writerow(
+            ["Code", "System key", "Account", "Type", f"Debit ({sym})", f"Credit ({sym})", f"Balance ({sym})"]
+        )
         for row in tb:
-            w.writerow([row["code"], row["name"], row["type"], row["debit"], row["credit"], row["balance"]])
+            w.writerow(
+                [
+                    row["code"],
+                    row.get("system_key") or "",
+                    row["name"],
+                    row["type"],
+                    row["debit"],
+                    row["credit"],
+                    row["balance"],
+                ]
+            )
         total_dr = sum((row["debit"] for row in tb), Decimal("0"))
         total_cr = sum((row["credit"] for row in tb), Decimal("0"))
         w.writerow(["", "", "Totals", total_dr, total_cr, ""])
@@ -4188,6 +4662,7 @@ def register_routes(app):
         if r:
             return r
         ensure_chart_of_accounts()
+        db.session.commit()
         accounts = Account.query.filter_by(is_active=True).order_by(Account.sort_order, Account.code).all()
         accounts_grouped = _accounts_grouped_for_journal(accounts)
         settings = get_or_create_settings()
@@ -4824,6 +5299,7 @@ def register_routes(app):
             "Agent ID",
             "Name",
             "Phone",
+            "Email",
             "Region",
             "Territory",
             "Country",
@@ -4854,13 +5330,14 @@ def register_routes(app):
             ws.cell(row=row, column=1, value=ag.agent_id)
             ws.cell(row=row, column=2, value=ag.full_name)
             ws.cell(row=row, column=3, value=ag.phone)
-            ws.cell(row=row, column=4, value=ag.region)
-            ws.cell(row=row, column=5, value=ag.territory)
-            ws.cell(row=row, column=6, value=ag.country)
-            ws.cell(row=row, column=7, value=ag.status)
-            ws.cell(row=row, column=8, value=m["members"])
-            ws.cell(row=row, column=9, value=float(m["contrib"]))
-            ws.cell(row=row, column=10, value=float(m["share"]))
+            ws.cell(row=row, column=4, value=ag.email)
+            ws.cell(row=row, column=5, value=ag.region)
+            ws.cell(row=row, column=6, value=ag.territory)
+            ws.cell(row=row, column=7, value=ag.country)
+            ws.cell(row=row, column=8, value=ag.status)
+            ws.cell(row=row, column=9, value=m["members"])
+            ws.cell(row=row, column=10, value=float(m["contrib"]))
+            ws.cell(row=row, column=11, value=float(m["share"]))
         bio = io.BytesIO()
         wb.save(bio)
         return _xlsx_response(bio.getvalue(), "agents.xlsx")
@@ -5284,6 +5761,8 @@ def register_routes(app):
         sub_filter_q = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id)
         if current_user.role == "agent" and current_user.agent_id:
             sub_filter_q = sub_filter_q.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            sub_filter_q = sub_filter_q.filter(ShareSubscription.member_id == current_user.member_id)
         if member_id:
             sub_filter_q = sub_filter_q.filter(ShareSubscription.member_id == member_id)
         filter_subscriptions = sub_filter_q.order_by(ShareSubscription.subscription_date.desc()).limit(400).all()
@@ -5357,6 +5836,9 @@ def register_routes(app):
             .get_or_404(id)
         )
         if current_user.role == "agent" and current_user.agent_id and c.member.agent_id != current_user.agent_id:
+            flash("Access denied.", "danger")
+            return redirect(url_for("invoices_list"))
+        if current_user.role == "member" and current_user.member_id and c.member_id != current_user.member_id:
             flash("Access denied.", "danger")
             return redirect(url_for("invoices_list"))
         invoice_no = c.receipt_no or f"INV-{c.id:05d}"

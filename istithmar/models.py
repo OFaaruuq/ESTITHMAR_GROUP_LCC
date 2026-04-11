@@ -78,6 +78,7 @@ USER_ROLES = [
     ("admin", "Admin"),
     ("operator", "Operator"),
     ("agent", "Agent"),
+    ("member", "Member"),
 ]
 
 # People registered under an agent's team (single Member table; kind distinguishes role).
@@ -95,6 +96,7 @@ class Agent(db.Model):
     agent_id = db.Column(db.String(32), unique=True, nullable=False, index=True)
     full_name = db.Column(db.String(200), nullable=False)
     phone = db.Column(db.String(50))
+    email = db.Column(db.String(120), index=True)
     region = db.Column(db.String(120))
     territory = db.Column(db.String(120))
     country = db.Column(db.String(120))
@@ -161,6 +163,7 @@ class Member(db.Model):
     member_id = db.Column(db.String(32), unique=True, nullable=False, index=True)
     full_name = db.Column(db.String(200), nullable=False)
     phone = db.Column(db.String(50))
+    email = db.Column(db.String(120), index=True)
     address = db.Column(db.Text)
     national_id = db.Column(db.String(64))
     join_date = db.Column(db.Date, nullable=False, default=date.today)
@@ -582,10 +585,12 @@ class AppUser(UserMixin, db.Model):
     profile_image = db.Column(db.String(255))
     role = db.Column(db.String(20), nullable=False, default="operator")
     agent_id = db.Column(db.Integer, db.ForeignKey("agents.id"), nullable=True)
+    member_id = db.Column(db.Integer, db.ForeignKey("members.id"), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     agent = db.relationship("Agent", backref="users", foreign_keys=[agent_id])
+    member = db.relationship("Member", backref="app_users", foreign_keys=[member_id])
 
 
 class AppSettings(db.Model):

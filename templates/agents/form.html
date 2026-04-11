@@ -54,6 +54,14 @@
                         <div class="form-text">Optional. Digits only (7–15), with optional +. Spaces, hyphens, and parentheses allowed. No letters.</div>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label" for="email">Email</label>
+                        <input type="email" name="email" id="email" class="form-control" autocomplete="email"
+                               maxlength="120" inputmode="email"
+                               value="{{ agent.email if agent and agent.email else '' }}"
+                               placeholder="name@example.com">
+                        <div class="form-text">Optional. Used for system notifications when configured.</div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label" for="region">Region</label>
                         <input type="text" name="region" id="region" class="form-control" maxlength="120"
                                value="{{ agent.region if agent else '' }}" placeholder="e.g. East Africa">

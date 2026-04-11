@@ -3,6 +3,8 @@
 Configure database URLs in .env (see .env.example). Run from project root:
 
   python run.py
+
+Uses Waitress (production-ready WSGI on Windows). For local dev with auto-reload, use ``flask run``.
 """
 import os
 import sys
@@ -23,4 +25,8 @@ from istithmar import create_app
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    from waitress import serve
+
+    host = os.environ.get("WAITRESS_HOST", "0.0.0.0")
+    port = int(os.environ.get("WAITRESS_PORT", os.environ.get("PORT", "5000")))
+    serve(app, host=host, port=port)

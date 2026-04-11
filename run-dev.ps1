@@ -1,10 +1,11 @@
 # Start Istithmar from the project root (same folder as this script).
+# If activation fails: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 if (-not (Test-Path ".\venv\Scripts\Activate.ps1")) {
-    Write-Error "venv not found. Create it in istithmar_app: python -m venv venv"
+    Write-Error "venv not found. From this folder run: python -m venv venv"
 }
 .\venv\Scripts\Activate.ps1
 

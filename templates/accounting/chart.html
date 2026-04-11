@@ -17,6 +17,7 @@
         <thead class="table-light">
             <tr>
                 <th>Code</th>
+                <th>System key</th>
                 <th>Name</th>
                 <th>Type</th>
                 <th>Active</th>
@@ -27,12 +28,13 @@
             {% for a in accounts %}
             <tr>
                 <td class="font-monospace"><a href="{{ url_for('accounting_ledger', account_id=a.id) }}">{{ a.code }}</a></td>
+                <td class="font-monospace small text-muted">{% if a.system_key %}{{ a.system_key }}{% else %}—{% endif %}</td>
                 <td><a href="{{ url_for('accounting_ledger', account_id=a.id) }}" class="text-reset">{{ a.name }}</a></td>
                 <td>{{ a.account_type }}</td>
                 <td>{% if a.is_active %}Yes{% else %}No{% endif %}</td>
                 <td class="text-end text-nowrap">
                     <a href="{{ url_for('accounting_ledger', account_id=a.id) }}" class="btn btn-sm btn-outline-secondary py-0">Ledger</a>
-                    {% if a.code in system_account_codes %}
+                    {% if a.system_key and a.system_key in system_account_keys %}
                     <span class="text-muted small ms-1">System</span>
                     {% else %}
                     <form method="post" class="d-inline ms-1" onsubmit="return confirm('Change active status for this account?');">
@@ -51,7 +53,7 @@
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white py-3"><h6 class="mb-0">Add account</h6></div>
     <div class="card-body">
-        <p class="small text-muted">New accounts are available for manual journals immediately. System postings use fixed codes (1000, 2000, 4000, 6100, etc.).</p>
+        <p class="small text-muted">New accounts are available for manual journals immediately. Automated postings resolve accounts by <strong>system key</strong> (stable); you may change account codes without breaking postings.</p>
         <form method="post" class="row g-3 align-items-end">
             <div class="col-md-2">
                 <label class="form-label" for="code">Code</label>

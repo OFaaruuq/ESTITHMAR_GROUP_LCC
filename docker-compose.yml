@@ -1,20 +1,35 @@
-# Local/staging PostgreSQL (matches .env ISTITHMAR_PG_* / POSTGRES_*).
-# If you change user/password here but Postgres was already created, either:
-#   docker compose down -v && docker compose up -d
-# or run scripts/align_local_postgres_admin.sh against a native Postgres install.
-# Start: docker compose up -d
-# Stop:  docker compose down
+# Microsoft SQL Server — local development (matches DB_HOST / DB_PORT / DB_* in .env).
+#
+# Prerequisites:
+#   - Set DB_PASSWORD in `.env` (used as SA password; must meet SQL Server complexity).
+#   - Use DB_USER=sa (container default) unless you add a custom login.
+#   - DB_HOST=127.0.0.1 and DB_PORT=1433 when the app runs on the host.
+#
+# Start:  docker compose up -d
+# Stop:   docker compose down
+# Logs:   docker compose logs -f db
+#
+# Reset data (wipes volume):  docker compose down -v && docker compose up -d
+#
+# First-time: create the database if it does not exist (replace password if needed):
+#   docker exec -it estithmar-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YOUR_PASSWORD" -C -Q "IF DB_ID(N'estithmar_db') IS NULL CREATE DATABASE estithmar_db;"
+#
+# Apple Silicon (optional): uncomment `platform: linux/amd64` under `db` if the image fails to start.
+
 services:
   db:
-    image: postgres:16-alpine
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: estithmar-sqlserver
+    # platform: linux/amd64
     environment:
-      POSTGRES_USER: admin_user
-      POSTGRES_PASSWORD: "Isth@12345"
-      POSTGRES_DB: estithmar_db
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env (SQL Server SA password)}"
+      MSSQL_PID: Developer
     ports:
-      - "5432:5432"
+      - "1433:1433"
     volumes:
-      - istithmar_pgdata:/var/lib/postgresql/data
+      - istithmar_mssql_data:/var/opt/mssql
+    restart: unless-stopped
 
 volumes:
-  istithmar_pgdata:
+  istithmar_mssql_data:

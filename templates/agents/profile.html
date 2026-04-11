@@ -111,6 +111,8 @@
                 <dl class="row small mb-0">
                     <dt class="col-sm-4 text-muted">Phone</dt>
                     <dd class="col-sm-8 mb-2">{% if agent.phone %}<a href="tel:{{ agent.phone }}">{{ agent.phone }}</a>{% else %}—{% endif %}</dd>
+                    <dt class="col-sm-4 text-muted">Email</dt>
+                    <dd class="col-sm-8 mb-2">{% if agent.email %}<a href="mailto:{{ agent.email }}">{{ agent.email }}</a>{% else %}—{% endif %}</dd>
                     <dt class="col-sm-4 text-muted">Region</dt>
                     <dd class="col-sm-8 mb-2">{{ agent.region or '—' }}</dd>
                     <dt class="col-sm-4 text-muted">Territory</dt>

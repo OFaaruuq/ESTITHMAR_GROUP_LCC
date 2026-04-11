@@ -8,6 +8,8 @@
 .set-card { border-radius: 0.5rem; border: 1px solid rgba(0,0,0,.08); box-shadow: 0 0.15rem 0.75rem rgba(0,0,0,.05); }
 .set-section-title { font-size: 0.7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--bs-secondary); font-weight: 600; }
 .set-preview { font-size: 1.35rem; font-weight: 600; }
+.set-nav .nav-link { border-radius: 0.5rem; }
+.set-nav .nav-link.active { background: rgba(13, 110, 253, 0.1); color: #0d6efd; font-weight: 600; }
 </style>
 {% endblock %}
 {% block content %}
@@ -19,6 +21,17 @@
         <li class="breadcrumb-item active" aria-current="page">Settings</li>
     </ol>
 </nav>
+
+<div class="set-shell mb-3">
+    <ul class="nav set-nav flex-wrap gap-1">
+        <li class="nav-item">
+            <a class="nav-link active" href="{{ url_for('settings_page') }}"><i class="ri-settings-3-line me-1"></i> General</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('settings_notifications') }}"><i class="ri-mail-send-line me-1"></i> SMTP &amp; WhatsApp</a>
+        </li>
+    </ul>
+</div>
 
 <div class="set-hero p-3 p-md-4 mb-4 set-shell">
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">

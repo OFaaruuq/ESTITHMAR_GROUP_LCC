@@ -1,59 +1,135 @@
 """
-Post double-entry journals from operational events (contributions, deployments, profit batches).
-Uses seeded chart of accounts; amounts in organization currency.
+Post double-entry journals from operational events (contributions, deployments,
+profit recognition, capital return, profit distributions).
+
+Posting targets accounts by stable ``system_key`` (see ``Account.system_key``).
+Default codes/names are seeded once; administrators may change codes while keys stay fixed.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 from istithmar import db
 from istithmar.accounting_models import Account, JournalEntry, JournalLine
 from istithmar.models import Contribution, Investment, ProfitDistributionBatch, get_or_create_settings
 
-# Default account codes (seeded)
-ACC_CASH = "1000"
-ACC_MEMBER_FUNDS = "2000"
-ACC_DEPLOYED = "4000"
-ACC_DIST_EXPENSE = "6100"
+# Stable identifiers for seeded / system accounts (not amounts — used for lookup only).
+KEY_CASH = "cash"
+KEY_MEMBER_FUNDS = "member_funds_liability"
+KEY_DEPLOYED = "deployed_assets"
+KEY_UNDISTRIBUTED_PROFIT = "undistributed_profit"
+KEY_INVESTMENT_INCOME = "investment_income"
+KEY_DISTRIBUTION_EXPENSE = "profit_distribution_expense"
 
-# Seeded / system accounts — do not deactivate (posting depends on these codes).
-SYSTEM_ACCOUNT_CODES: frozenset[str] = frozenset(
-    {"1000", "2000", "4000", "5000", "6000", "6100"}
+# Default seed rows: (system_key, default_code, name, account_type, sort_order)
+DEFAULT_SYSTEM_ACCOUNTS: tuple[tuple[str, str, str, str, int], ...] = (
+    (KEY_CASH, "1000", "Cash and bank equivalents", "asset", 10),
+    (KEY_MEMBER_FUNDS, "2000", "Member funds held (pool liability)", "liability", 20),
+    (KEY_DEPLOYED, "4000", "Deployed investments (assets)", "asset", 30),
+    (KEY_UNDISTRIBUTED_PROFIT, "5000", "Undistributed profit (liability)", "liability", 40),
+    (KEY_INVESTMENT_INCOME, "6000", "Investment income (profit recognized)", "revenue", 50),
+    (KEY_DISTRIBUTION_EXPENSE, "6100", "Profit distributions to members", "expense", 60),
 )
 
+# Legacy code → system_key (existing DBs created before system_key existed)
+LEGACY_CODE_TO_KEY: dict[str, str] = {
+    "1000": KEY_CASH,
+    "2000": KEY_MEMBER_FUNDS,
+    "4000": KEY_DEPLOYED,
+    "5000": KEY_UNDISTRIBUTED_PROFIT,
+    "6000": KEY_INVESTMENT_INCOME,
+    "6100": KEY_DISTRIBUTION_EXPENSE,
+}
 
-def _account_by_code(code: str) -> Account | None:
-    return Account.query.filter_by(code=code).first()
+SYSTEM_ACCOUNT_KEYS: frozenset[str] = frozenset(k for k, _, _, _, _ in DEFAULT_SYSTEM_ACCOUNTS)
 
 
-def ensure_chart_of_accounts() -> None:
-    """Idempotent seed of minimal accounts for Istithmar pool / deployment / distributions."""
-    rows = [
-        (ACC_CASH, "Cash and bank equivalents", "asset", 10),
-        (ACC_MEMBER_FUNDS, "Member funds held (pool liability)", "liability", 20),
-        (ACC_DEPLOYED, "Deployed investments (assets)", "asset", 30),
-        ("5000", "Undistributed profit (liability)", "liability", 40),
-        ("6000", "Investment income (profit recognized)", "revenue", 50),
-        (ACC_DIST_EXPENSE, "Profit distributions to members", "expense", 60),
-    ]
-    for code, name, atype, sort in rows:
-        if Account.query.filter_by(code=code).first() is None:
-            db.session.add(
-                Account(code=code, name=name, account_type=atype, sort_order=sort, is_active=True)
-            )
-    db.session.commit()  # seed once
+def _ensure_account_system_key_column() -> None:
+    """Add ``system_key`` to ``accounts`` when upgrading an older database."""
+    insp = inspect(db.engine)
+    if not insp.has_table("accounts"):
+        return
+    cols = {c["name"] for c in insp.get_columns("accounts")}
+    if "system_key" in cols:
+        return
+    dialect = db.engine.dialect.name
+    stmt = "ALTER TABLE accounts ADD COLUMN system_key VARCHAR(64) NULL"
+    if dialect == "mssql":
+        stmt = "ALTER TABLE accounts ADD system_key VARCHAR(64) NULL"
+    with db.engine.begin() as conn:
+        conn.execute(text(stmt))
+    # Unique index (multiple NULLs allowed on most backends)
+    idx = "CREATE UNIQUE INDEX IF NOT EXISTS ix_accounts_system_key ON accounts (system_key)"
+    if dialect == "mssql":
+        idx = (
+            "IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'ix_accounts_system_key' "
+            "AND object_id = OBJECT_ID('accounts')) "
+            "CREATE UNIQUE INDEX ix_accounts_system_key ON accounts (system_key) "
+            "WHERE system_key IS NOT NULL"
+        )
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(text(idx))
+    except Exception:
+        pass
+
+
+def _backfill_system_keys_from_legacy_codes() -> None:
+    for acc in Account.query.filter(Account.system_key.is_(None)).all():
+        if acc.code in LEGACY_CODE_TO_KEY:
+            acc.system_key = LEGACY_CODE_TO_KEY[acc.code]
+    db.session.flush()
+
+
+def account_by_system_key(key: str) -> Account | None:
+    return Account.query.filter_by(system_key=key).first()
 
 
 def accounting_enabled() -> bool:
     return get_or_create_settings().get_extra().get("accounting_enabled", True) is True
 
 
+def ensure_chart_of_accounts() -> None:
+    """Idempotent seed: create missing system accounts and attach legacy codes. Does not commit."""
+    _ensure_account_system_key_column()
+    _backfill_system_keys_from_legacy_codes()
+
+    existing_keys = {r.system_key for r in Account.query.filter(Account.system_key.isnot(None)).all() if r.system_key}
+    for system_key, default_code, name, atype, sort in DEFAULT_SYSTEM_ACCOUNTS:
+        if system_key in existing_keys:
+            continue
+        row = Account.query.filter_by(code=default_code).first()
+        if row is not None and row.system_key is None:
+            row.system_key = system_key
+            row.name = row.name or name
+            db.session.flush()
+            existing_keys.add(system_key)
+            continue
+        if Account.query.filter_by(code=default_code).first() is not None:
+            # Code collision: create with suffixed code
+            suffix = 1
+            while Account.query.filter_by(code=f"{default_code}-{suffix}").first() is not None:
+                suffix += 1
+            default_code = f"{default_code}-{suffix}"
+        db.session.add(
+            Account(
+                code=default_code,
+                system_key=system_key,
+                name=name,
+                account_type=atype,
+                sort_order=sort,
+                is_active=True,
+            )
+        )
+        db.session.flush()
+
+
 def _balance_entry(lines: list[tuple[Account, Decimal, Decimal, str]]) -> bool:
-    """lines: (account, debit, credit, desc). Returns True if debits == credits."""
     td = sum((d for _, d, _, _ in lines), Decimal("0"))
     tc = sum((c for _, _, c, _ in lines), Decimal("0"))
     return (td - tc).quantize(Decimal("0.01")) == Decimal("0")
@@ -68,12 +144,12 @@ def _add_entry(
     lines_spec: list[tuple[str, Decimal, Decimal, str]],
     user_id: int | None,
 ) -> JournalEntry | None:
-    """lines_spec: (account_code, debit, credit, description)."""
+    """lines_spec: (system_key, debit, credit, description)."""
     ensure_chart_of_accounts()
     accts: list[tuple[Account, Decimal, Decimal, str]] = []
-    for code, dr, cr, desc in lines_spec:
-        a = _account_by_code(code)
-        if a is None:
+    for skey, dr, cr, desc in lines_spec:
+        a = account_by_system_key(skey)
+        if a is None or not a.is_active:
             return None
         accts.append((a, dr, cr, desc))
     if not _balance_entry(accts):
@@ -104,7 +180,6 @@ def _add_entry(
 
 
 def delete_entries_for_source(source_type: str, source_id: int) -> int:
-    """Remove journal entries by source (e.g. unverify contribution). Returns count deleted."""
     q = JournalEntry.query.filter_by(source_type=source_type, source_id=source_id)
     n = 0
     for je in q.all():
@@ -124,6 +199,7 @@ def post_contribution_verified(contribution_id: int, *, user_id: int | None) -> 
         return False
     amt = Decimal(str(c.amount or 0))
     if amt <= 0:
+        delete_entries_for_source("contribution", contribution_id)
         return False
     delete_entries_for_source("contribution", contribution_id)
     memo = f"Contribution {c.receipt_no or c.id} member_id={c.member_id}"
@@ -134,8 +210,8 @@ def post_contribution_verified(contribution_id: int, *, user_id: int | None) -> 
         "contribution",
         contribution_id,
         [
-            (ACC_CASH, amt, Decimal("0"), "Cash in"),
-            (ACC_MEMBER_FUNDS, Decimal("0"), amt, "Member funds liability"),
+            (KEY_CASH, amt, Decimal("0"), "Cash in"),
+            (KEY_MEMBER_FUNDS, Decimal("0"), amt, "Member funds liability"),
         ],
         user_id,
     )
@@ -170,21 +246,117 @@ def post_investment_deployment_delta(
     ref = inv.investment_code or str(inv.id)
     if delta > 0:
         lines = [
-            (ACC_DEPLOYED, delta, Decimal("0"), f"Deploy +{delta}"),
-            (ACC_MEMBER_FUNDS, Decimal("0"), delta, "Pool applied to investment"),
+            (KEY_DEPLOYED, delta, Decimal("0"), f"Deploy +{delta}"),
+            (KEY_MEMBER_FUNDS, Decimal("0"), delta, "Pool applied to investment"),
         ]
     else:
         d = abs(delta)
         lines = [
-            (ACC_MEMBER_FUNDS, d, Decimal("0"), "Reversal / reduction"),
-            (ACC_DEPLOYED, Decimal("0"), d, "Deploy adjustment"),
+            (KEY_MEMBER_FUNDS, d, Decimal("0"), "Reversal / reduction"),
+            (KEY_DEPLOYED, Decimal("0"), d, "Deploy adjustment"),
         ]
     je = _add_entry(
         date.today(),
         f"INV-{ref}",
         f"Deployment delta for {inv.name}"[:500],
         "investment_deploy",
-        None,
+        investment_id,
+        lines,
+        user_id,
+    )
+    return je is not None
+
+
+def post_profit_recognition_delta(
+    investment_id: int,
+    old_profit: Decimal,
+    new_profit: Decimal,
+    *,
+    user_id: int | None,
+    entry_date: date | None = None,
+) -> bool:
+    """
+    When ``profit_generated`` changes: recognize investment income vs deployed assets.
+
+    Positive delta: Dr Deployed assets, Cr Investment income (revenue).
+    Negative delta: reverse (Dr Investment income, Cr Deployed).
+    """
+    if not accounting_enabled():
+        return False
+    delta = (new_profit - old_profit).quantize(Decimal("0.01"))
+    if delta == 0:
+        return True
+    inv = db.session.get(Investment, investment_id)
+    if inv is None:
+        return False
+    ref = inv.investment_code or str(inv.id)
+    d = entry_date or date.today()
+    memo = f"Profit recognition investment_id={inv.id} {inv.name}"[:500]
+    if delta > 0:
+        lines = [
+            (KEY_DEPLOYED, delta, Decimal("0"), "Unrealized / recognized profit (deployed)"),
+            (KEY_INVESTMENT_INCOME, Decimal("0"), delta, "Investment income"),
+        ]
+    else:
+        amt = abs(delta)
+        lines = [
+            (KEY_INVESTMENT_INCOME, amt, Decimal("0"), "Profit adjustment (reduction)"),
+            (KEY_DEPLOYED, Decimal("0"), amt, "Deployed assets (reversal)"),
+        ]
+    je = _add_entry(
+        d,
+        f"PR-{ref}",
+        memo,
+        "profit_recognition",
+        investment_id,
+        lines,
+        user_id,
+    )
+    return je is not None
+
+
+def post_capital_return_delta(
+    investment_id: int,
+    old_returned: Decimal,
+    new_returned: Decimal,
+    *,
+    user_id: int | None,
+    entry_date: date | None = None,
+) -> bool:
+    """
+    When ``capital_returned`` increases, cash is paid to members: Cr Cash, Dr Deployed (return of principal).
+
+    Positive delta: Dr Deployed, Cr Cash.
+    Negative delta: Dr Cash, Cr Deployed (reversal of recorded return).
+    """
+    if not accounting_enabled():
+        return False
+    delta = (new_returned - old_returned).quantize(Decimal("0.01"))
+    if delta == 0:
+        return True
+    inv = db.session.get(Investment, investment_id)
+    if inv is None:
+        return False
+    ref = inv.investment_code or str(inv.id)
+    d = entry_date or date.today()
+    memo = f"Capital return investment_id={inv.id} {inv.name}"[:500]
+    if delta > 0:
+        lines = [
+            (KEY_DEPLOYED, delta, Decimal("0"), "Return of principal (deployed)"),
+            (KEY_CASH, Decimal("0"), delta, "Cash paid to members"),
+        ]
+    else:
+        amt = abs(delta)
+        lines = [
+            (KEY_CASH, amt, Decimal("0"), "Capital return reversal (cash)"),
+            (KEY_DEPLOYED, Decimal("0"), amt, "Deployed assets (restored)"),
+        ]
+    je = _add_entry(
+        d,
+        f"CR-{ref}",
+        memo,
+        "capital_return",
+        investment_id,
         lines,
         user_id,
     )
@@ -200,6 +372,7 @@ def post_profit_distribution_batch(batch_id: int, *, user_id: int | None) -> boo
         return False
     amt = Decimal(str(b.total_profit_distributed or 0))
     if amt <= 0:
+        delete_entries_for_source("profit_batch", batch_id)
         return False
     delete_entries_for_source("profit_batch", batch_id)
     je = _add_entry(
@@ -209,8 +382,8 @@ def post_profit_distribution_batch(batch_id: int, *, user_id: int | None) -> boo
         "profit_batch",
         batch_id,
         [
-            (ACC_DIST_EXPENSE, amt, Decimal("0"), "Profit distribution"),
-            (ACC_CASH, Decimal("0"), amt, "Cash / transfer to members"),
+            (KEY_DISTRIBUTION_EXPENSE, amt, Decimal("0"), "Profit distribution"),
+            (KEY_CASH, Decimal("0"), amt, "Cash / transfer to members"),
         ],
         user_id,
     )
@@ -218,7 +391,6 @@ def post_profit_distribution_batch(batch_id: int, *, user_id: int | None) -> boo
 
 
 def trial_balance_rows() -> list[dict[str, Any]]:
-    """Sum debits/credits per account for posted entries."""
     ensure_chart_of_accounts()
     out = []
     for a in Account.query.order_by(Account.sort_order, Account.code).all():
@@ -241,6 +413,7 @@ def trial_balance_rows() -> list[dict[str, Any]]:
             {
                 "account_id": a.id,
                 "code": a.code,
+                "system_key": a.system_key,
                 "name": a.name,
                 "type": a.account_type,
                 "debit": dr,
@@ -264,6 +437,8 @@ JOURNAL_SOURCE_TYPES: list[tuple[str | None, str]] = [
     (None, "All sources"),
     ("contribution", "Contributions"),
     ("investment_deploy", "Investment deployment"),
+    ("profit_recognition", "Profit recognition"),
+    ("capital_return", "Capital return"),
     ("profit_batch", "Profit distribution"),
     ("manual", "Manual entries"),
     ("opening", "Opening balance"),
@@ -290,7 +465,6 @@ def journal_entries_filtered(
 
 
 def account_net_balance_before(account_id: int, before_date: date) -> Decimal:
-    """Net Dr-Cr for posted lines on journal entries strictly before before_date (opening for period starting before_date)."""
     sums = (
         db.session.query(
             func.coalesce(func.sum(JournalLine.debit), 0),
@@ -317,10 +491,6 @@ def ledger_lines_for_account(
     date_to: date | None = None,
     limit: int = 1000,
 ) -> tuple[Decimal, list[dict[str, Any]]]:
-    """Chronological lines for one account with running balance (Dr − Cr).
-    When date_from is set, running balance starts from opening balance (all posted activity before that date).
-    Returns (opening_balance, lines).
-    """
     ensure_chart_of_accounts()
     opening = account_net_balance_before(account_id, date_from) if date_from is not None else Decimal("0")
     q = (
@@ -366,7 +536,6 @@ def ledger_lines_for_account(
 
 
 def void_manual_journal_entry(entry_id: int) -> tuple[bool, str]:
-    """Mark a manual journal as void; excludes it from trial balance and reports."""
     je = db.session.get(JournalEntry, entry_id)
     if je is None:
         return False, "Journal entry not found."
@@ -384,3 +553,11 @@ def lines_for_entry(je_id: int) -> list[JournalLine]:
         .order_by(JournalLine.line_no)
         .all()
     )
+
+
+def gl_posting_error_message(exc: BaseException) -> str:
+    """User-safe message; log full exception in caller."""
+    if isinstance(exc, IntegrityError):
+        return "General ledger posting failed (database constraint). Check chart of accounts."
+    return f"General ledger posting failed: {exc!s}"
+

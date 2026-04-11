@@ -128,6 +128,9 @@ def create_app(config=None):
             db.session.commit()
 
             from istithmar.auth import init_auth, seed_if_empty
+            from istithmar.schema_ensure import ensure_app_schema
+
+            ensure_app_schema()
 
             init_auth(app)
             seed_if_empty()
