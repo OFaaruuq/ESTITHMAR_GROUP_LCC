@@ -63,6 +63,38 @@
 
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-transparent py-3">
+                    <h5 class="mb-0"><i class="ri-user-heart-line me-2 text-primary"></i>Personal information</h5>
+                    <p class="text-muted small mb-0">Date of birth, gender, and occupation{% if not is_edit %} — all required for new registrations.{% else %}. Leave blank only if not yet collected for legacy records.{% endif %}</p>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="date_of_birth">Date of birth{% if not is_edit %} <span class="text-danger">*</span>{% endif %}</label>
+                            <input type="date" name="date_of_birth" id="date_of_birth" class="form-control" autocomplete="bday"
+                                   value="{% if member and member.date_of_birth %}{{ member.date_of_birth.strftime('%Y-%m-%d') }}{% endif %}"
+                                   {% if not is_edit %}required{% endif %}>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="gender">Gender{% if not is_edit %} <span class="text-danger">*</span>{% endif %}</label>
+                            <select name="gender" id="gender" class="form-select" {% if not is_edit %}required{% endif %}>
+                                <option value="">— Not set —</option>
+                                {% for gk, glabel in member_genders %}
+                                <option value="{{ gk }}" {{ 'selected' if member and member.gender == gk else '' }}>{{ glabel }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label" for="occupation_employer">Occupation / employer{% if not is_edit %} <span class="text-danger">*</span>{% endif %}</label>
+                        <input type="text" name="occupation_employer" id="occupation_employer" class="form-control" maxlength="200" autocomplete="organization-title"
+                               value="{{ member.occupation_employer if member and member.occupation_employer else '' }}"
+                               placeholder="Job title and/or employer name" {% if not is_edit %}required{% endif %}>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent py-3">
                     <h5 class="mb-0"><i class="ri-contacts-line me-2 text-primary"></i>Contact</h5>
                 </div>
                 <div class="card-body">
@@ -93,6 +125,34 @@
                                value="{{ member.national_id if member else '' }}" maxlength="64" autocomplete="off"
                                placeholder="National ID, passport, or other official identifier">
                         <div class="form-text">Required for registration and audit trail (business policy).</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="mb-0"><i class="ri-shield-user-line me-2 text-primary"></i>Next of kin (emergency contact)</h5>
+                    <p class="text-muted small mb-0">Someone we can reach if we cannot contact the member.{% if not is_edit %} All fields required for new registrations.{% endif %}</p>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="next_of_kin_name">Name{% if not is_edit %} <span class="text-danger">*</span>{% endif %}</label>
+                        <input type="text" name="next_of_kin_name" id="next_of_kin_name" class="form-control" maxlength="200"
+                               value="{{ member.next_of_kin_name if member else '' }}" {% if not is_edit %}required{% endif %}>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="next_of_kin_relationship">Relationship{% if not is_edit %} <span class="text-danger">*</span>{% endif %}</label>
+                        <input type="text" name="next_of_kin_relationship" id="next_of_kin_relationship" class="form-control" maxlength="100"
+                               value="{{ member.next_of_kin_relationship if member else '' }}" placeholder="e.g. Spouse, parent, sibling" {% if not is_edit %}required{% endif %}>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="next_of_kin_phone">Phone number{% if not is_edit %} <span class="text-danger">*</span>{% endif %}</label>
+                        <input type="tel" name="next_of_kin_phone" id="next_of_kin_phone" class="form-control" autocomplete="tel" maxlength="22"
+                               value="{{ member.next_of_kin_phone if member else '' }}" placeholder="+ country code and number" {% if not is_edit %}required{% endif %}>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label" for="next_of_kin_address">Address{% if not is_edit %} <span class="text-danger">*</span>{% endif %}</label>
+                        <textarea name="next_of_kin_address" id="next_of_kin_address" class="form-control" rows="2" autocomplete="street-address" {% if not is_edit %}required{% endif %}>{{ member.next_of_kin_address if member else '' }}</textarea>
                     </div>
                 </div>
             </div>

@@ -2,11 +2,11 @@
     document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('btn-backup') &&
             document.getElementById('btn-backup').addEventListener('click', function () {
-                var json = IstithmarStore.exportState();
+                var json = EstithmarStore.exportState();
                 var blob = new Blob([json], { type: 'application/json' });
                 var a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
-                a.download = 'istithmar-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+                a.download = 'estithmar-backup-' + new Date().toISOString().slice(0, 10) + '.json';
                 a.click();
                 URL.revokeObjectURL(a.href);
             });
@@ -21,7 +21,7 @@
                 var r = new FileReader();
                 r.onload = function () {
                     try {
-                        IstithmarStore.importState(r.result);
+                        EstithmarStore.importState(r.result);
                         alert('Import complete. Reloading.');
                         location.reload();
                     } catch (e) {
@@ -34,7 +34,7 @@
         document.getElementById('btn-reset') &&
             document.getElementById('btn-reset').addEventListener('click', function () {
                 if (!confirm('Clear all local data and reload?')) return;
-                IstithmarStore.resetAll();
+                EstithmarStore.resetAll();
                 location.reload();
             });
     });

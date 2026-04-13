@@ -216,12 +216,20 @@
                 <p class="mb-2 small text-muted">Number <strong class="font-monospace text-dark">{{ sub.certificate.certificate_no }}</strong>
                     <span class="badge rounded-pill ms-1 {% if sub.certificate.status == 'Issued' %}bg-success-subtle text-success border border-success border-opacity-25{% else %}bg-secondary-subtle text-secondary{% endif %}">{{ sub.certificate.status }}</span>
                 </p>
-                <div class="d-flex flex-wrap gap-2">
+                <div class="d-flex flex-wrap gap-2 align-items-center">
                     <a href="{{ url_for('certificates_print', id=sub.certificate.id) }}" class="btn btn-sm btn-primary"><i class="ri-eye-line me-1"></i>View</a>
                     {% if sub.certificate.status == 'Issued' %}
                     <a href="{{ url_for('certificates_pdf', id=sub.certificate.id) }}" class="btn btn-sm btn-outline-success"><i class="ri-file-pdf-line me-1"></i>PDF</a>
                     {% endif %}
+                    {% if current_user.role in ['admin', 'operator'] and sub.certificate.status == 'Revoked' %}
+                    <form method="post" action="{{ url_for('certificates_reinstate', id=sub.certificate.id) }}" class="d-inline" onsubmit="return confirm('Reinstate this certificate to Issued?');">
+                        <button type="submit" class="btn btn-sm btn-success"><i class="ri-arrow-go-back-line me-1"></i>Reinstate to Issued</button>
+                    </form>
+                    {% endif %}
                 </div>
+                {% if sub.certificate.status == 'Revoked' %}
+                <p class="small text-warning mb-0 mt-2"><i class="ri-alert-line me-1"></i>Revoked — not valid for PDF until reinstated by an admin or operator.</p>
+                {% endif %}
                 {% elif current_user.role != 'agent' %}
                 <p class="small text-muted mb-3">No certificate issued yet. Issue when this holding is fully paid and confirmed.</p>
                 <form method="post" action="{{ url_for('certificates_issue', subscription_id=sub.id) }}" class="d-inline">

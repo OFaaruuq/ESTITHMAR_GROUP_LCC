@@ -1,4 +1,4 @@
-# Istithmar Investment Platform — End User Manual
+# Estithmar Investment Platform — End User Manual
 
 **Purpose:** Offline administration for community investment: members, agents, contributions, share subscriptions, certificates, projects, investments, profit distribution, accounting (optional), and reports.
 
@@ -168,4 +168,4 @@ The product uses **roles**, not built-in department names. Map your org as follo
 - Technical setup, database, and deployment: see project **README.md** and **DEPLOYMENT.md**.  
 - In-app help: **Reports → Community investment model** explains the live business metrics and narrative.
 
-*Document version aligned with application structure (Flask app: `istithmar-investment-platform`). Update this manual when major modules or role rules change.*
+*Document version aligned with application structure (Flask app: `estithmar-investment-platform`). Update this manual when major modules or role rules change.*

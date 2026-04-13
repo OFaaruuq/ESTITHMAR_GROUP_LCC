@@ -14,9 +14,9 @@ from typing import Any
 from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import IntegrityError
 
-from istithmar import db
-from istithmar.accounting_models import Account, JournalEntry, JournalLine
-from istithmar.models import Contribution, Investment, ProfitDistributionBatch, get_or_create_settings
+from estithmar import db
+from estithmar.accounting_models import Account, JournalEntry, JournalLine
+from estithmar.models import Contribution, Investment, ProfitDistributionBatch, get_or_create_settings
 
 # Stable identifiers for seeded / system accounts (not amounts — used for lookup only).
 KEY_CASH = "cash"

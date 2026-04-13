@@ -5,8 +5,8 @@ from functools import wraps
 from flask import flash, redirect, request, url_for
 from flask_login import LoginManager, current_user
 
-from istithmar import db
-from istithmar.models import AppUser
+from estithmar import db
+from estithmar.models import AppUser
 
 login_manager = LoginManager()
 login_manager.login_view = "login"

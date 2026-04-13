@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from istithmar.models import Contribution, ShareSubscription
+from estithmar.models import Contribution, ShareSubscription
 
 
 def subscription_payment_running_rows(sub: ShareSubscription) -> list[dict]:

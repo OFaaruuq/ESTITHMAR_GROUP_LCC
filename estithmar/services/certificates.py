@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from istithmar import db
-from istithmar.models import ShareCertificate, ShareSubscription, get_or_create_settings, next_certificate_no
-from istithmar.services.subscriptions import recompute_subscription_status
+from estithmar import db
+from estithmar.models import ShareCertificate, ShareSubscription, get_or_create_settings, next_certificate_no
+from estithmar.services.subscriptions import recompute_subscription_status
 
 
 def format_certificate_share_quantity(sub: ShareSubscription | None, currency_code: str = "USD") -> str:
@@ -50,7 +50,7 @@ def certificate_stock_of_name(sub: ShareSubscription | None, default_company: st
     """Entity name after 'Shares Of Stock Of' — linked investment name when set, else company legal name."""
     if sub and sub.investment and sub.investment.name:
         return sub.investment.name.strip()
-    return (default_company or "Istithmar Investment Management").strip()
+    return (default_company or "Estithmar Investment Management").strip()
 
 
 def issue_certificate(
@@ -85,8 +85,15 @@ def issue_certificate(
                 raise ValueError(
                     "All recorded payments for this subscription must be verified before issuing a certificate."
                 )
-    if sub.certificate is not None and sub.certificate.status == "Issued":
-        raise ValueError("A valid certificate already exists for this subscription.")
+    if sub.certificate is not None:
+        if sub.certificate.status == "Issued":
+            raise ValueError("A valid certificate already exists for this subscription.")
+        if sub.certificate.status == "Revoked":
+            raise ValueError(
+                "This subscription already has a revoked certificate. Reinstate it from the "
+                "certificates list (or subscription page) instead of issuing a new one."
+            )
+        raise ValueError("This subscription already has a certificate record that cannot be duplicated.")
 
     cert = ShareCertificate(
         certificate_no=next_certificate_no(),

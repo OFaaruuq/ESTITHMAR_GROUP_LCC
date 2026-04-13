@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from istithmar import db
-from istithmar.models import Agent, Member
+from estithmar import db
+from estithmar.models import Agent, Member
 
 # Approximate country centers (lat, lng) — ISO 3166-1 alpha-2
 ISO2_CENTER: dict[str, tuple[float, float]] = {

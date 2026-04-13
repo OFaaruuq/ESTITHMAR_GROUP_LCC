@@ -1,4 +1,4 @@
-"""Pytest uses PostgreSQL only (see get_test_database_uri in istithmar.config)."""
+"""Pytest uses PostgreSQL only (see get_test_database_uri in estithmar.config)."""
 from __future__ import annotations
 
 import os
@@ -13,8 +13,8 @@ load_dotenv(_PROJECT_ROOT / ".env")
 
 @pytest.fixture
 def app():
-    from istithmar import create_app
-    from istithmar.config import get_test_database_uri
+    from estithmar import create_app
+    from estithmar.config import get_test_database_uri
 
     application = create_app(
         {

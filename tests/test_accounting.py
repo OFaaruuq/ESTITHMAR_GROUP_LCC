@@ -6,9 +6,9 @@ from decimal import Decimal
 
 import pytest
 
-from istithmar import db
-from istithmar.accounting_models import Account, JournalEntry, JournalLine
-from istithmar.services.accounting_service import (
+from estithmar import db
+from estithmar.accounting_models import Account, JournalEntry, JournalLine
+from estithmar.services.accounting_service import (
     KEY_DEPLOYED,
     KEY_INVESTMENT_INCOME,
     account_by_system_key,
@@ -18,7 +18,7 @@ from istithmar.services.accounting_service import (
     post_profit_recognition_delta,
     void_manual_journal_entry,
 )
-from istithmar.models import Investment
+from estithmar.models import Investment
 
 
 def test_ledger_opening_balance_and_void_excludes_from_balance(app):

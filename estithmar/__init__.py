@@ -5,7 +5,12 @@ from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import DBAPIError
 
-from istithmar.config import PROJECT_ROOT, get_database_uri, resolve_static_folder
+from estithmar.config import (
+    PROJECT_ROOT,
+    get_database_uri,
+    promote_legacy_env_vars_to_estithmar,
+    resolve_static_folder,
+)
 
 
 def _reraise_if_sql_login_failed(exc: BaseException) -> None:
@@ -17,7 +22,7 @@ def _reraise_if_sql_login_failed(exc: BaseException) -> None:
         "SQL Server rejected the login (error 18456). Options: "
         "(1) Create a SQL login in SSMS with the same name/password as DB_USER/DB_PASSWORD, "
         "enable Mixed Mode authentication, and grant access to DB_NAME; "
-        "(2) Or set ISTITHMAR_MSSQL_USE_WINDOWS_AUTH=yes (and remove or ignore DB_USER/DB_PASSWORD) "
+        "(2) Or set ESTITHMAR_MSSQL_USE_WINDOWS_AUTH=yes (and remove or ignore DB_USER/DB_PASSWORD) "
         "to use your Windows account; "
         "(3) If the password contains @ or ?, wrap it in double quotes in .env, e.g. DB_PASSWORD=\"...\"."
     ) from exc
@@ -29,7 +34,7 @@ migrate = Migrate()
 def create_app(config=None):
     """
     Application factory. Expects current working directory to be
-    ``Admin/istithmar_app`` when using ``flask run`` or ``python run.py``.
+    ``Admin/estithmar_app`` when using ``flask run`` or ``python run.py``.
     """
     try:
         from dotenv import load_dotenv
@@ -38,6 +43,8 @@ def create_app(config=None):
         load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
     except ImportError:
         pass
+
+    promote_legacy_env_vars_to_estithmar()
 
     static_root = resolve_static_folder()
 
@@ -48,7 +55,7 @@ def create_app(config=None):
         static_url_path="",
     )
     app.config["SECRET_KEY"] = os.environ.get(
-        "ISTITHMAR_SECRET_KEY", "istithmar-dev-change-in-production"
+        "ESTITHMAR_SECRET_KEY", "estithmar-dev-change-in-production"
     )
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -90,8 +97,8 @@ def create_app(config=None):
 
     try:
         with app.app_context():
-            from istithmar import models  # noqa: F401
-            import istithmar.accounting_models  # noqa: F401  — GL tables
+            from estithmar import models  # noqa: F401
+            import estithmar.accounting_models  # noqa: F401  — GL tables
 
             if app.config.get("TESTING"):
                 db.create_all()
@@ -109,7 +116,7 @@ def create_app(config=None):
 
             from sqlalchemy import or_
 
-            from istithmar.models import Investment, Project, next_investment_code, next_project_code
+            from estithmar.models import Investment, Project, next_investment_code, next_project_code
 
             for p in (
                 Project.query.filter(or_(Project.project_code.is_(None), Project.project_code == ""))
@@ -127,8 +134,8 @@ def create_app(config=None):
                 inv.investment_code = next_investment_code()
             db.session.commit()
 
-            from istithmar.auth import init_auth, seed_if_empty
-            from istithmar.schema_ensure import ensure_app_schema
+            from estithmar.auth import init_auth, seed_if_empty
+            from estithmar.schema_ensure import ensure_app_schema
 
             ensure_app_schema()
 
@@ -138,7 +145,7 @@ def create_app(config=None):
         _reraise_if_sql_login_failed(e)
         raise
 
-    from istithmar.routes import register_routes
+    from estithmar.routes import register_routes
 
     register_routes(app)
 

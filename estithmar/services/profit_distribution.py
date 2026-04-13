@@ -13,7 +13,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any
 
-from istithmar.models import Member, get_or_create_settings
+from estithmar.models import Member, get_or_create_settings
 
 # Currency precision for eligible paid basis (numerator/denominator must use the same rule).
 _MONEY = Decimal("0.01")
@@ -23,7 +23,7 @@ def _money_quantize(d: Decimal) -> Decimal:
     return d.quantize(_MONEY, rounding=ROUND_HALF_UP)
 
 if TYPE_CHECKING:
-    from istithmar.models import Investment
+    from estithmar.models import Investment
 
 
 def profit_basis_verified_only() -> bool:

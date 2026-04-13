@@ -29,27 +29,28 @@ from sqlalchemy.orm import joinedload
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from istithmar import db
-from istithmar.auth import admin_required, role_required
-from istithmar.config import PROJECT_ROOT, resolve_static_folder
-from istithmar.validators import validate_phone
-from istithmar.services.member_notify import (
+from estithmar import db
+from estithmar.auth import admin_required, role_required
+from estithmar.config import PROJECT_ROOT, resolve_static_folder
+from estithmar.validators import validate_phone
+from estithmar.services.member_notify import (
     notify_member_certificate_issued,
     notify_member_new_subscription,
     notify_member_payment,
     notify_member_profit_share,
 )
-from istithmar.services.notifications import (
+from estithmar.services.notifications import (
     mail_configured,
     notify_member_welcome,
     notify_password_reset,
     notify_user_credentials,
     send_email,
 )
-from istithmar.models import (
+from estithmar.models import (
     ELIGIBILITY_POLICIES,
     INVESTMENT_STATUSES,
     InvestmentLedger,
+    MEMBER_GENDER_CHOICES,
     MEMBER_KINDS,
     PAYMENT_PLANS,
     PROFIT_DISTRIBUTION_FREQUENCIES,
@@ -79,7 +80,7 @@ from istithmar.models import (
     next_project_code,
     next_receipt_no,
 )
-from istithmar.services import (
+from estithmar.services import (
     auto_allocate_payment_to_installments,
     available_pool_for_investment,
     create_subscription,
@@ -93,21 +94,21 @@ from istithmar.services import (
     total_invested_across_investments,
     total_member_contributions_collected,
 )
-from istithmar.services.certificates import (
+from estithmar.services.certificates import (
     certificate_share_position_detail,
     certificate_stock_of_name,
     format_certificate_share_quantity,
 )
-from istithmar.dashboard_geo import build_members_region_map_data
-from istithmar.services.profit_distribution import (
+from estithmar.dashboard_geo import build_members_region_map_data
+from estithmar.services.profit_distribution import (
     build_profit_distribution_preview,
     eligible_pools_for_investments,
     policy_label_for_batch,
     profit_basis_verified_only,
 )
-from istithmar.services.certificate_pdf import build_share_certificate_pdf
-from istithmar.accounting_models import Account, JournalEntry, JournalLine
-from istithmar.services.accounting_service import (
+from estithmar.services.certificate_pdf import build_share_certificate_pdf
+from estithmar.accounting_models import Account, JournalEntry, JournalLine
+from estithmar.services.accounting_service import (
     JOURNAL_SOURCE_TYPES,
     SYSTEM_ACCOUNT_KEYS,
     accounting_enabled,
@@ -125,7 +126,7 @@ from istithmar.services.accounting_service import (
     trial_balance_rows,
     void_manual_journal_entry,
 )
-from istithmar.share_policy import (
+from estithmar.share_policy import (
     MAX_SHARE_UNITS,
     MIN_SHARE_UNITS,
     SHARE_UNIT_PRICE,
@@ -154,6 +155,7 @@ _MEMBER_PORTAL_BLOCKED_ENDPOINTS = frozenset(
         "audit_export_csv",
         "certificates_issue",
         "certificates_revoke",
+        "certificates_reinstate",
         "contributions_verify",
         "contributions_unverify",
         "subscriptions_set_investment",
@@ -209,6 +211,75 @@ def _valid_member_kind(value: str | None) -> str:
     return v if v in allowed else "member"
 
 
+_MEMBER_GENDER_VALUES = frozenset(k for k, _ in MEMBER_GENDER_CHOICES)
+
+
+def _parse_member_personal_extended(form, *, require_all: bool) -> tuple[dict | None, str | None]:
+    """Parse DOB, gender, occupation, next-of-kin from a form. If ``require_all``, every field is mandatory."""
+    dob_s = (form.get("date_of_birth") or "").strip()
+    gender = (form.get("gender") or "").strip().lower()
+    occ = (form.get("occupation_employer") or "").strip()[:200]
+    nok_name = (form.get("next_of_kin_name") or "").strip()[:200]
+    nok_rel = (form.get("next_of_kin_relationship") or "").strip()[:100]
+    nok_phone_raw = (form.get("next_of_kin_phone") or "").strip()
+    nok_addr = (form.get("next_of_kin_address") or "").strip()
+
+    if require_all:
+        if not dob_s:
+            return None, "Date of birth is required."
+        if not gender:
+            return None, "Gender is required."
+        if gender not in _MEMBER_GENDER_VALUES:
+            return None, "Please choose a valid gender option."
+        if not occ:
+            return None, "Occupation or employer is required."
+        if not nok_name:
+            return None, "Next of kin (emergency contact) name is required."
+        if not nok_rel:
+            return None, "Next of kin relationship is required."
+        if not nok_phone_raw:
+            return None, "Next of kin phone number is required."
+        if not nok_addr:
+            return None, "Next of kin address is required."
+    elif gender and gender not in _MEMBER_GENDER_VALUES:
+        return None, "Please choose a valid gender option."
+
+    dob = _parse_date(dob_s) if dob_s else None
+    if dob_s and dob is None:
+        return None, "Invalid date of birth."
+    if dob:
+        if dob > date.today():
+            return None, "Date of birth cannot be in the future."
+        if dob.year < 1900:
+            return None, "Date of birth must be year 1900 or later."
+
+    nok_phone_norm, nok_err = validate_phone(nok_phone_raw)
+    if nok_phone_raw and nok_err:
+        return None, f"Next of kin phone: {nok_err}"
+    if require_all and not nok_phone_norm:
+        return None, "Next of kin phone number is required."
+
+    return {
+        "date_of_birth": dob,
+        "gender": gender or None,
+        "occupation_employer": occ or None,
+        "next_of_kin_name": nok_name or None,
+        "next_of_kin_relationship": nok_rel or None,
+        "next_of_kin_phone": nok_phone_norm,
+        "next_of_kin_address": nok_addr or None,
+    }, None
+
+
+def _apply_member_personal_fields(m: Member, data: dict) -> None:
+    m.date_of_birth = data.get("date_of_birth")
+    m.gender = data.get("gender")
+    m.occupation_employer = data.get("occupation_employer")
+    m.next_of_kin_name = data.get("next_of_kin_name")
+    m.next_of_kin_relationship = data.get("next_of_kin_relationship")
+    m.next_of_kin_phone = data.get("next_of_kin_phone")
+    m.next_of_kin_address = data.get("next_of_kin_address")
+
+
 def _valid_project_status(value: str | None) -> str:
     allowed = {k for k, _ in PROJECT_STATUSES}
     v = (value or "Planned").strip()
@@ -237,6 +308,25 @@ def _funds_pool_summary():
         "available": collected - invested,
         "verified_only": v,
     }
+
+
+def _safe_brand_static_filename(v) -> str | None:
+    """Relative path under the static folder; None if unusable (avoids url_for BuildError)."""
+    if not isinstance(v, str):
+        return None
+    s = v.strip().replace("\\", "/")
+    if not s or ".." in s or "://" in s or s.startswith("/"):
+        return None
+    return s
+
+
+def _extra_for_settings_template(ex: dict) -> dict:
+    """Drop invalid logo paths so settings preview img tags do not break rendering."""
+    out = dict(ex)
+    for k in ("logo_light", "logo_dark"):
+        if _safe_brand_static_filename(out.get(k)) is None:
+            out.pop(k, None)
+    return out
 
 
 def _member_scoped_member_pk() -> int | None:
@@ -527,6 +617,7 @@ def _audit_notification_item(log: AuditLog) -> dict | None:
         "project_created": "Project created",
         "project_updated": "Project updated",
         "certificate_revoked": "Certificate revoked",
+        "certificate_reinstated": "Certificate reinstated",
         "agent_created": "Agent added",
         "agent_updated": "Agent updated",
         "installment_added": "Installment scheduled",
@@ -735,13 +826,15 @@ def register_routes(app):
     @app.context_processor
     def inject_branding():
         ex = get_or_create_settings().get_extra()
-        lt = ex.get("logo_light")
-        dk = ex.get("logo_dark")
+        lt = _safe_brand_static_filename(ex.get("logo_light"))
+        dk = _safe_brand_static_filename(ex.get("logo_dark"))
 
         def _u(custom: str | None, default_path: str) -> str:
-            if custom:
-                return url_for("static", filename=custom)
-            return url_for("static", filename=default_path)
+            path = custom or default_path
+            try:
+                return url_for("static", filename=path)
+            except Exception:
+                return url_for("static", filename=default_path)
 
         return {
             "brand_logo_light_sm": _u(lt, "assets/images/logo-sm-light.png"),
@@ -1019,7 +1112,7 @@ def register_routes(app):
         return (base[:48] + secrets.token_hex(4))[:64]
 
     def _allow_self_registration() -> bool:
-        return (os.environ.get("ISTITHMAR_ALLOW_SELF_REGISTRATION") or "").strip().lower() in (
+        return (os.environ.get("ESTITHMAR_ALLOW_SELF_REGISTRATION") or "").strip().lower() in (
             "1",
             "true",
             "yes",
@@ -1055,6 +1148,10 @@ def register_routes(app):
             if phone_err:
                 flash(phone_err, "danger")
                 return render_template("register.html")
+            personal, perr = _parse_member_personal_extended(request.form, require_all=True)
+            if perr:
+                flash(perr, "danger")
+                return render_template("register.html")
             if AppUser.query.filter(func.lower(AppUser.email) == email).first():
                 flash("An account with this email already exists. Sign in or use Forgot password.", "warning")
                 return render_template("register.html")
@@ -1076,6 +1173,7 @@ def register_routes(app):
                 member_kind="member",
                 agent_id=None,
             )
+            _apply_member_personal_fields(m, personal)
             db.session.add(m)
             db.session.flush()
             u = AppUser(
@@ -1836,6 +1934,7 @@ def register_routes(app):
             "member": member,
             "agents": agents,
             "member_kinds": MEMBER_KINDS,
+            "member_genders": MEMBER_GENDER_CHOICES,
             "require_agent": s.get_flag("require_agent_on_member"),
             "is_edit": member is not None,
             "default_join_date": date.today().isoformat(),
@@ -1859,6 +1958,10 @@ def register_routes(app):
             if em_raw and ("@" not in em_raw or len(em_raw) < 5):
                 flash("Please enter a valid email or leave it empty.", "danger")
                 return render_template("members/form.html", **_member_form_ctx(None, agents))
+            personal, perr = _parse_member_personal_extended(request.form, require_all=True)
+            if perr:
+                flash(perr, "danger")
+                return render_template("members/form.html", **_member_form_ctx(None, agents))
             m = Member(
                 member_id=next_member_id(),
                 full_name=request.form.get("full_name", "").strip(),
@@ -1871,6 +1974,7 @@ def register_routes(app):
                 member_kind=_valid_member_kind(request.form.get("member_kind")),
                 agent_id=aid,
             )
+            _apply_member_personal_fields(m, personal)
             if not m.full_name:
                 flash("Full name is required.", "danger")
                 return render_template("members/form.html", **_member_form_ctx(None, agents))
@@ -1913,6 +2017,12 @@ def register_routes(app):
             m.email = em_raw[:120] if em_raw else None
             m.address = request.form.get("address", "").strip()
             m.national_id = request.form.get("national_id", "").strip()
+            personal, perr = _parse_member_personal_extended(request.form, require_all=False)
+            if perr:
+                flash(perr, "danger")
+                agents = _agents_for_member_form(m)
+                return render_template("members/form.html", **_member_form_ctx(m, agents))
+            _apply_member_personal_fields(m, personal)
             jd = _parse_date(request.form.get("join_date"))
             if jd:
                 m.join_date = jd
@@ -2006,6 +2116,7 @@ def register_routes(app):
             subscriptions=subscriptions_ordered,
             profit_rows=profit_rows,
             member_kinds=MEMBER_KINDS,
+            member_genders=MEMBER_GENDER_CHOICES,
             cert_count=cert_count,
             recent_certs=recent_certs,
             settings=settings,
@@ -2641,7 +2752,7 @@ def register_routes(app):
         ex = s.get_extra()
         sub = cert.subscription
         cur = s.currency_code or "USD"
-        company_nm = (ex.get("company_name") or "Istithmar Investment Management").strip()
+        company_nm = (ex.get("company_name") or "Estithmar Investment Management").strip()
         cert_share_qty = format_certificate_share_quantity(sub, cur)
         cert_stock_of = certificate_stock_of_name(sub, company_nm)
         sym = s.currency_symbol or "$"
@@ -2707,23 +2818,37 @@ def register_routes(app):
         )
 
     @app.route("/certificates/<int:id>/revoke", methods=["POST"])
+    @role_required("admin", "operator")
     def certificates_revoke(id):
-        if current_user.role == "agent":
-            flash("Certificate revocation is not available for your role.", "warning")
-            return redirect(url_for("certificates_list"))
         cert = ShareCertificate.query.get_or_404(id)
-        reason = (request.form.get("reason", "") or "").strip()
+        reason = (request.form.get("reason", "") or "").strip()[:500]
         if cert.status == "Revoked":
             flash("Certificate is already revoked.", "info")
+            return redirect(url_for("certificates_list"))
+        if cert.status != "Issued":
+            flash("Only issued certificates can be revoked.", "warning")
             return redirect(url_for("certificates_list"))
         cert.status = "Revoked"
         note = f"Revoked by user_id={current_user.id if current_user.is_authenticated else 'unknown'}"
         if reason:
             note = f"{note}; reason={reason}"
-        cert.notes = note
         log_audit("certificate_revoked", "ShareCertificate", cert.id, note)
         db.session.commit()
         flash("Certificate revoked.", "warning")
+        return redirect(url_for("certificates_list"))
+
+    @app.route("/certificates/<int:id>/reinstate", methods=["POST"])
+    @role_required("admin", "operator")
+    def certificates_reinstate(id):
+        cert = ShareCertificate.query.get_or_404(id)
+        if cert.status != "Revoked":
+            flash("Only revoked certificates can be reinstated to Issued.", "info")
+            return redirect(url_for("certificates_list"))
+        cert.status = "Issued"
+        note = f"Reinstated to Issued by user_id={current_user.id if current_user.is_authenticated else 'unknown'}"
+        log_audit("certificate_reinstated", "ShareCertificate", cert.id, note)
+        db.session.commit()
+        flash("Certificate reinstated — status is Issued again.", "success")
         return redirect(url_for("certificates_list"))
 
     # --- Contributions ---
@@ -4097,9 +4222,15 @@ def register_routes(app):
         return render_template(
             "settings/index.html",
             settings=s,
-            extra=s.get_extra(),
+            extra=_extra_for_settings_template(s.get_extra()),
             pool=_funds_pool_summary(),
         )
+
+    @app.route("/setting")
+    @app.route("/setting/")
+    @admin_required
+    def settings_page_alias():
+        return redirect(url_for("settings_page"))
 
     @app.route("/settings/notifications", methods=["GET", "POST"])
     @admin_required
@@ -4117,8 +4248,8 @@ def register_routes(app):
                 else:
                     ok, err = send_email(
                         test_to,
-                        "Istithmar — SMTP test",
-                        "This is a test message from your Istithmar notification settings.\n\nIf you received this, SMTP is configured correctly.",
+                        "Estithmar — SMTP test",
+                        "This is a test message from your Estithmar notification settings.\n\nIf you received this, SMTP is configured correctly.",
                     )
                     if ok:
                         flash("Test email sent.", "success")
@@ -5245,6 +5376,7 @@ def register_routes(app):
         ws = wb.active
         ws.title = "Members"
         kind_labels = dict(MEMBER_KINDS)
+        gender_labels = dict(MEMBER_GENDER_CHOICES)
         headers = [
             "Member ID",
             "Full name",
@@ -5252,6 +5384,13 @@ def register_routes(app):
             "Phone",
             "Address",
             "National ID",
+            "Date of birth",
+            "Gender",
+            "Occupation/employer",
+            "Next of kin name",
+            "Next of kin relationship",
+            "Next of kin phone",
+            "Next of kin address",
             "Join date",
             "Status",
             "Agent ID",
@@ -5278,11 +5417,18 @@ def register_routes(app):
             ws.cell(row=row, column=4, value=mem.phone)
             ws.cell(row=row, column=5, value=mem.address)
             ws.cell(row=row, column=6, value=mem.national_id)
-            ws.cell(row=row, column=7, value=mem.join_date.isoformat() if mem.join_date else "")
-            ws.cell(row=row, column=8, value=mem.status)
-            ws.cell(row=row, column=9, value=mem.agent.agent_id if mem.agent else "")
-            ws.cell(row=row, column=10, value=float(mem.contribution_total()))
-            ws.cell(row=row, column=11, value=float(mem.profit_received_total()))
+            ws.cell(row=row, column=7, value=mem.date_of_birth.isoformat() if mem.date_of_birth else "")
+            ws.cell(row=row, column=8, value=gender_labels.get(mem.gender, mem.gender or ""))
+            ws.cell(row=row, column=9, value=mem.occupation_employer or "")
+            ws.cell(row=row, column=10, value=mem.next_of_kin_name or "")
+            ws.cell(row=row, column=11, value=mem.next_of_kin_relationship or "")
+            ws.cell(row=row, column=12, value=mem.next_of_kin_phone or "")
+            ws.cell(row=row, column=13, value=mem.next_of_kin_address or "")
+            ws.cell(row=row, column=14, value=mem.join_date.isoformat() if mem.join_date else "")
+            ws.cell(row=row, column=15, value=mem.status)
+            ws.cell(row=row, column=16, value=mem.agent.agent_id if mem.agent else "")
+            ws.cell(row=row, column=17, value=float(mem.contribution_total()))
+            ws.cell(row=row, column=18, value=float(mem.profit_received_total()))
         bio = io.BytesIO()
         wb.save(bio)
         return _xlsx_response(bio.getvalue(), "members.xlsx")
@@ -5543,7 +5689,7 @@ def register_routes(app):
                     str(mem.profit_received_total()),
                 ]
             )
-        pdf_bytes = _pdf_table("Istithmar — Members list", headers, rows_data)
+        pdf_bytes = _pdf_table("Estithmar — Members list", headers, rows_data)
         return Response(
             pdf_bytes,
             mimetype="application/pdf",
@@ -5569,7 +5715,7 @@ def register_routes(app):
                 ]
             )
         pdf_bytes = _pdf_table(
-            "Istithmar — Contributions",
+            "Estithmar — Contributions",
             ["Txn ID", "Receipt", "Member", "Amount", "Date", "Type", "Agent"],
             rows_data,
         )

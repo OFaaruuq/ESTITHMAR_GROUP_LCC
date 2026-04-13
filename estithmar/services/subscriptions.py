@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from istithmar import db
-from istithmar.models import AuditLog, Member, ShareSubscription, next_subscription_no
-from istithmar.share_policy import resolve_share_subscription_amounts
+from estithmar import db
+from estithmar.models import AuditLog, Member, ShareSubscription, next_subscription_no
+from estithmar.share_policy import resolve_share_subscription_amounts
 
 
 def create_subscription(
@@ -30,7 +30,7 @@ def create_subscription(
     if eligibility_policy not in {"paid_proportional", "fully_paid_only"}:
         raise ValueError("Invalid eligibility policy.")
     if investment_id is not None:
-        from istithmar.models import Investment
+        from estithmar.models import Investment
 
         if db.session.get(Investment, investment_id) is None:
             raise ValueError("Invalid investment.")

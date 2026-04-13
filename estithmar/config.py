@@ -1,8 +1,8 @@
 """
-Path layout (run all commands from the project root: Admin/istithmar_app).
+Path layout (run all commands from the project root: Admin/estithmar_app).
 
-  istithmar_app/          <- PROJECT_ROOT (venv, app.py, templates/)
-    istithmar/            <- Python package
+  estithmar_app/          <- PROJECT_ROOT (venv, app.py, templates/)
+    estithmar/            <- Python package
     templates/
     static/               <- optional: copy Admin/dist/assets -> static/assets
   ../dist/                <- default theme assets (Admin/dist/assets/...)
@@ -10,23 +10,38 @@ Path layout (run all commands from the project root: Admin/istithmar_app).
 import os
 from urllib.parse import quote_plus
 
-# Directory containing this file: .../istithmar_app/istithmar/
+
+def promote_legacy_env_vars_to_estithmar() -> None:
+    """Map legacy ``ISTITHMAR_*`` environment variables to ``ESTITHMAR_*`` when the new key is unset."""
+    legacy_prefix = "IST" + "ITHMAR_"
+    current_prefix = "EST" + "ITHMAR_"
+    for key, val in list(os.environ.items()):
+        if not key.startswith(legacy_prefix):
+            continue
+        new_key = current_prefix + key[len(legacy_prefix) :]
+        existing = os.environ.get(new_key)
+        if existing is None or (isinstance(existing, str) and not str(existing).strip()):
+            if val is not None:
+                os.environ[new_key] = val
+
+
+# Directory containing this file: .../estithmar_app/estithmar/
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Project root: .../istithmar_app  (where venv, app.py, templates live)
+# Project root: .../estithmar_app  (where venv, app.py, templates live)
 PROJECT_ROOT = os.path.abspath(os.path.join(_PACKAGE_DIR, ".."))
 
-# Tocly template build output next to istithmar_app
+# Tocly template build output next to estithmar_app
 DIST_DIR = os.path.join(PROJECT_ROOT, "..", "dist")
 # Optional self-contained copy inside the app folder
 LOCAL_STATIC_DIR = os.path.join(PROJECT_ROOT, "static")
 
-ISTITHMAR_ENV_STAGING = "staging"
-ISTITHMAR_ENV_PRODUCTION = "production"
-ISTITHMAR_ENV_DEVELOPMENT = "development"
+ESTITHMAR_ENV_STAGING = "staging"
+ESTITHMAR_ENV_PRODUCTION = "production"
+ESTITHMAR_ENV_DEVELOPMENT = "development"
 
 
 class DatabaseConfigurationError(RuntimeError):
-    """Missing or invalid database URL for the current ISTITHMAR_ENV."""
+    """Missing or invalid database URL for the current ESTITHMAR_ENV."""
 
 
 def _normalize_postgres_url(uri: str) -> str:
@@ -68,14 +83,14 @@ def _env_flag_true(name: str) -> bool:
 
 def _mssql_odbc_query_params(host: str, *, trusted_connection: bool) -> str:
     """Query string for ``mssql+pyodbc`` (after ``?``): driver, optional Windows auth, encrypt, trust."""
-    driver = os.environ.get("ISTITHMAR_MSSQL_ODBC_DRIVER", "ODBC Driver 18 for SQL Server")
+    driver = os.environ.get("ESTITHMAR_MSSQL_ODBC_DRIVER", "ODBC Driver 18 for SQL Server")
     driver_q = quote_plus(driver, safe="")
     parts = [f"driver={driver_q}"]
     if trusted_connection:
         parts.append("Trusted_Connection=yes")
-    encrypt = os.environ.get("ISTITHMAR_MSSQL_ENCRYPT", "yes")
+    encrypt = os.environ.get("ESTITHMAR_MSSQL_ENCRYPT", "yes")
     parts.append(f"Encrypt={quote_plus(encrypt, safe='')}")
-    tsc_raw = os.environ.get("ISTITHMAR_MSSQL_TRUST_SERVER_CERTIFICATE")
+    tsc_raw = os.environ.get("ESTITHMAR_MSSQL_TRUST_SERVER_CERTIFICATE")
     tsc = (tsc_raw or "").strip().lower()
     trust = False
     if tsc in ("0", "false", "no"):
@@ -115,18 +130,18 @@ def _try_mssql_uri_from_db_env_vars() -> str | None:
 
     - **SQL authentication** (default): ``DB_USER``, ``DB_PASSWORD``, ``DB_NAME``, ``DB_HOST``;
       optional ``DB_PORT`` (default ``1433``).
-    - **Windows authentication**: set ``ISTITHMAR_MSSQL_USE_WINDOWS_AUTH=yes`` (or ``DB_USE_WINDOWS_AUTH=yes``);
+    - **Windows authentication**: set ``ESTITHMAR_MSSQL_USE_WINDOWS_AUTH=yes`` (or ``DB_USE_WINDOWS_AUTH=yes``);
       then only ``DB_NAME``, ``DB_HOST``, optional ``DB_PORT`` are required.
 
-    Tuning: ``ISTITHMAR_MSSQL_ODBC_DRIVER``, ``ISTITHMAR_MSSQL_ENCRYPT``,
-    ``ISTITHMAR_MSSQL_TRUST_SERVER_CERTIFICATE``.
+    Tuning: ``ESTITHMAR_MSSQL_ODBC_DRIVER``, ``ESTITHMAR_MSSQL_ENCRYPT``,
+    ``ESTITHMAR_MSSQL_TRUST_SERVER_CERTIFICATE``.
     """
     database = os.environ.get("DB_NAME")
     host = os.environ.get("DB_HOST")
     port = os.environ.get("DB_PORT") or "1433"
     if not database or not host:
         return None
-    if _env_flag_true("ISTITHMAR_MSSQL_USE_WINDOWS_AUTH") or _env_flag_true("DB_USE_WINDOWS_AUTH"):
+    if _env_flag_true("ESTITHMAR_MSSQL_USE_WINDOWS_AUTH") or _env_flag_true("DB_USE_WINDOWS_AUTH"):
         return _mssql_uri_trusted_connection(host, str(port), database)
     user = os.environ.get("DB_USER")
     password = os.environ.get("DB_PASSWORD")
@@ -137,29 +152,29 @@ def _try_mssql_uri_from_db_env_vars() -> str | None:
 
 def _try_postgres_uri_from_env_vars() -> str | None:
     """
-    If ``ISTITHMAR_PG_USER`` / ``ISTITHMAR_PG_PASSWORD`` / ``ISTITHMAR_PG_DATABASE`` are set
+    If ``ESTITHMAR_PG_USER`` / ``ESTITHMAR_PG_PASSWORD`` / ``ESTITHMAR_PG_DATABASE`` are set
     (or ``POSTGRES_USER`` / ``POSTGRES_PASSWORD`` / ``POSTGRES_DB``), build the URI.
 
-    Optional: ``ISTITHMAR_PG_HOST`` (default ``127.0.0.1``), ``ISTITHMAR_PG_PORT`` (default ``5432``).
+    Optional: ``ESTITHMAR_PG_HOST`` (default ``127.0.0.1``), ``ESTITHMAR_PG_PORT`` (default ``5432``).
     """
-    user = os.environ.get("ISTITHMAR_PG_USER") or os.environ.get("POSTGRES_USER")
-    password = os.environ.get("ISTITHMAR_PG_PASSWORD")
+    user = os.environ.get("ESTITHMAR_PG_USER") or os.environ.get("POSTGRES_USER")
+    password = os.environ.get("ESTITHMAR_PG_PASSWORD")
     if password is None:
         password = os.environ.get("POSTGRES_PASSWORD")
-    database = os.environ.get("ISTITHMAR_PG_DATABASE") or os.environ.get("POSTGRES_DB")
+    database = os.environ.get("ESTITHMAR_PG_DATABASE") or os.environ.get("POSTGRES_DB")
     if not user or password is None or not database:
         return None
-    host = os.environ.get("ISTITHMAR_PG_HOST") or os.environ.get("POSTGRES_HOST") or "127.0.0.1"
-    port = os.environ.get("ISTITHMAR_PG_PORT") or os.environ.get("POSTGRES_PORT") or "5432"
+    host = os.environ.get("ESTITHMAR_PG_HOST") or os.environ.get("POSTGRES_HOST") or "127.0.0.1"
+    port = os.environ.get("ESTITHMAR_PG_PORT") or os.environ.get("POSTGRES_PORT") or "5432"
     return _postgres_uri_from_components(user, password, host, str(port), database)
 
 
-def get_istithmar_env() -> str:
+def get_estithmar_env() -> str:
     """Return ``staging``, ``production``, or ``development`` (default)."""
-    v = (os.environ.get("ISTITHMAR_ENV") or ISTITHMAR_ENV_DEVELOPMENT).strip().lower()
-    if v in (ISTITHMAR_ENV_STAGING, ISTITHMAR_ENV_PRODUCTION, ISTITHMAR_ENV_DEVELOPMENT):
+    v = (os.environ.get("ESTITHMAR_ENV") or ESTITHMAR_ENV_DEVELOPMENT).strip().lower()
+    if v in (ESTITHMAR_ENV_STAGING, ESTITHMAR_ENV_PRODUCTION, ESTITHMAR_ENV_DEVELOPMENT):
         return v
-    return ISTITHMAR_ENV_DEVELOPMENT
+    return ESTITHMAR_ENV_DEVELOPMENT
 
 
 def get_database_uri() -> str:
@@ -168,16 +183,16 @@ def get_database_uri() -> str:
 
     Resolution order:
 
-    1. ``ISTITHMAR_DATABASE_URL`` or ``DATABASE_URL`` (first non-empty wins).
-    2. Else, from ``ISTITHMAR_ENV`` (default ``development``):
+    1. ``ESTITHMAR_DATABASE_URL`` or ``DATABASE_URL`` (first non-empty wins).
+    2. Else, from ``ESTITHMAR_ENV`` (default ``development``):
 
-       - ``staging`` → ``ISTITHMAR_STAGING_DATABASE_URL``
-       - ``production`` → ``ISTITHMAR_PRODUCTION_DATABASE_URL``
-       - ``development`` → ``ISTITHMAR_DEVELOPMENT_DATABASE_URL``
+       - ``staging`` → ``ESTITHMAR_STAGING_DATABASE_URL``
+       - ``production`` → ``ESTITHMAR_PRODUCTION_DATABASE_URL``
+       - ``development`` → ``ESTITHMAR_DEVELOPMENT_DATABASE_URL``
 
     3. Else, fallback component variables:
 
-       - PostgreSQL: ``ISTITHMAR_PG_*`` (or ``POSTGRES_*``)
+       - PostgreSQL: ``ESTITHMAR_PG_*`` (or ``POSTGRES_*``)
        - SQL Server: ``DB_*`` (and optional MSSQL tuning flags)
 
     **Staging (PostgreSQL)**::
@@ -196,23 +211,23 @@ def get_database_uri() -> str:
         postgresql+psycopg2://...  OR  mssql+pyodbc://...
 
     Raises ``DatabaseConfigurationError`` if no URI is configured, or if the URI
-    does not match the expected backend policy for ``ISTITHMAR_ENV``.
+    does not match the expected backend policy for ``ESTITHMAR_ENV``.
     """
-    uri = os.environ.get("ISTITHMAR_DATABASE_URL") or os.environ.get("DATABASE_URL")
+    uri = os.environ.get("ESTITHMAR_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not (uri and uri.strip()):
-        env = get_istithmar_env()
-        if env == ISTITHMAR_ENV_STAGING:
-            uri = os.environ.get("ISTITHMAR_STAGING_DATABASE_URL")
-        elif env == ISTITHMAR_ENV_PRODUCTION:
-            uri = os.environ.get("ISTITHMAR_PRODUCTION_DATABASE_URL")
+        env = get_estithmar_env()
+        if env == ESTITHMAR_ENV_STAGING:
+            uri = os.environ.get("ESTITHMAR_STAGING_DATABASE_URL")
+        elif env == ESTITHMAR_ENV_PRODUCTION:
+            uri = os.environ.get("ESTITHMAR_PRODUCTION_DATABASE_URL")
         else:
-            uri = os.environ.get("ISTITHMAR_DEVELOPMENT_DATABASE_URL")
+            uri = os.environ.get("ESTITHMAR_DEVELOPMENT_DATABASE_URL")
 
     if not (uri and str(uri).strip()):
-        env = get_istithmar_env()
-        if env == ISTITHMAR_ENV_STAGING:
+        env = get_estithmar_env()
+        if env == ESTITHMAR_ENV_STAGING:
             uri = _try_postgres_uri_from_env_vars()
-        elif env == ISTITHMAR_ENV_PRODUCTION:
+        elif env == ESTITHMAR_ENV_PRODUCTION:
             uri = _try_mssql_uri_from_db_env_vars()
         else:
             # Development accepts either backend. Prefer explicit PostgreSQL vars first
@@ -221,34 +236,34 @@ def get_database_uri() -> str:
 
     if not uri or not str(uri).strip():
         raise DatabaseConfigurationError(
-            "Database URL is required. Set ISTITHMAR_DATABASE_URL or "
-            "DATABASE_URL, or set ISTITHMAR_STAGING_DATABASE_URL / ISTITHMAR_PRODUCTION_DATABASE_URL / "
-            "ISTITHMAR_DEVELOPMENT_DATABASE_URL to match ISTITHMAR_ENV, or set ISTITHMAR_PG_USER / "
-            "ISTITHMAR_PG_PASSWORD / ISTITHMAR_PG_DATABASE (and optional host/port). "
-            "For SQL Server with ISTITHMAR_ENV=production, set ISTITHMAR_PRODUCTION_DATABASE_URL "
+            "Database URL is required. Set ESTITHMAR_DATABASE_URL or "
+            "DATABASE_URL, or set ESTITHMAR_STAGING_DATABASE_URL / ESTITHMAR_PRODUCTION_DATABASE_URL / "
+            "ESTITHMAR_DEVELOPMENT_DATABASE_URL to match ESTITHMAR_ENV, or set ESTITHMAR_PG_USER / "
+            "ESTITHMAR_PG_PASSWORD / ESTITHMAR_PG_DATABASE (and optional host/port). "
+            "For SQL Server with ESTITHMAR_ENV=production, set ESTITHMAR_PRODUCTION_DATABASE_URL "
             "or DB_HOST / DB_NAME (and optional DB_PORT), plus either DB_USER / DB_PASSWORD "
-            "or ISTITHMAR_MSSQL_USE_WINDOWS_AUTH=yes for Windows authentication."
+            "or ESTITHMAR_MSSQL_USE_WINDOWS_AUTH=yes for Windows authentication."
         )
 
     uri = _normalize_postgres_url(str(uri))
-    env = get_istithmar_env()
+    env = get_estithmar_env()
 
-    if env == ISTITHMAR_ENV_PRODUCTION:
+    if env == ESTITHMAR_ENV_PRODUCTION:
         if not _is_mssql_uri(uri):
             raise DatabaseConfigurationError(
-                "ISTITHMAR_ENV=production requires a Microsoft SQL Server URI "
+                "ESTITHMAR_ENV=production requires a Microsoft SQL Server URI "
                 "(e.g. mssql+pyodbc://...)."
             )
-    elif env == ISTITHMAR_ENV_STAGING:
+    elif env == ESTITHMAR_ENV_STAGING:
         if not _is_postgresql_uri(uri):
             raise DatabaseConfigurationError(
-                "ISTITHMAR_ENV=staging requires PostgreSQL "
+                "ESTITHMAR_ENV=staging requires PostgreSQL "
                 "(e.g. postgresql+psycopg2://...), not this URI."
             )
     else:
         if not (_is_postgresql_uri(uri) or _is_mssql_uri(uri)):
             raise DatabaseConfigurationError(
-                "ISTITHMAR_ENV=development requires either PostgreSQL "
+                "ESTITHMAR_ENV=development requires either PostgreSQL "
                 "(postgresql+psycopg2://...) or SQL Server (mssql+pyodbc://...)."
             )
 
@@ -259,32 +274,32 @@ def get_test_database_uri() -> str:
     """
     PostgreSQL URI for automated tests (pytest).
 
-    Set ``ISTITHMAR_TEST_DATABASE_URL`` to a full URI, or set ``ISTITHMAR_PG_USER`` /
-    ``ISTITHMAR_PG_PASSWORD`` (and optional host/port). Database name: prefer
-    ``ISTITHMAR_PG_TEST_DATABASE``; if unset, use ``ISTITHMAR_PG_DATABASE`` / ``POSTGRES_DB``
+    Set ``ESTITHMAR_TEST_DATABASE_URL`` to a full URI, or set ``ESTITHMAR_PG_USER`` /
+    ``ESTITHMAR_PG_PASSWORD`` (and optional host/port). Database name: prefer
+    ``ESTITHMAR_PG_TEST_DATABASE``; if unset, use ``ESTITHMAR_PG_DATABASE`` / ``POSTGRES_DB``
     so tests can share the dev database; otherwise default ``estithmar_test``.
     """
-    explicit = os.environ.get("ISTITHMAR_TEST_DATABASE_URL")
+    explicit = os.environ.get("ESTITHMAR_TEST_DATABASE_URL")
     if explicit and explicit.strip():
         return _normalize_postgres_url(explicit.strip())
-    user = os.environ.get("ISTITHMAR_PG_USER") or os.environ.get("POSTGRES_USER")
-    password = os.environ.get("ISTITHMAR_PG_PASSWORD")
+    user = os.environ.get("ESTITHMAR_PG_USER") or os.environ.get("POSTGRES_USER")
+    password = os.environ.get("ESTITHMAR_PG_PASSWORD")
     if password is None:
         password = os.environ.get("POSTGRES_PASSWORD")
-    database = os.environ.get("ISTITHMAR_PG_TEST_DATABASE")
+    database = os.environ.get("ESTITHMAR_PG_TEST_DATABASE")
     if not database:
         database = (
-            os.environ.get("ISTITHMAR_PG_DATABASE")
+            os.environ.get("ESTITHMAR_PG_DATABASE")
             or os.environ.get("POSTGRES_DB")
             or "estithmar_test"
         )
     if not user or password is None:
         raise DatabaseConfigurationError(
-            "Tests require PostgreSQL. Set ISTITHMAR_TEST_DATABASE_URL or "
-            "ISTITHMAR_PG_USER and ISTITHMAR_PG_PASSWORD (and optional ISTITHMAR_PG_TEST_DATABASE)."
+            "Tests require PostgreSQL. Set ESTITHMAR_TEST_DATABASE_URL or "
+            "ESTITHMAR_PG_USER and ESTITHMAR_PG_PASSWORD (and optional ESTITHMAR_PG_TEST_DATABASE)."
         )
-    host = os.environ.get("ISTITHMAR_PG_HOST") or os.environ.get("POSTGRES_HOST") or "127.0.0.1"
-    port = os.environ.get("ISTITHMAR_PG_PORT") or os.environ.get("POSTGRES_PORT") or "5432"
+    host = os.environ.get("ESTITHMAR_PG_HOST") or os.environ.get("POSTGRES_HOST") or "127.0.0.1"
+    port = os.environ.get("ESTITHMAR_PG_PORT") or os.environ.get("POSTGRES_PORT") or "5432"
     return _postgres_uri_from_components(user, password, host, str(port), database)
 
 
@@ -293,8 +308,8 @@ def resolve_static_folder():
     Serve CSS/JS/images from the same paths templates expect: /assets/...
 
     Priority:
-    1) ../dist  if it contains assets/ (normal layout: Admin/dist + Admin/istithmar_app)
-    2) static/  if it contains assets/ (after copying dist/assets into istithmar_app/static/assets)
+    1) ../dist  if it contains assets/ (normal layout: Admin/dist + Admin/estithmar_app)
+    2) static/  if it contains assets/ (after copying dist/assets into estithmar_app/static/assets)
     3) ../dist  anyway (may 404 until theme files are present)
     """
     if os.path.isdir(os.path.join(DIST_DIR, "assets")):

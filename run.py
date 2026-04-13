@@ -1,4 +1,4 @@
-"""Run Istithmar Investment Management System (Flask + PostgreSQL or SQL Server).
+"""Run Estithmar Investment Management System (Flask + PostgreSQL or SQL Server).
 
 Configure database URLs in .env (see .env.example). Run from project root:
 
@@ -20,7 +20,7 @@ try:
 except ImportError:
     pass
 
-from istithmar import create_app
+from estithmar import create_app
 
 app = create_app()
 

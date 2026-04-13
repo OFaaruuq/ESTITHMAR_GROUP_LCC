@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>{% block title %}Istithmar{% endblock %} | Investment Management</title>
+    <title>{% block title %}Estithmar{% endblock %} | Investment Management</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" href="{{ url_for('static', filename='assets/images/favicon.ico') }}">
     <script src="{{ url_for('static', filename='assets/js/layout.js') }}"></script>
     <link href="{{ url_for('static', filename='assets/css/bootstrap.min.css') }}" rel="stylesheet" id="bootstrap-style">
     <link href="{{ url_for('static', filename='assets/css/icons.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='assets/css/app.min.css') }}" rel="stylesheet" id="app-style">
-    <link href="{{ url_for('static', filename='assets/css/istithmar-sidebar.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='assets/css/estithmar-sidebar.css') }}" rel="stylesheet">
     {% block extra_css %}{% endblock %}
 </head>
 <body data-sidebar="colored">
@@ -24,7 +24,7 @@
                     </a>
                 </div>
                 <div class="page-title-box align-self-center d-none d-md-block ms-3">
-                    <h4 class="page-title mb-0">{% block page_heading %}Istithmar{% endblock %}</h4>
+                    <h4 class="page-title mb-0">{% block page_heading %}Estithmar{% endblock %}</h4>
                 </div>
                 {% if current_user.is_authenticated %}
                 <div class="ms-auto d-flex align-items-center gap-2 me-2">
@@ -66,7 +66,7 @@
         <footer class="footer">
             <div class="container-fluid">
                 <div class="row">
-                    <div class="col-sm-6"><script>document.write(new Date().getFullYear())</script> © Istithmar Investment Management.</div>
+                    <div class="col-sm-6"><script>document.write(new Date().getFullYear())</script> © Estithmar Investment Management.</div>
                     <div class="col-sm-6 text-sm-end d-none d-sm-block">Offline community investment system</div>
                 </div>
             </div>

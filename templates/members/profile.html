@@ -4,6 +4,7 @@
 {% block content %}
 {% set mk = member.member_kind or 'member' %}
 {% set kind_labels = dict(member_kinds) %}
+{% set gender_labels = dict(member_genders) %}
 {% set cur = settings.currency_code or 'USD' %}
 
 <nav aria-label="breadcrumb" class="mb-3">
@@ -111,10 +112,16 @@
 
 <div class="row">
     <div class="col-lg-5 mb-4">
-        <div class="card h-100">
-            <div class="card-header">Contact &amp; assignment</div>
+        <div class="card h-100 mb-4">
+            <div class="card-header">Personal &amp; contact</div>
             <div class="card-body">
                 <dl class="row small mb-0">
+                    <dt class="col-sm-4 text-muted">Date of birth</dt>
+                    <dd class="col-sm-8 mb-2">{{ member.date_of_birth.strftime('%d %B %Y') if member.date_of_birth else '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">Gender</dt>
+                    <dd class="col-sm-8 mb-2">{{ gender_labels.get(member.gender, member.gender) if member.gender else '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">Occupation / employer</dt>
+                    <dd class="col-sm-8 mb-2">{{ member.occupation_employer or '—' }}</dd>
                     <dt class="col-sm-4 text-muted">Phone</dt>
                     <dd class="col-sm-8 mb-2">{% if member.phone %}<a href="tel:{{ member.phone }}">{{ member.phone }}</a>{% else %}—{% endif %}</dd>
                     <dt class="col-sm-4 text-muted">Address</dt>
@@ -133,6 +140,21 @@
                     <dt class="col-sm-4 text-muted">Last profit</dt>
                     <dd class="col-sm-8 mb-0">{{ member.last_profit_distribution_date }}</dd>
                     {% endif %}
+                </dl>
+            </div>
+        </div>
+        <div class="card h-100">
+            <div class="card-header">Next of kin (emergency)</div>
+            <div class="card-body">
+                <dl class="row small mb-0">
+                    <dt class="col-sm-4 text-muted">Name</dt>
+                    <dd class="col-sm-8 mb-2">{{ member.next_of_kin_name or '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">Relationship</dt>
+                    <dd class="col-sm-8 mb-2">{{ member.next_of_kin_relationship or '—' }}</dd>
+                    <dt class="col-sm-4 text-muted">Phone</dt>
+                    <dd class="col-sm-8 mb-2">{% if member.next_of_kin_phone %}<a href="tel:{{ member.next_of_kin_phone }}">{{ member.next_of_kin_phone }}</a>{% else %}—{% endif %}</dd>
+                    <dt class="col-sm-4 text-muted">Address</dt>
+                    <dd class="col-sm-8 mb-0">{{ member.next_of_kin_address or '—' }}</dd>
                 </dl>
             </div>
         </div>

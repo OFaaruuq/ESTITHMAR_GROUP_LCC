@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 
 from flask import current_app, has_request_context
 
-from istithmar.models import get_or_create_settings
+from estithmar.models import get_or_create_settings
 
 
 def _truthy_env(name: str) -> bool:
@@ -33,24 +33,24 @@ def effective_smtp() -> dict[str, str | bool | None]:
     ex = _extra()
     tls_raw = ex.get("smtp_use_tls")
     if tls_raw is None:
-        tls_raw = os.environ.get("ISTITHMAR_MAIL_USE_TLS", "true")
+        tls_raw = os.environ.get("ESTITHMAR_MAIL_USE_TLS", "true")
     use_tls = str(tls_raw).strip().lower() not in ("0", "false", "no")
-    port_raw = ex.get("smtp_port") or os.environ.get("ISTITHMAR_MAIL_PORT") or "587"
+    port_raw = ex.get("smtp_port") or os.environ.get("ESTITHMAR_MAIL_PORT") or "587"
     try:
         port_int = int(port_raw)
     except (TypeError, ValueError):
         port_int = 587
     return {
-        "host": (ex.get("smtp_host") or os.environ.get("ISTITHMAR_MAIL_SERVER") or "").strip(),
+        "host": (ex.get("smtp_host") or os.environ.get("ESTITHMAR_MAIL_SERVER") or "").strip(),
         "port": port_int,
         "use_tls": use_tls,
-        "username": (ex.get("smtp_username") or os.environ.get("ISTITHMAR_MAIL_USERNAME") or "").strip(),
+        "username": (ex.get("smtp_username") or os.environ.get("ESTITHMAR_MAIL_USERNAME") or "").strip(),
         "password": (
             ex.get("smtp_password")
             if ex.get("smtp_password") is not None
-            else os.environ.get("ISTITHMAR_MAIL_PASSWORD")
+            else os.environ.get("ESTITHMAR_MAIL_PASSWORD")
         ),
-        "sender": (ex.get("smtp_sender") or os.environ.get("ISTITHMAR_MAIL_SENDER") or "").strip(),
+        "sender": (ex.get("smtp_sender") or os.environ.get("ESTITHMAR_MAIL_SENDER") or "").strip(),
     }
 
 
@@ -61,7 +61,7 @@ def effective_twilio() -> dict[str, str]:
         "token": (ex.get("twilio_auth_token") or os.environ.get("TWILIO_AUTH_TOKEN") or "").strip(),
         "from": (ex.get("twilio_whatsapp_from") or os.environ.get("TWILIO_WHATSAPP_FROM") or "").strip(),
         "default_cc": (
-            ex.get("whatsapp_default_cc") or os.environ.get("ISTITHMAR_WHATSAPP_DEFAULT_CC") or ""
+            ex.get("whatsapp_default_cc") or os.environ.get("ESTITHMAR_WHATSAPP_DEFAULT_CC") or ""
         ).strip().lstrip("+"),
     }
 
@@ -183,7 +183,7 @@ def _whatsapp_for_member_messages() -> bool:
     ex = _extra()
     if ex.get("notify_members_whatsapp"):
         return True
-    return _truthy_env("ISTITHMAR_NOTIFY_WHATSAPP")
+    return _truthy_env("ESTITHMAR_NOTIFY_WHATSAPP")
 
 
 def notify_member_channel(
@@ -221,14 +221,14 @@ def notify_member_welcome(
     lines = [
         f"Hello {member_name},",
         "",
-        f"Your member record is registered in Istithmar ({member_code}).",
+        f"Your member record is registered in Estithmar ({member_code}).",
         extra.strip(),
         "",
         "You can sign in to the portal if you have an account.",
     ]
     text = "\n".join(lines)
     if email and mail_configured():
-        ok, err = send_email(email.strip(), "Istithmar — registration", text)
+        ok, err = send_email(email.strip(), "Estithmar — registration", text)
         if not ok and app:
             app.logger.warning("Welcome email failed: %s", err)
     if phone and whatsapp_configured() and _whatsapp_for_member_messages():
@@ -254,18 +254,18 @@ def notify_user_credentials(
     body = [
         "Hello,",
         "",
-        f"An Istithmar account was created for you ({role_label}).",
+        f"An Estithmar account was created for you ({role_label}).",
         f"Username: {username}",
     ]
     if password_plain:
         body.append(f"Password: {password_plain}")
     body.append("")
-    body.append("Sign in at your Istithmar web address.")
+    body.append("Sign in at your Estithmar web address.")
     if message:
         body.append("")
         body.append(message)
     text = "\n".join(body)
-    ok, err = send_email(to_email, "Istithmar — your account", text)
+    ok, err = send_email(to_email, "Estithmar — your account", text)
     if not ok and current_app:
         current_app.logger.warning("User notify email failed: %s", err)
 
@@ -274,10 +274,10 @@ def notify_password_reset(*, to_email: str, temp_password: str) -> None:
     if not to_email or not mail_configured():
         return
     text = (
-        "Your Istithmar password was reset.\n\n"
+        "Your Estithmar password was reset.\n\n"
         f"Temporary password: {temp_password}\n\n"
         "Sign in and change your password in Profile."
     )
-    ok, err = send_email(to_email, "Istithmar — password reset", text)
+    ok, err = send_email(to_email, "Estithmar — password reset", text)
     if not ok and current_app:
         current_app.logger.warning("Password reset email failed: %s", err)

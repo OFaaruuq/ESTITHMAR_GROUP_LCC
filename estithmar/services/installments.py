@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from istithmar import db
-from istithmar.models import InstallmentPlan, ShareSubscription
+from estithmar import db
+from estithmar.models import InstallmentPlan, ShareSubscription
 
 
 def recompute_installment_statuses(

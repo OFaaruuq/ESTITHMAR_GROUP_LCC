@@ -1,4 +1,4 @@
-# Istithmar — Investment management (Flask)
+# Estithmar — Investment management (Flask)
 
 Offline community investment administration: members, agents, contributions, subscriptions, certificates, projects, investments, profit distribution, and reports.
 
@@ -25,7 +25,7 @@ pip install -r requirements.txt
 
 ### Configure
 
-Copy `.env.example` to `.env` and set at least `ISTITHMAR_SECRET_KEY`, `ISTITHMAR_ENV`, and your database URL or `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD`. For SQL Server in development, `DATABASE_URL` can look like:
+Copy `.env.example` to `.env` and set at least `ESTITHMAR_SECRET_KEY`, `ESTITHMAR_ENV`, and your database URL or `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD`. For SQL Server in development, `DATABASE_URL` can look like:
 
 `mssql+pyodbc://USER:PASSWORD@127.0.0.1:1433/estithmar_db?driver=ODBC+Driver+17+for+SQL+Server`
 
@@ -63,16 +63,16 @@ Open `http://127.0.0.1:5000` — default admin can be created on first run (see 
 
 ## Configuration
 
-- Optional: copy `.env.example` to `.env` and set `ISTITHMAR_SECRET_KEY` for production.
+- Optional: copy `.env.example` to `.env` and set `ESTITHMAR_SECRET_KEY` for production.
 
 ### Database
 
-**Development** can use **PostgreSQL** or **Microsoft SQL Server** (see `.env.example`). **Staging** expects PostgreSQL; **production** expects SQL Server. Configure `DATABASE_URL` or the `DB_*` / `ISTITHMAR_PG_*` variables as documented in `.env.example`.
+**Development** can use **PostgreSQL** or **Microsoft SQL Server** (see `.env.example`). **Staging** expects PostgreSQL; **production** expects SQL Server. Configure `DATABASE_URL` or the `DB_*` / `ESTITHMAR_PG_*` variables as documented in `.env.example`.
 
 - Schema updates: **Flask-Migrate** (`flask db migrate` / `flask db upgrade`).
 - SQL Server in Docker: see comments in `docker-compose.yml` for creating the database the first time.
 
-**Tests** use PostgreSQL only: set `ISTITHMAR_TEST_DATABASE_URL`, or the same `ISTITHMAR_PG_USER` / `ISTITHMAR_PG_PASSWORD` as the app. By default the test DB name is `ISTITHMAR_PG_DATABASE` (same as the app) unless you set `ISTITHMAR_PG_TEST_DATABASE` (e.g. `estithmar_test`) — see `scripts/postgres_create_test_db.sql`.
+**Tests** use PostgreSQL only: set `ESTITHMAR_TEST_DATABASE_URL`, or the same `ESTITHMAR_PG_USER` / `ESTITHMAR_PG_PASSWORD` as the app. By default the test DB name is `ESTITHMAR_PG_DATABASE` (same as the app) unless you set `ESTITHMAR_PG_TEST_DATABASE` (e.g. `estithmar_test`) — see `scripts/postgres_create_test_db.sql`.
 
 ## Deployment (Linux server)
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>Register | Istithmar Investment Management</title>
+    <title>Register | Estithmar Investment Management</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" href="{{ url_for('static', filename='assets/images/favicon.ico') }}">
     <script src="{{ url_for('static', filename='assets/js/layout.js') }}"></script>
@@ -35,7 +35,7 @@
                                         {% endif %}
                                     {% endwith %}
                                     <p class="text-muted small mb-4">
-                                        Self-registration must be enabled by your administrator (<code>ISTITHMAR_ALLOW_SELF_REGISTRATION</code>).
+                                        Self-registration must be enabled by your administrator (<code>ESTITHMAR_ALLOW_SELF_REGISTRATION</code>).
                                         You will receive email and WhatsApp notifications when those channels are configured.
                                     </p>
                                     <form method="post" class="auth-input">
@@ -55,9 +55,48 @@
                                             <label class="form-label" for="phone">Phone</label>
                                             <input type="tel" name="phone" id="phone" class="form-control" autocomplete="tel" placeholder="+ country code and number">
                                         </div>
-                                        <div class="mb-4">
+                                        <div class="mb-3">
                                             <label class="form-label" for="national_id">National ID / document no. <span class="text-danger">*</span></label>
                                             <input type="text" name="national_id" id="national_id" class="form-control" required maxlength="64" autocomplete="off">
+                                        </div>
+                                        <hr class="my-4">
+                                        <h6 class="text-muted text-uppercase small mb-3">Personal information</h6>
+                                        <div class="row g-3 mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="date_of_birth">Date of birth <span class="text-danger">*</span></label>
+                                                <input type="date" name="date_of_birth" id="date_of_birth" class="form-control" required autocomplete="bday">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="gender">Gender <span class="text-danger">*</span></label>
+                                                <select name="gender" id="gender" class="form-select" required>
+                                                    <option value="" disabled selected>Choose…</option>
+                                                    <option value="male">Male</option>
+                                                    <option value="female">Female</option>
+                                                    <option value="other">Other</option>
+                                                    <option value="prefer_not_to_say">Prefer not to say</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label" for="occupation_employer">Occupation / employer <span class="text-danger">*</span></label>
+                                            <input type="text" name="occupation_employer" id="occupation_employer" class="form-control" required maxlength="200" autocomplete="organization-title" placeholder="Job title and/or employer name">
+                                        </div>
+                                        <h6 class="text-muted text-uppercase small mb-3 mt-4">Next of kin (emergency contact)</h6>
+                                        <div class="mb-3">
+                                            <label class="form-label" for="next_of_kin_name">Name <span class="text-danger">*</span></label>
+                                            <input type="text" name="next_of_kin_name" id="next_of_kin_name" class="form-control" required maxlength="200" autocomplete="section-next-of-kin name">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label" for="next_of_kin_relationship">Relationship <span class="text-danger">*</span></label>
+                                            <input type="text" name="next_of_kin_relationship" id="next_of_kin_relationship" class="form-control" required maxlength="100" autocomplete="off" placeholder="e.g. Spouse, parent, sibling">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label" for="next_of_kin_phone">Phone number <span class="text-danger">*</span></label>
+                                            <input type="tel" name="next_of_kin_phone" id="next_of_kin_phone" class="form-control" required autocomplete="section-next-of-kin tel" placeholder="+ country code and number">
+                                        </div>
+                                        <div class="mb-4">
+                                            <label class="form-label" for="next_of_kin_address">Address <span class="text-danger">*</span></label>
+                                            <textarea name="next_of_kin_address" id="next_of_kin_address" class="form-control" rows="2" required autocomplete="section-next-of-kin street-address" placeholder="Full address"></textarea>
                                         </div>
                                         <button class="btn btn-primary w-100" type="submit">Create member account</button>
                                     </form>

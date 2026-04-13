@@ -4,7 +4,7 @@
     <head>
         
         <meta charset="utf-8" />
-        <title>Dashboard | Istithmar Investment Management</title>
+        <title>Dashboard | Estithmar Investment Management</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta content="Investment analytics dashboard." name="description" />
         <!-- App favicon -->
@@ -18,7 +18,7 @@
         <link href="{{ url_for('static', filename='assets/css/icons.min.css') }}" rel="stylesheet" type="text/css" />
         <!-- App Css-->
         <link href="{{ url_for('static', filename='assets/css/app.min.css') }}" id="app-style" rel="stylesheet" type="text/css" />
-        <link href="{{ url_for('static', filename='assets/css/istithmar-sidebar.css') }}" rel="stylesheet" type="text/css" />
+        <link href="{{ url_for('static', filename='assets/css/estithmar-sidebar.css') }}" rel="stylesheet" type="text/css" />
         <!-- Vector map (Tocly dashboard) -->
         <link href="{{ url_for('static', filename='assets/libs/jsvectormap/jsvectormap.min.css') }}" rel="stylesheet" type="text/css" />
 
@@ -336,7 +336,7 @@
                     <div class="container-fluid">
                         <div class="row">
                             <div class="col-sm-6">
-                                <script>document.write(new Date().getFullYear())</script> © Istithmar Investment Management.
+                                <script>document.write(new Date().getFullYear())</script> © Estithmar Investment Management.
                             </div>
                             <div class="col-sm-6">
                                 <div class="text-sm-end d-none d-sm-block">
@@ -422,7 +422,7 @@
         </style>
         <script>
         (function() {
-            var el = document.getElementById('istithmar-dashboard-data');
+            var el = document.getElementById('estithmar-dashboard-data');
             if (!el || typeof ApexCharts === 'undefined') return;
             var D = JSON.parse(el.textContent);
             var L = D.chartLinks || {};
@@ -593,7 +593,7 @@
             if (typeof jsVectorMap === 'undefined') return;
             var el = document.querySelector('#world-map-markers');
             if (!el) return;
-            var dataEl = document.getElementById('istithmar-dashboard-data');
+            var dataEl = document.getElementById('estithmar-dashboard-data');
             if (!dataEl) return;
             var D = {};
             try { D = JSON.parse(dataEl.textContent); } catch (e) { return; }
@@ -630,7 +630,7 @@
         </script>
         <script>
         (function() {
-            var dataEl = document.getElementById('istithmar-dashboard-data');
+            var dataEl = document.getElementById('estithmar-dashboard-data');
             var soc = document.querySelector('#social-source');
             if (!dataEl || !soc || typeof ApexCharts === 'undefined') return;
             var D = JSON.parse(dataEl.textContent);

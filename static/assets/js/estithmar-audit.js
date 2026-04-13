@@ -2,7 +2,7 @@
     document.addEventListener('DOMContentLoaded', function () {
         var tb = document.getElementById('audit-tbody');
         if (!tb) return;
-        var rows = IstithmarStore.getAuditLogs();
+        var rows = EstithmarStore.getAuditLogs();
         tb.innerHTML = rows
             .map(function (l) {
                 return (

@@ -7,7 +7,7 @@ from typing import Any
 
 from flask_login import UserMixin
 
-from istithmar import db
+from estithmar import db
 
 PROJECT_STATUSES = [
     ("Planned", "Planned"),
@@ -88,6 +88,13 @@ MEMBER_KINDS = [
     ("investor", "Investor"),
 ]
 
+MEMBER_GENDER_CHOICES = [
+    ("male", "Male"),
+    ("female", "Female"),
+    ("other", "Other"),
+    ("prefer_not_to_say", "Prefer not to say"),
+]
+
 
 class Agent(db.Model):
     __tablename__ = "agents"
@@ -166,6 +173,13 @@ class Member(db.Model):
     email = db.Column(db.String(120), index=True)
     address = db.Column(db.Text)
     national_id = db.Column(db.String(64))
+    date_of_birth = db.Column(db.Date, nullable=True)
+    gender = db.Column(db.String(32), nullable=True)
+    occupation_employer = db.Column(db.String(200), nullable=True)
+    next_of_kin_name = db.Column(db.String(200), nullable=True)
+    next_of_kin_relationship = db.Column(db.String(100), nullable=True)
+    next_of_kin_phone = db.Column(db.String(50), nullable=True)
+    next_of_kin_address = db.Column(db.Text, nullable=True)
     join_date = db.Column(db.Date, nullable=False, default=date.today)
     status = db.Column(db.String(20), nullable=False, default="Active")
     member_kind = db.Column(db.String(32), nullable=False, default="member")
@@ -607,9 +621,10 @@ class AppSettings(db.Model):
         if not self.extra_json:
             return {}
         try:
-            return json.loads(self.extra_json)
+            data = json.loads(self.extra_json)
         except json.JSONDecodeError:
             return {}
+        return data if isinstance(data, dict) else {}
 
     def set_extra(self, data: dict[str, Any]) -> None:
         self.extra_json = json.dumps(data)

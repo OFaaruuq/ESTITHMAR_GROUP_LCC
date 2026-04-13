@@ -28,8 +28,8 @@ services:
     ports:
       - "1433:1433"
     volumes:
-      - istithmar_mssql_data:/var/opt/mssql
+      - estithmar_mssql_data:/var/opt/mssql
     restart: unless-stopped
 
 volumes:
-  istithmar_mssql_data:
+  estithmar_mssql_data:

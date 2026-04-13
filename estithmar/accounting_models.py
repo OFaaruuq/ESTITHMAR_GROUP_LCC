@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from istithmar import db
+from estithmar import db
 
 
 class Account(db.Model):

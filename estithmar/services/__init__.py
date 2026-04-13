@@ -1,17 +1,17 @@
-from istithmar.services.funds import (
+from estithmar.services.funds import (
     available_pool_for_investment,
     project_budget_headroom,
     project_invested_total,
     total_invested_across_investments,
     total_member_contributions_collected,
 )
-from istithmar.services.contributions import max_payment_for_subscription, subscription_payment_running_rows
-from istithmar.services.certificates import issue_certificate, maybe_auto_issue_certificate
-from istithmar.services.installments import (
+from estithmar.services.contributions import max_payment_for_subscription, subscription_payment_running_rows
+from estithmar.services.certificates import issue_certificate, maybe_auto_issue_certificate
+from estithmar.services.installments import (
     auto_allocate_payment_to_installments,
     recompute_installment_statuses,
 )
-from istithmar.services.subscriptions import (
+from estithmar.services.subscriptions import (
     compute_subscription_balance,
     compute_subscription_paid_total,
     confirm_subscription_if_fully_paid,

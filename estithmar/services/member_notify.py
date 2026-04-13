@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from flask import url_for
 
-from istithmar.models import Contribution, Member, ShareCertificate, ShareSubscription, get_or_create_settings
+from estithmar.models import Contribution, Member, ShareCertificate, ShareSubscription, get_or_create_settings
 
 
 def _ex() -> dict:
@@ -27,7 +27,7 @@ def notify_member_payment(contribution: Contribution, member: Member) -> None:
         return
     if not (member.email and str(member.email).strip()):
         return
-    from istithmar.services.notifications import notify_member_channel
+    from estithmar.services.notifications import notify_member_channel
 
     settings = get_or_create_settings()
     sym = settings.currency_symbol or "$"
@@ -41,7 +41,7 @@ def notify_member_payment(contribution: Contribution, member: Member) -> None:
         f"Receipt / reference: {contribution.receipt_no or contribution.id}\n"
         f"Type: {contribution.payment_type or '—'}\n\n"
         f"View receipt: {receipt_path}\n\n"
-        "This is an automated message from Istithmar."
+        "This is an automated message from Estithmar."
     )
     notify_member_channel(
         email_to=member.email.strip(),
@@ -57,7 +57,7 @@ def notify_member_new_subscription(sub: ShareSubscription, member: Member) -> No
         return
     if not (member.email and str(member.email).strip()):
         return
-    from istithmar.services.notifications import notify_member_channel
+    from estithmar.services.notifications import notify_member_channel
 
     settings = get_or_create_settings()
     sym = settings.currency_symbol or "$"
@@ -71,7 +71,7 @@ def notify_member_new_subscription(sub: ShareSubscription, member: Member) -> No
         f"Subscribed amount: {sym}{amt:,.2f} {cur}\n"
         f"Status: {sub.status}\n\n"
         f"View subscription: {sub_path}\n\n"
-        "This is an automated message from Istithmar."
+        "This is an automated message from Estithmar."
     )
     notify_member_channel(
         email_to=member.email.strip(),
@@ -94,7 +94,7 @@ def notify_member_profit_share(
         return
     if not (member.email and str(member.email).strip()):
         return
-    from istithmar.services.notifications import notify_member_channel
+    from estithmar.services.notifications import notify_member_channel
 
     settings = get_or_create_settings()
     sym = settings.currency_symbol or "$"
@@ -108,7 +108,7 @@ def notify_member_profit_share(
         f"Batch: {batch_no or '—'}\n"
         f"Distribution date: {distribution_date}\n\n"
         f"View statement: {stmt_path}\n\n"
-        "This is an automated message from Istithmar."
+        "This is an automated message from Estithmar."
     )
     notify_member_channel(
         email_to=member.email.strip(),
@@ -124,7 +124,7 @@ def notify_member_certificate_issued(cert: ShareCertificate, member: Member) -> 
         return
     if not (member.email and str(member.email).strip()):
         return
-    from istithmar.services.notifications import notify_member_channel
+    from estithmar.services.notifications import notify_member_channel
 
     print_path = url_for("certificates_print", id=cert.id, _external=True)
     subj = f"Share certificate issued — {cert.certificate_no or cert.id}"
@@ -133,7 +133,7 @@ def notify_member_certificate_issued(cert: ShareCertificate, member: Member) -> 
         f"A share certificate has been issued: {cert.certificate_no or cert.id}\n"
         f"Issue date: {cert.issued_date}\n\n"
         f"View / print: {print_path}\n\n"
-        "This is an automated message from Istithmar."
+        "This is an automated message from Estithmar."
     )
     notify_member_channel(
         email_to=member.email.strip(),

@@ -1,5 +1,5 @@
-"""Unit tests for istithmar.validators (no database)."""
-from istithmar.validators import validate_phone
+"""Unit tests for estithmar.validators (no database)."""
+from estithmar.validators import validate_phone
 
 
 def test_phone_empty_optional():

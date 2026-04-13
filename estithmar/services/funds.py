@@ -5,8 +5,8 @@ from decimal import Decimal
 
 from sqlalchemy import func
 
-from istithmar import db
-from istithmar.models import Contribution, Investment, Project
+from estithmar import db
+from estithmar.models import Contribution, Investment, Project
 
 
 def total_member_contributions_collected(verified_only: bool = False) -> Decimal:

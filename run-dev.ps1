@@ -1,4 +1,4 @@
-# Start Istithmar from the project root (same folder as this script).
+# Start Estithmar from the project root (same folder as this script).
 # If activation fails: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
