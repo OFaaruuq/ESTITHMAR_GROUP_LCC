@@ -258,7 +258,11 @@
                             <span class="d-sm-none d-block small text-muted">{{ c.member.full_name }}</span>
                         </td>
                         <td class="d-none d-md-table-cell">
+                            {% if c.subscription %}
                             <a href="{{ url_for('subscriptions_profile', id=c.subscription.id) }}" class="small text-decoration-none font-monospace">{{ c.subscription.subscription_no }}</a>
+                            {% else %}
+                            <span class="small text-muted" title="Subscription record missing">—</span>
+                            {% endif %}
                         </td>
                         <td class="d-none d-xl-table-cell small text-muted">
                             {% if inv %}
