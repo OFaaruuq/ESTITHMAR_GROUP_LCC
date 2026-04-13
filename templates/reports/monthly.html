@@ -56,7 +56,7 @@
                         <td>{{ c.member.member_id }} — {{ c.member.full_name }}</td>
                         <td>{{ c.amount|money }}</td>
                         <td>{{ c.date }}</td>
-                        <td>{{ c.payment_type }}</td>
+                        <td class="small">{{ c.payment_display_label() }}</td>
                     </tr>
                     {% else %}
                     <tr><td colspan="5" class="text-muted p-3">No contributions in this month.</td></tr>

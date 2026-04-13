@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
+from sqlalchemy import Index, text
+
 from estithmar import db
 
 
@@ -12,13 +14,24 @@ class Account(db.Model):
 
     ``system_key`` identifies accounts used by automated postings (cash, member pool,
     deployed assets, etc.). Codes and names may be renamed; keys stay stable.
+
+    Uniqueness of ``system_key`` uses a filtered unique index on SQL Server (multiple NULLs
+    are allowed). A plain UNIQUE index on a nullable column fails on MSSQL with duplicate NULL.
     """
 
     __tablename__ = "accounts"
+    __table_args__ = (
+        Index(
+            "ix_accounts_system_key",
+            "system_key",
+            unique=True,
+            mssql_where=text("system_key IS NOT NULL"),
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(32), unique=True, nullable=False, index=True)
-    system_key = db.Column(db.String(64), unique=True, nullable=True, index=True)
+    system_key = db.Column(db.String(64), nullable=True)
     name = db.Column(db.String(200), nullable=False)
     account_type = db.Column(
         db.String(20), nullable=False

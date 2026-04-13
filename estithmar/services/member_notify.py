@@ -39,7 +39,7 @@ def notify_member_payment(contribution: Contribution, member: Member) -> None:
         f"Hello {member.full_name or member.member_id},\n\n"
         f"A payment of {sym}{amt:,.2f} {cur} has been recorded on {contribution.date}.\n"
         f"Receipt / reference: {contribution.receipt_no or contribution.id}\n"
-        f"Type: {contribution.payment_type or '—'}\n\n"
+        f"Method: {contribution.payment_display_label()}\n\n"
         f"View receipt: {receipt_path}\n\n"
         "This is an automated message from Estithmar."
     )

@@ -347,7 +347,7 @@
                                 <td><strong class="font-monospace">{{ c.receipt_no or '—' }}</strong></td>
                                 <td>{{ c.date }}</td>
                                 <td class="text-end fw-medium">{{ settings.currency_symbol }}{{ c.amount|money }}</td>
-                                <td><span class="badge bg-light text-dark border">{{ c.payment_type }}</span></td>
+                                <td class="small"><span class="badge bg-light text-dark border text-wrap text-start fw-normal">{{ c.payment_display_label() }}</span></td>
                                 <td>
                                     {% if c.verified %}
                                     <span class="badge text-bg-success">Yes</span>

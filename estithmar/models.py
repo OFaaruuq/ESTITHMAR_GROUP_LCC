@@ -91,8 +91,15 @@ MEMBER_KINDS = [
 MEMBER_GENDER_CHOICES = [
     ("male", "Male"),
     ("female", "Female"),
-    ("other", "Other"),
-    ("prefer_not_to_say", "Prefer not to say"),
+]
+
+# Uploaded identity / KYC files (see MemberDocument).
+MEMBER_DOCUMENT_TYPES = [
+    ("passport", "Passport"),
+    ("national_id", "National ID card"),
+    ("drivers_license", "Driver's license"),
+    ("proof_of_address", "Proof of address"),
+    ("other", "Other document"),
 ]
 
 
@@ -210,6 +217,12 @@ class Member(db.Model):
         lazy="dynamic",
         cascade="all, delete-orphan",
     )
+    documents = db.relationship(
+        "MemberDocument",
+        backref="member",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
 
     def contribution_total(self) -> Decimal:
         return sum((c.amount for c in self.contributions), Decimal("0"))
@@ -218,7 +231,7 @@ class Member(db.Model):
         """Payments not linked to a share subscription (real money; global profit pool only)."""
         q = self.contributions.filter(Contribution.subscription_id.is_(None))
         if verified_only:
-            q = q.filter(Contribution.verified.is_(True))
+            q = q.filter(Contribution.verified)
         return sum((c.amount for c in q.all()), Decimal("0"))
 
     def profit_received_total(self) -> Decimal:
@@ -255,6 +268,52 @@ class Member(db.Model):
         return total
 
 
+class PaymentBank(db.Model):
+    """Company bank (e.g. Salam Bank, Dahabshiil) — staff-maintained list for contribution recording."""
+
+    __tablename__ = "payment_banks"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    accounts = db.relationship(
+        "PaymentBankAccount",
+        backref="bank",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+
+
+class PaymentBankAccount(db.Model):
+    """A specific account at a company bank (number / IBAN shown to staff when recording transfers)."""
+
+    __tablename__ = "payment_bank_accounts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    bank_id = db.Column(db.Integer, db.ForeignKey("payment_banks.id", ondelete="CASCADE"), nullable=False, index=True)
+    label = db.Column(db.String(120), nullable=True)
+    account_number = db.Column(db.String(120), nullable=False)
+    notes = db.Column(db.String(300), nullable=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class PaymentMobileProvider(db.Model):
+    """Mobile money brand (e.g. EVC, eDahab, MyCash) for contribution recording."""
+
+    __tablename__ = "payment_mobile_providers"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class Contribution(db.Model):
     __tablename__ = "contributions"
 
@@ -265,6 +324,12 @@ class Contribution(db.Model):
     amount = db.Column(db.Numeric(14, 2), nullable=False)
     date = db.Column(db.Date, nullable=False, default=date.today)
     payment_type = db.Column(db.String(20), nullable=False)
+    payment_bank_account_id = db.Column(
+        db.Integer, db.ForeignKey("payment_bank_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    payment_mobile_provider_id = db.Column(
+        db.Integer, db.ForeignKey("payment_mobile_providers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     method_ref = db.Column(db.String(120))
     receipt_no = db.Column(db.String(20), unique=True, index=True)
     notes = db.Column(db.Text)
@@ -274,6 +339,33 @@ class Contribution(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     verified_by = db.relationship("AppUser", backref="verified_contributions", foreign_keys=[verified_by_user_id])
+    payment_bank_account = db.relationship("PaymentBankAccount", foreign_keys=[payment_bank_account_id])
+    payment_mobile_provider = db.relationship("PaymentMobileProvider", foreign_keys=[payment_mobile_provider_id])
+
+    def payment_channel_detail(self) -> str | None:
+        """Extra line for bank account or mobile provider (when linked)."""
+        if self.payment_type == "Bank" and self.payment_bank_account_id and self.payment_bank_account:
+            acc = self.payment_bank_account
+            bk = acc.bank
+            if bk:
+                lab = (acc.label or "Account").strip()
+                return f"{bk.name} · {lab} · {acc.account_number}"
+        if self.payment_type == "Mobile" and self.payment_mobile_provider_id and self.payment_mobile_provider:
+            return self.payment_mobile_provider.name.strip()
+        return None
+
+    def payment_display_label(self) -> str:
+        """Short label for lists/receipts: base type plus channel when set."""
+        base = {
+            "Cash": "Cash",
+            "Mobile": "Mobile money",
+            "Bank": "Bank transfer",
+            "Other": "Other",
+        }.get(self.payment_type, self.payment_type or "—")
+        det = self.payment_channel_detail()
+        if det:
+            return f"{base} — {det}"
+        return base
 
 
 class ShareSubscription(db.Model):
@@ -322,7 +414,7 @@ class ShareSubscription(db.Model):
         """Paid toward this subscription: sum of linked contribution amounts (canonical paid_amount)."""
         q = self.contributions
         if verified_only:
-            q = q.filter(Contribution.verified.is_(True))
+            q = q.filter(Contribution.verified)
         return sum((c.amount for c in q.all()), Decimal("0"))
 
     def outstanding_balance(self) -> Decimal:
@@ -573,6 +665,23 @@ class ShareCertificate(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     issued_by = db.relationship("AppUser", backref="issued_certificates", foreign_keys=[issued_by_user_id])
+
+
+class MemberDocument(db.Model):
+    """Scanned or uploaded identity / supporting documents for a member (passport, ID, etc.)."""
+
+    __tablename__ = "member_documents"
+
+    id = db.Column(db.Integer, primary_key=True)
+    member_id = db.Column(db.Integer, db.ForeignKey("members.id"), nullable=False, index=True)
+    document_type = db.Column(db.String(40), nullable=False)
+    stored_path = db.Column(db.String(500), nullable=False)
+    original_name = db.Column(db.String(255), nullable=False)
+    notes = db.Column(db.String(500), nullable=True)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_by_user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=True)
+
+    uploaded_by = db.relationship("AppUser", foreign_keys=[uploaded_by_user_id])
 
 
 class AuditLog(db.Model):

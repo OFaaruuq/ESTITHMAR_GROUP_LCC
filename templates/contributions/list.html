@@ -126,7 +126,7 @@
                         <th>Agent</th>
                         <th class="text-end">Amount</th>
                         <th>Date</th>
-                        <th>Type</th>
+                        <th>Payment</th>
                         <th>Verified</th>
                         <th class="text-end">Actions</th>
                     </tr>
@@ -142,7 +142,7 @@
                         <td>{{ c.member.agent.agent_id if c.member.agent else '—' }}</td>
                         <td class="text-end">{{ c.amount|money }}</td>
                         <td>{{ c.date }}</td>
-                        <td><span class="badge bg-light text-dark border">{{ c.payment_type }}</span></td>
+                        <td class="small text-wrap" style="max-width: 14rem;"><span class="badge bg-light text-dark border text-wrap text-start fw-normal">{{ c.payment_display_label() }}</span></td>
                         <td>
                             {% if c.verified %}
                             <span class="badge bg-success">Yes</span>

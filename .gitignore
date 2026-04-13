@@ -25,6 +25,9 @@ pip-wheel-metadata/
 .coverage.*
 htmlcov/
 
+# Member KYC uploads (served from app static root; see resolve_static_folder)
+static/assets/documents/
+
 # Flask runtime
 instance/
 .flaskenv.local

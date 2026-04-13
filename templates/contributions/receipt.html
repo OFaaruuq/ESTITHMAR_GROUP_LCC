@@ -150,7 +150,7 @@
                     <dt class="col-5 text-muted fw-normal">Payment date</dt>
                     <dd class="col-7 mb-2">{{ c.date.strftime('%d %B %Y') if c.date else '—' }}</dd>
                     <dt class="col-5 text-muted fw-normal">Method</dt>
-                    <dd class="col-7 mb-2"><span class="badge bg-light text-dark border">{{ c.payment_type|payment_type_label }}</span></dd>
+                    <dd class="col-7 mb-2"><span class="badge bg-light text-dark border text-wrap text-start fw-normal">{{ c.payment_display_label() }}</span></dd>
                     <dt class="col-5 text-muted fw-normal">Reference</dt>
                     <dd class="col-7 mb-0">{{ c.method_ref or '—' }}</dd>
                 </dl>

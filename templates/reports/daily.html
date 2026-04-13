@@ -37,7 +37,7 @@
                         <td>{{ c.receipt_no or '—' }}</td>
                         <td>{{ c.member.member_id }} — {{ c.member.full_name }}</td>
                         <td class="text-end">{{ c.amount|money }}</td>
-                        <td>{{ c.payment_type }}</td>
+                        <td class="small">{{ c.payment_display_label() }}</td>
                         <td>{% if c.verified %}Yes{% else %}No{% endif %}</td>
                     </tr>
                     {% else %}

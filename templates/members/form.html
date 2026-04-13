@@ -36,7 +36,7 @@
         </div>
         {% endif %}
 
-        <form method="post" class="needs-validation" novalidate>
+        <form method="post" class="needs-validation" novalidate{% if not is_edit %} enctype="multipart/form-data"{% endif %}>
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-transparent py-3">
                     <h5 class="mb-0"><i class="ri-user-settings-line me-2 text-primary"></i>Role &amp; identity</h5>
@@ -64,9 +64,14 @@
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-transparent py-3">
                     <h5 class="mb-0"><i class="ri-user-heart-line me-2 text-primary"></i>Personal information</h5>
-                    <p class="text-muted small mb-0">Date of birth, gender, and occupation{% if not is_edit %} — all required for new registrations.{% else %}. Leave blank only if not yet collected for legacy records.{% endif %}</p>
+                    <p class="text-muted small mb-0">Date of birth, gender, and occupation{% if not is_edit %} — all required for new registrations.{% else %}. Leave blank only if not yet collected for legacy records.{% endif %} Gender options are <strong>Male</strong> or <strong>Female</strong> only.</p>
                 </div>
                 <div class="card-body">
+                    {% if member and member.gender and member.gender not in ['male', 'female'] %}
+                    <div class="alert alert-warning py-2 small mb-3" role="status">
+                        This record has a legacy gender value. Please select <strong>Male</strong> or <strong>Female</strong> and save to update.
+                    </div>
+                    {% endif %}
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
                             <label class="form-label" for="date_of_birth">Date of birth{% if not is_edit %} <span class="text-danger">*</span>{% endif %}</label>
@@ -156,6 +161,38 @@
                     </div>
                 </div>
             </div>
+
+            {% if not is_edit %}
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="mb-0"><i class="ri-folder-shield-line me-2 text-primary"></i>Identity documents <span class="text-muted fw-normal">(optional)</span></h5>
+                    <p class="text-muted small mb-0">Attach passport, ID, or other proof now, or add them later on the member profile. PDF or images, up to 15 MB each.</p>
+                </div>
+                <div class="card-body">
+                    {% for idx in [1, 2] %}
+                    <div class="row g-3 align-items-end mb-3 {% if not loop.last %}pb-3 border-bottom{% endif %}">
+                        <div class="col-md-4 col-lg-3">
+                            <label class="form-label small mb-0" for="new_member_doc_type_{{ idx }}">Document {{ idx }} — type</label>
+                            <select name="new_member_doc_type_{{ idx }}" id="new_member_doc_type_{{ idx }}" class="form-select form-select-sm">
+                                <option value="" selected>— If attaching file —</option>
+                                {% for dk, dlabel in member_document_types %}
+                                <option value="{{ dk }}">{{ dlabel }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-5 col-lg-4">
+                            <label class="form-label small mb-0" for="new_member_doc_file_{{ idx }}">File</label>
+                            <input type="file" name="new_member_doc_file_{{ idx }}" id="new_member_doc_file_{{ idx }}" class="form-control form-control-sm" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/*">
+                        </div>
+                        <div class="col-md-12 col-lg-5">
+                            <label class="form-label small mb-0" for="new_member_doc_notes_{{ idx }}">Note (optional)</label>
+                            <input type="text" name="new_member_doc_notes_{{ idx }}" id="new_member_doc_notes_{{ idx }}" class="form-control form-control-sm" maxlength="500" placeholder="e.g. passport no. / expiry">
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
 
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-transparent py-3">

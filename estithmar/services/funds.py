@@ -13,7 +13,7 @@ def total_member_contributions_collected(verified_only: bool = False) -> Decimal
     """All recorded member payments (central pool source). When verified_only is True, only verified contributions count."""
     q = db.session.query(func.coalesce(func.sum(Contribution.amount), 0))
     if verified_only:
-        q = q.filter(Contribution.verified.is_(True))
+        q = q.filter(Contribution.verified)
     v = q.scalar() or 0
     return Decimal(str(v))
 

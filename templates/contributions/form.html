@@ -50,7 +50,8 @@
                 <p class="text-muted small mb-0" style="max-width: 36rem;">
                     Link payments to a <strong>share subscription</strong> when they should reduce balance and update status.
                     General member payments stay unlinked. Currency: <span class="font-monospace">{{ cur_sym }}{{ cur_code }}</span>
-                    {% if current_user.role == 'admin' %}· <a href="{{ url_for('settings_page') }}" class="text-decoration-none">Change in Settings</a>{% endif %}
+                    {% if current_user.role == 'admin' %}· <a href="{{ url_for('settings_page') }}" class="text-decoration-none">Settings</a>
+                    · <a href="{{ url_for('settings_payment_methods') }}" class="text-decoration-none">Payment methods</a>{% endif %}
                 </p>
             </div>
         </div>
@@ -121,6 +122,30 @@
                             <input type="radio" class="btn-check" name="payment_type" id="pt_other" value="Other" autocomplete="off" {% if pay_type == 'Other' %}checked{% endif %}>
                             <label class="btn btn-outline-secondary border" for="pt_other"><i class="ri-more-line d-block"></i>Other</label>
                         </div>
+                        {% if has_bank_accounts %}
+                        <div class="mt-3" id="wrap-bank-account" hidden>
+                            <label class="form-label fw-medium" for="payment_bank_account_id">Company bank account <span class="text-danger">*</span></label>
+                            <select name="payment_bank_account_id" id="payment_bank_account_id" class="form-select">
+                                <option value="">Choose the account that received this transfer…</option>
+                                {% for a in bank_accounts %}
+                                <option value="{{ a.id }}" {% if request.method == 'POST' and request.form.get('payment_bank_account_id') == (a.id|string) %}selected{% endif %}>{{ a.label }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Shown when <strong>Bank transfer</strong> is selected. Configure banks under Settings → Payment methods.</div>
+                        </div>
+                        {% endif %}
+                        {% if has_mobile_providers %}
+                        <div class="mt-3" id="wrap-mobile-provider" hidden>
+                            <label class="form-label fw-medium" for="payment_mobile_provider_id">Mobile payment service <span class="text-danger">*</span></label>
+                            <select name="payment_mobile_provider_id" id="payment_mobile_provider_id" class="form-select">
+                                <option value="">Choose provider (e.g. EVC, eDahab)…</option>
+                                {% for p in mobile_providers %}
+                                <option value="{{ p.id }}" {% if request.method == 'POST' and request.form.get('payment_mobile_provider_id') == (p.id|string) %}selected{% endif %}>{{ p.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Shown when <strong>Mobile money</strong> is selected.</div>
+                        </div>
+                        {% endif %}
                     </div>
 
                     <div class="mb-4">
@@ -167,13 +192,41 @@
 <script>
 (function () {
     var member = document.getElementById('member_id');
-    if (!member) return;
-    member.addEventListener('change', function () {
-        var v = member.value;
-        if (!v) return;
-        var base = {{ url_for('contributions_new')|tojson }};
-        window.location.href = base + '?preselect=' + encodeURIComponent(v);
+    if (member) {
+        member.addEventListener('change', function () {
+            var v = member.value;
+            if (!v) return;
+            var base = {{ url_for('contributions_new')|tojson }};
+            window.location.href = base + '?preselect=' + encodeURIComponent(v);
+        });
+    }
+    var wrapBank = document.getElementById('wrap-bank-account');
+    var wrapMobile = document.getElementById('wrap-mobile-provider');
+    var selBank = document.getElementById('payment_bank_account_id');
+    var selMobile = document.getElementById('payment_mobile_provider_id');
+    function payType() {
+        var el = document.querySelector('input[name="payment_type"]:checked');
+        return el ? el.value : 'Cash';
+    }
+    function syncPayExtras() {
+        var pt = payType();
+        if (wrapBank && selBank) {
+            var showB = pt === 'Bank';
+            wrapBank.hidden = !showB;
+            selBank.required = showB;
+            if (!showB) selBank.value = '';
+        }
+        if (wrapMobile && selMobile) {
+            var showM = pt === 'Mobile';
+            wrapMobile.hidden = !showM;
+            selMobile.required = showM;
+            if (!showM) selMobile.value = '';
+        }
+    }
+    document.querySelectorAll('input[name="payment_type"]').forEach(function (r) {
+        r.addEventListener('change', syncPayExtras);
     });
+    syncPayExtras();
 })();
 </script>
 {% endblock %}

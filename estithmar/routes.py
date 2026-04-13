@@ -17,6 +17,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     session,
     url_for,
 )
@@ -50,6 +51,7 @@ from estithmar.models import (
     ELIGIBILITY_POLICIES,
     INVESTMENT_STATUSES,
     InvestmentLedger,
+    MEMBER_DOCUMENT_TYPES,
     MEMBER_GENDER_CHOICES,
     MEMBER_KINDS,
     PAYMENT_PLANS,
@@ -67,6 +69,10 @@ from estithmar.models import (
     Investment,
     InvestmentProfitLog,
     Member,
+    MemberDocument,
+    PaymentBank,
+    PaymentBankAccount,
+    PaymentMobileProvider,
     ProfitDistribution,
     ProfitDistributionBatch,
     ShareCertificate,
@@ -212,6 +218,9 @@ def _valid_member_kind(value: str | None) -> str:
 
 
 _MEMBER_GENDER_VALUES = frozenset(k for k, _ in MEMBER_GENDER_CHOICES)
+_MEMBER_DOCUMENT_TYPE_KEYS = frozenset(k for k, _ in MEMBER_DOCUMENT_TYPES)
+_MAX_MEMBER_DOCUMENT_BYTES = 15 * 1024 * 1024
+_MEMBER_DOCUMENT_ALLOWED_EXT = frozenset({".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif"})
 
 
 def _parse_member_personal_extended(form, *, require_all: bool) -> tuple[dict | None, str | None]:
@@ -278,6 +287,87 @@ def _apply_member_personal_fields(m: Member, data: dict) -> None:
     m.next_of_kin_relationship = data.get("next_of_kin_relationship")
     m.next_of_kin_phone = data.get("next_of_kin_phone")
     m.next_of_kin_address = data.get("next_of_kin_address")
+
+
+def _allowed_member_document_filename(filename: str | None) -> bool:
+    if not filename or "." not in filename:
+        return False
+    ext = os.path.splitext(filename)[1].lower()
+    return ext in _MEMBER_DOCUMENT_ALLOWED_EXT
+
+
+def _save_member_document_file(member_pk: int, storage) -> tuple[str, str] | None:
+    if not storage or not storage.filename:
+        return None
+    if not _allowed_member_document_filename(storage.filename):
+        return None
+    safe = secure_filename(storage.filename)
+    if not safe:
+        return None
+    rel_dir = os.path.join("assets", "documents", "members", str(member_pk))
+    abs_dir = os.path.join(resolve_static_folder(), rel_dir)
+    os.makedirs(abs_dir, exist_ok=True)
+    _, ext = os.path.splitext(safe)
+    ext = ext.lower() or ".bin"
+    out_name = f"{int(datetime.utcnow().timestamp())}_{secrets.token_hex(4)}{ext}"
+    dest = os.path.join(abs_dir, out_name)
+    storage.save(dest)
+    try:
+        sz = os.path.getsize(dest)
+    except OSError:
+        sz = 0
+    if sz > _MAX_MEMBER_DOCUMENT_BYTES:
+        try:
+            os.remove(dest)
+        except OSError:
+            pass
+        return None
+    rel = os.path.join(rel_dir, out_name).replace("\\", "/")
+    return rel, safe
+
+
+def _save_optional_new_member_documents(m: Member, req) -> None:
+    """Persist up to two optional identity files from ``/members/new`` (after member row exists)."""
+    any_saved = False
+    for idx in (1, 2):
+        f = req.files.get(f"new_member_doc_file_{idx}")
+        if not f or not f.filename:
+            continue
+        dt = (req.form.get(f"new_member_doc_type_{idx}") or "").strip().lower()
+        if dt not in _MEMBER_DOCUMENT_TYPE_KEYS:
+            flash(
+                f"Attachment {idx} was not saved: choose a document type when you select a file.",
+                "warning",
+            )
+            continue
+        notes = (req.form.get(f"new_member_doc_notes_{idx}") or "").strip()[:500] or None
+        saved = _save_member_document_file(m.id, f)
+        if not saved:
+            flash(
+                f"Attachment {idx} was not saved (PDF or image only, max 15 MB).",
+                "warning",
+            )
+            continue
+        rel, orig = saved
+        db.session.add(
+            MemberDocument(
+                member_id=m.id,
+                document_type=dt,
+                stored_path=rel,
+                original_name=orig[:255],
+                notes=notes,
+                uploaded_by_user_id=current_user.id if current_user.is_authenticated else None,
+            )
+        )
+        any_saved = True
+    if any_saved:
+        log_audit(
+            "member_document_uploaded",
+            "MemberDocument",
+            None,
+            f"member_id={m.id} registration_attachments",
+        )
+        db.session.commit()
 
 
 def _valid_project_status(value: str | None) -> str:
@@ -423,6 +513,10 @@ def _dashboard_payment_totals(member_ids):
 def _dashboard_recent_contributions(member_ids, limit=12):
     q = (
         Contribution.query.join(Member, Contribution.member_id == Member.id)
+        .options(
+            joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+            joinedload(Contribution.payment_mobile_provider),
+        )
         .order_by(Contribution.date.desc(), Contribution.id.desc())
     )
     if member_ids is not None:
@@ -606,6 +700,8 @@ def _audit_notification_item(log: AuditLog) -> dict | None:
         "certificate_issued": "Share certificate issued",
         "member_created": "New member registered",
         "member_updated": "Member updated",
+        "member_document_uploaded": "Member document uploaded",
+        "member_document_deleted": "Member document removed",
         "subscription_cancelled": "Subscription cancelled",
         "subscription_investment_updated": "Subscription investment link updated",
         "settings_branding_updated": "Branding / logos updated",
@@ -647,7 +743,11 @@ def build_header_notifications(mids: list[int] | None) -> dict:
     sym = get_or_create_settings().currency_symbol or "$"
     raw: list[dict] = []
 
-    cq = Contribution.query.options(joinedload(Contribution.member))
+    cq = Contribution.query.options(
+        joinedload(Contribution.member),
+        joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+        joinedload(Contribution.payment_mobile_provider),
+    )
     if mids is not None:
         if not mids:
             cq = cq.filter(Contribution.id == -1)
@@ -658,7 +758,7 @@ def build_header_notifications(mids: list[int] | None) -> dict:
         m = c.member
         label = (m.full_name or m.member_id or f"Member #{m.id}").strip()
         amt = _money_display(c.amount)
-        body = f"{label} · {sym}{amt} ({c.payment_type})"
+        body = f"{label} · {sym}{amt} ({c.payment_display_label()})"
         if c.receipt_no:
             body += f" · {c.receipt_no}"
         when = c.created_at or datetime.combine(c.date, time.min)
@@ -911,9 +1011,9 @@ def register_routes(app):
         if date_to:
             query = query.filter(Contribution.date <= date_to)
         if verified == "yes":
-            query = query.filter(Contribution.verified.is_(True))
+            query = query.filter(Contribution.verified)
         elif verified == "no":
-            query = query.filter(Contribution.verified.is_(False))
+            query = query.filter(~Contribution.verified)
         if qtext:
             like = f"%{qtext}%"
             query = query.filter(
@@ -1935,6 +2035,7 @@ def register_routes(app):
             "agents": agents,
             "member_kinds": MEMBER_KINDS,
             "member_genders": MEMBER_GENDER_CHOICES,
+            "member_document_types": MEMBER_DOCUMENT_TYPES,
             "require_agent": s.get_flag("require_agent_on_member"),
             "is_edit": member is not None,
             "default_join_date": date.today().isoformat(),
@@ -1987,6 +2088,7 @@ def register_routes(app):
             db.session.add(m)
             log_audit("member_created", "Member", None, f"member_id={m.member_id}")
             db.session.commit()
+            _save_optional_new_member_documents(m, request)
             notify_member_welcome(
                 member_name=m.full_name,
                 member_code=m.member_id,
@@ -2067,7 +2169,11 @@ def register_routes(app):
         contribution_count = m.contributions.count()
         contribs = (
             m.contributions.order_by(Contribution.date.desc(), Contribution.id.desc())
-            .options(joinedload(Contribution.subscription))
+            .options(
+                joinedload(Contribution.subscription),
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
+            )
             .limit(contrib_limit)
             .all()
         )
@@ -2100,6 +2206,15 @@ def register_routes(app):
             .all()
         )
         settings = get_or_create_settings()
+        member_documents = (
+            m.documents.options(joinedload(MemberDocument.uploaded_by))
+            .order_by(MemberDocument.uploaded_at.desc(), MemberDocument.id.desc())
+            .all()
+        )
+        allow_doc_upload = current_user.role in ("admin", "operator", "agent") or (
+            current_user.role == "member" and current_user.member_id == m.id
+        )
+        allow_doc_delete = current_user.role in ("admin", "operator", "agent")
         return render_template(
             "members/profile.html",
             member=m,
@@ -2117,10 +2232,86 @@ def register_routes(app):
             profit_rows=profit_rows,
             member_kinds=MEMBER_KINDS,
             member_genders=MEMBER_GENDER_CHOICES,
+            member_document_types=MEMBER_DOCUMENT_TYPES,
+            member_documents=member_documents,
+            allow_member_document_upload=allow_doc_upload,
+            allow_member_document_delete=allow_doc_delete,
             cert_count=cert_count,
             recent_certs=recent_certs,
             settings=settings,
         )
+
+    @app.route("/members/<int:member_id>/documents", methods=["POST"])
+    def members_document_upload(member_id):
+        m = members_scope().filter_by(id=member_id).first_or_404()
+        allowed = current_user.role in ("admin", "operator", "agent") or (
+            current_user.role == "member" and current_user.member_id == m.id
+        )
+        if not allowed:
+            flash("You cannot upload documents for this member.", "danger")
+            return redirect(url_for("dashboard"))
+        clen = request.content_length
+        if clen is not None and clen > _MAX_MEMBER_DOCUMENT_BYTES:
+            flash("File is too large (maximum 15 MB).", "danger")
+            return redirect(url_for("members_profile", id=member_id))
+        doc_type = (request.form.get("document_type") or "").strip().lower()
+        if doc_type not in _MEMBER_DOCUMENT_TYPE_KEYS:
+            flash("Choose a document type.", "danger")
+            return redirect(url_for("members_profile", id=member_id))
+        notes = (request.form.get("notes") or "").strip()[:500] or None
+        f = request.files.get("file")
+        saved = _save_member_document_file(m.id, f)
+        if not saved:
+            flash("Upload a valid file (PDF or image: PNG, JPG, WebP, GIF).", "danger")
+            return redirect(url_for("members_profile", id=member_id))
+        rel, orig = saved
+        row = MemberDocument(
+            member_id=m.id,
+            document_type=doc_type,
+            stored_path=rel,
+            original_name=orig[:255],
+            notes=notes,
+            uploaded_by_user_id=current_user.id if current_user.is_authenticated else None,
+        )
+        db.session.add(row)
+        log_audit("member_document_uploaded", "MemberDocument", None, f"member_id={m.id} type={doc_type}")
+        db.session.commit()
+        flash("Document uploaded.", "success")
+        return redirect(url_for("members_profile", id=member_id))
+
+    @app.route("/members/<int:member_id>/documents/<int:doc_id>/download")
+    def members_document_download(member_id, doc_id):
+        members_scope().filter_by(id=member_id).first_or_404()
+        doc = MemberDocument.query.filter_by(id=doc_id, member_id=member_id).first_or_404()
+        full = os.path.join(resolve_static_folder(), doc.stored_path.replace("/", os.sep))
+        if not os.path.isfile(full):
+            flash("File is missing on the server.", "danger")
+            return redirect(url_for("members_profile", id=member_id))
+        return send_file(
+            full,
+            as_attachment=True,
+            download_name=doc.original_name,
+            max_age=0,
+        )
+
+    @app.route("/members/<int:member_id>/documents/<int:doc_id>/delete", methods=["POST"])
+    def members_document_delete(member_id, doc_id):
+        if current_user.role not in ("admin", "operator", "agent"):
+            flash("Only staff can remove stored documents.", "warning")
+            return redirect(url_for("members_profile", id=member_id))
+        m = members_scope().filter_by(id=member_id).first_or_404()
+        doc = MemberDocument.query.filter_by(id=doc_id, member_id=m.id).first_or_404()
+        full = os.path.join(resolve_static_folder(), doc.stored_path.replace("/", os.sep))
+        db.session.delete(doc)
+        log_audit("member_document_deleted", "MemberDocument", doc_id, f"member_id={m.id}")
+        db.session.commit()
+        if os.path.isfile(full):
+            try:
+                os.remove(full)
+            except OSError:
+                pass
+        flash("Document removed.", "info")
+        return redirect(url_for("members_profile", id=member_id))
 
     # --- Share subscriptions ---
     @app.route("/subscriptions")
@@ -2492,7 +2683,11 @@ def register_routes(app):
         )
         contribs = (
             Contribution.query.filter(Contribution.subscription_id == sub.id)
-            .options(joinedload(Contribution.verified_by))
+            .options(
+                joinedload(Contribution.verified_by),
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
+            )
             .order_by(Contribution.date.desc(), Contribution.id.desc())
             .all()
         )
@@ -2877,6 +3072,8 @@ def register_routes(app):
             rows_q.options(
                 joinedload(Contribution.member).joinedload(Member.agent),
                 joinedload(Contribution.subscription),
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
             )
             .order_by(Contribution.date.desc(), Contribution.id.desc())
             .offset((page - 1) * per_page)
@@ -2937,6 +3134,7 @@ def register_routes(app):
         cur_lbl = app_settings.currency_code or "USD"
 
         def _contrib_form_ctx(members, preselect, preselect_subscription, subscriptions):
+            ba, mp = _contribution_payment_form_choices()
             return {
                 "members": members,
                 "preselect": preselect,
@@ -2944,6 +3142,10 @@ def register_routes(app):
                 "subscriptions": subscriptions,
                 "settings": app_settings,
                 "today": date.today(),
+                "bank_accounts": ba,
+                "mobile_providers": mp,
+                "has_bank_accounts": len(ba) > 0,
+                "has_mobile_providers": len(mp) > 0,
             }
 
         members = members_scope().filter_by(status="Active").order_by(Member.full_name).all()
@@ -2957,6 +3159,61 @@ def register_routes(app):
             ptype = request.form.get("payment_type") or "Cash"
             if ptype not in ("Cash", "Mobile", "Bank", "Other"):
                 ptype = "Cash"
+            bank_acc_id = request.form.get("payment_bank_account_id", type=int) or None
+            mobile_prov_id = request.form.get("payment_mobile_provider_id", type=int) or None
+            ba_choices, mp_choices = _contribution_payment_form_choices()
+            if ptype == "Bank" and ba_choices and not bank_acc_id:
+                flash("Select which company bank account received this transfer.", "danger")
+                subs = (
+                    ShareSubscription.query.filter_by(member_id=mid).order_by(ShareSubscription.subscription_date.desc()).all()
+                    if mid
+                    else []
+                )
+                return render_template(
+                    "contributions/form.html",
+                    **_contrib_form_ctx(members, mid or preselect, subscription_id or preselect_subscription, subs),
+                )
+            if ptype == "Mobile" and mp_choices and not mobile_prov_id:
+                flash("Select the mobile payment service used (e.g. EVC, eDahab).", "danger")
+                subs = (
+                    ShareSubscription.query.filter_by(member_id=mid).order_by(ShareSubscription.subscription_date.desc()).all()
+                    if mid
+                    else []
+                )
+                return render_template(
+                    "contributions/form.html",
+                    **_contrib_form_ctx(members, mid or preselect, subscription_id or preselect_subscription, subs),
+                )
+            if ptype != "Bank":
+                bank_acc_id = None
+            if ptype != "Mobile":
+                mobile_prov_id = None
+            if bank_acc_id:
+                acc = PaymentBankAccount.query.filter_by(id=bank_acc_id, is_active=True).first()
+                if not acc or not acc.bank or not acc.bank.is_active:
+                    flash("Invalid or inactive bank account.", "danger")
+                    subs = (
+                        ShareSubscription.query.filter_by(member_id=mid).order_by(ShareSubscription.subscription_date.desc()).all()
+                        if mid
+                        else []
+                    )
+                    return render_template(
+                        "contributions/form.html",
+                        **_contrib_form_ctx(members, mid or preselect, subscription_id or preselect_subscription, subs),
+                    )
+            if mobile_prov_id:
+                mp = PaymentMobileProvider.query.filter_by(id=mobile_prov_id, is_active=True).first()
+                if not mp:
+                    flash("Invalid mobile payment option.", "danger")
+                    subs = (
+                        ShareSubscription.query.filter_by(member_id=mid).order_by(ShareSubscription.subscription_date.desc()).all()
+                        if mid
+                        else []
+                    )
+                    return render_template(
+                        "contributions/form.html",
+                        **_contrib_form_ctx(members, mid or preselect, subscription_id or preselect_subscription, subs),
+                    )
             method_ref = request.form.get("method_ref", "").strip() or None
             notes = request.form.get("notes", "").strip()
             if not mid or amount is None or amount <= 0:
@@ -3039,6 +3296,8 @@ def register_routes(app):
                 amount=amount,
                 date=d,
                 payment_type=ptype,
+                payment_bank_account_id=bank_acc_id,
+                payment_mobile_provider_id=mobile_prov_id,
                 method_ref=method_ref,
                 receipt_no=next_receipt_no(),
                 notes=notes or None,
@@ -3095,6 +3354,8 @@ def register_routes(app):
                 joinedload(Contribution.member).joinedload(Member.agent),
                 joinedload(Contribution.subscription),
                 joinedload(Contribution.verified_by),
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
             )
             .get_or_404(id)
         )
@@ -4300,6 +4561,119 @@ def register_routes(app):
             mail_ok=mail_configured(),
         )
 
+    @app.route("/settings/payment-methods", methods=["GET", "POST"])
+    @admin_required
+    def settings_payment_methods():
+        if request.method == "POST":
+            act = (request.form.get("action") or "").strip()
+            if act == "add_bank":
+                name = (request.form.get("bank_name") or "").strip()[:120]
+                if name:
+                    mx = db.session.query(func.coalesce(func.max(PaymentBank.sort_order), 0)).scalar() or 0
+                    db.session.add(PaymentBank(name=name, sort_order=int(mx) + 1))
+                    db.session.commit()
+                    flash("Bank added.", "success")
+                else:
+                    flash("Enter a bank name.", "danger")
+            elif act == "delete_bank":
+                bid = request.form.get("bank_id", type=int)
+                b = db.session.get(PaymentBank, bid) if bid else None
+                if b:
+                    db.session.delete(b)
+                    db.session.commit()
+                    flash("Bank and its accounts were removed.", "info")
+            elif act == "add_account":
+                bid = request.form.get("bank_id", type=int)
+                b = db.session.get(PaymentBank, bid) if bid else None
+                acct_no = (request.form.get("account_number") or "").strip()[:120]
+                label = (request.form.get("account_label") or "").strip()[:120] or None
+                notes = (request.form.get("account_notes") or "").strip()[:300] or None
+                if b and acct_no:
+                    mx = (
+                        db.session.query(func.coalesce(func.max(PaymentBankAccount.sort_order), 0))
+                        .filter(PaymentBankAccount.bank_id == b.id)
+                        .scalar()
+                        or 0
+                    )
+                    db.session.add(
+                        PaymentBankAccount(
+                            bank_id=b.id,
+                            label=label,
+                            account_number=acct_no,
+                            notes=notes,
+                            sort_order=int(mx) + 1,
+                        )
+                    )
+                    db.session.commit()
+                    flash("Bank account added.", "success")
+                else:
+                    flash("Select a bank and enter an account number.", "danger")
+            elif act == "delete_account":
+                aid = request.form.get("account_id", type=int)
+                a = db.session.get(PaymentBankAccount, aid) if aid else None
+                if a:
+                    db.session.delete(a)
+                    db.session.commit()
+                    flash("Bank account removed.", "info")
+            elif act == "add_mobile":
+                name = (request.form.get("mobile_name") or "").strip()[:120]
+                if name:
+                    mx = db.session.query(func.coalesce(func.max(PaymentMobileProvider.sort_order), 0)).scalar() or 0
+                    db.session.add(PaymentMobileProvider(name=name, sort_order=int(mx) + 1))
+                    db.session.commit()
+                    flash("Mobile payment option added.", "success")
+                else:
+                    flash("Enter a name (e.g. EVC, eDahab).", "danger")
+            elif act == "delete_mobile":
+                mid = request.form.get("mobile_id", type=int)
+                mp = db.session.get(PaymentMobileProvider, mid) if mid else None
+                if mp:
+                    db.session.delete(mp)
+                    db.session.commit()
+                    flash("Mobile payment option removed.", "info")
+            return redirect(url_for("settings_payment_methods"))
+
+        banks = PaymentBank.query.order_by(PaymentBank.sort_order, PaymentBank.name).all()
+        banks_with_accounts = [
+            (
+                b,
+                PaymentBankAccount.query.filter_by(bank_id=b.id)
+                .order_by(PaymentBankAccount.sort_order, PaymentBankAccount.id)
+                .all(),
+            )
+            for b in banks
+        ]
+        mobiles = PaymentMobileProvider.query.order_by(
+            PaymentMobileProvider.sort_order, PaymentMobileProvider.name
+        ).all()
+        return render_template(
+            "settings/payment_methods.html", banks_with_accounts=banks_with_accounts, mobiles=mobiles
+        )
+
+    def _contribution_payment_form_choices():
+        """Active bank accounts (with bank name) and mobile providers for the contribution form."""
+        acct_rows = (
+            PaymentBankAccount.query.join(PaymentBank, PaymentBankAccount.bank_id == PaymentBank.id)
+            .filter(PaymentBankAccount.is_active, PaymentBank.is_active)
+            .order_by(PaymentBank.sort_order, PaymentBank.name, PaymentBankAccount.sort_order, PaymentBankAccount.id)
+            .all()
+        )
+        bank_accounts = []
+        for a in acct_rows:
+            lab = (a.label or "Account").strip()
+            bank_accounts.append(
+                {
+                    "id": a.id,
+                    "label": f"{a.bank.name} — {lab} — {a.account_number}",
+                }
+            )
+        mobile_list = (
+            PaymentMobileProvider.query.filter_by(is_active=True)
+            .order_by(PaymentMobileProvider.sort_order, PaymentMobileProvider.name)
+            .all()
+        )
+        return bank_accounts, mobile_list
+
     # --- Users (admin) ---
     @app.route("/users")
     @admin_required
@@ -4589,7 +4963,7 @@ def register_routes(app):
         settings = get_or_create_settings()
         aq = Account.query
         if account_id:
-            aq = aq.filter(or_(Account.is_active.is_(True), Account.id == account_id))
+            aq = aq.filter(or_(Account.is_active, Account.id == account_id))
         else:
             aq = aq.filter_by(is_active=True)
         account_list = aq.order_by(Account.sort_order, Account.code).all()
@@ -4889,7 +5263,14 @@ def register_routes(app):
             q = q.filter(Member.agent_id == agent_id)
         if current_user.role == "agent" and current_user.agent_id:
             q = q.filter(Member.agent_id == current_user.agent_id)
-        rows = q.order_by(Contribution.date.desc()).all()
+        rows = (
+            q.options(
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
+            )
+            .order_by(Contribution.date.desc())
+            .all()
+        )
         total = sum((r.amount for r in rows), Decimal("0"))
         agents = Agent.query.filter_by(status="Active").order_by(Agent.full_name).all()
         return render_template(
@@ -4907,7 +5288,14 @@ def register_routes(app):
     @app.route("/reports/member/<int:member_id>")
     def reports_member_contrib(member_id):
         m = members_scope().filter_by(id=member_id).first_or_404()
-        rows = m.contributions.order_by(Contribution.date.desc()).all()
+        rows = (
+            m.contributions.order_by(Contribution.date.desc())
+            .options(
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
+            )
+            .all()
+        )
         return render_template("reports/member_contrib.html", member=m, rows=rows)
 
     @app.route("/reports/agents")
@@ -5229,7 +5617,14 @@ def register_routes(app):
         q = Contribution.query.filter(Contribution.date == d).join(Member)
         if current_user.role == "agent" and current_user.agent_id:
             q = q.filter(Member.agent_id == current_user.agent_id)
-        rows = q.order_by(Contribution.id.desc()).all()
+        rows = (
+            q.options(
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
+            )
+            .order_by(Contribution.id.desc())
+            .all()
+        )
         total = sum((r.amount for r in rows), Decimal("0"))
         return render_template("reports/daily.html", rows=rows, total=total, report_date=d)
 
@@ -5502,7 +5897,7 @@ def register_routes(app):
             "Agent",
             "Amount",
             "Date",
-            "Payment type",
+            "Payment method",
             "Verified",
             "Notes",
         ]
@@ -5514,6 +5909,8 @@ def register_routes(app):
             .options(
                 joinedload(Contribution.member).joinedload(Member.agent),
                 joinedload(Contribution.subscription),
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
             )
             .order_by(Contribution.date.desc(), Contribution.id.desc())
         )
@@ -5532,7 +5929,7 @@ def register_routes(app):
             ws.cell(row=row, column=6, value=agent_label)
             ws.cell(row=row, column=7, value=float(c.amount))
             ws.cell(row=row, column=8, value=c.date.isoformat() if c.date else "")
-            ws.cell(row=row, column=9, value=c.payment_type)
+            ws.cell(row=row, column=9, value=c.payment_display_label())
             ws.cell(row=row, column=10, value="Yes" if c.verified else "No")
             ws.cell(row=row, column=11, value=(c.notes or "")[:500])
         bio = io.BytesIO()
@@ -5699,7 +6096,17 @@ def register_routes(app):
     @app.route("/export/contributions.pdf")
     def export_contributions_pdf():
         rows_data = []
-        for c in contributions_scope().order_by(Contribution.date.desc()).limit(500).all():
+        cq = (
+            contributions_scope()
+            .options(
+                joinedload(Contribution.member).joinedload(Member.agent),
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
+            )
+            .order_by(Contribution.date.desc())
+            .limit(500)
+        )
+        for c in cq.all():
             ag = ""
             if c.member and c.member.agent:
                 ag = c.member.agent.agent_id
@@ -5710,13 +6117,13 @@ def register_routes(app):
                     c.member.member_id,
                     str(c.amount),
                     c.date.isoformat() if c.date else "",
-                    c.payment_type,
+                    c.payment_display_label(),
                     ag,
                 ]
             )
         pdf_bytes = _pdf_table(
             "Estithmar — Contributions",
-            ["Txn ID", "Receipt", "Member", "Amount", "Date", "Type", "Agent"],
+            ["Txn ID", "Receipt", "Member", "Amount", "Date", "Payment", "Agent"],
             rows_data,
         )
         return Response(
@@ -5878,6 +6285,8 @@ def register_routes(app):
             rows_q.options(
                 joinedload(Contribution.member).joinedload(Member.agent),
                 joinedload(Contribution.subscription),
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
             )
             .order_by(Contribution.date.desc(), Contribution.id.desc())
             .offset((page - 1) * per_page)
@@ -5978,6 +6387,8 @@ def register_routes(app):
                 joinedload(Contribution.member).joinedload(Member.agent),
                 joinedload(Contribution.subscription),
                 joinedload(Contribution.verified_by),
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
             )
             .get_or_404(id)
         )

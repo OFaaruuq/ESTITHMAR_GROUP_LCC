@@ -5,6 +5,7 @@
 {% set mk = member.member_kind or 'member' %}
 {% set kind_labels = dict(member_kinds) %}
 {% set gender_labels = dict(member_genders) %}
+{% set doc_type_labels = dict(member_document_types) %}
 {% set cur = settings.currency_code or 'USD' %}
 
 <nav aria-label="breadcrumb" class="mb-3">
@@ -119,7 +120,7 @@
                     <dt class="col-sm-4 text-muted">Date of birth</dt>
                     <dd class="col-sm-8 mb-2">{{ member.date_of_birth.strftime('%d %B %Y') if member.date_of_birth else '—' }}</dd>
                     <dt class="col-sm-4 text-muted">Gender</dt>
-                    <dd class="col-sm-8 mb-2">{{ gender_labels.get(member.gender, member.gender) if member.gender else '—' }}</dd>
+                    <dd class="col-sm-8 mb-2">{% if member.gender %}{% if member.gender in ['male', 'female'] %}{{ gender_labels.get(member.gender, member.gender) }}{% else %}{{ (member.gender|string)|replace('_', ' ')|title }} <span class="text-muted small">(legacy)</span>{% endif %}{% else %}—{% endif %}</dd>
                     <dt class="col-sm-4 text-muted">Occupation / employer</dt>
                     <dd class="col-sm-8 mb-2">{{ member.occupation_employer or '—' }}</dd>
                     <dt class="col-sm-4 text-muted">Phone</dt>
@@ -185,7 +186,7 @@
                                 <td class="font-monospace small">{{ c.receipt_no or '—' }}</td>
                                 <td>{{ c.date.strftime('%d %b %Y') if c.date else '—' }}</td>
                                 <td class="text-end">{{ c.amount|money }}</td>
-                                <td><span class="badge bg-light text-dark border">{{ c.payment_type|payment_type_label }}</span></td>
+                                <td class="small"><span class="badge bg-light text-dark border text-wrap text-start fw-normal">{{ c.payment_display_label() }}</span></td>
                                 <td class="small">{% if c.subscription_id and c.subscription %}<a href="{{ url_for('subscriptions_profile', id=c.subscription_id) }}">{{ c.subscription.subscription_no }}</a>{% else %}—{% endif %}</td>
                                 <td>{% if c.verified %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
                                 <td class="text-nowrap"><a href="{{ url_for('contributions_receipt', id=c.id) }}" class="btn btn-sm btn-outline-primary py-0">Receipt</a></td>
@@ -276,6 +277,72 @@
                 <p class="small text-muted mb-0 px-3 py-2 border-top">Showing latest 25. <a href="{{ url_for('profit_statement', member_id=member.id) }}">Full statement</a>.</p>
                 {% endif %}
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span class="fw-semibold"><i class="ri-folder-shield-line me-1 text-primary"></i>Identity documents</span>
+        <span class="text-muted small">Passport, ID card, proof of address — PDF or images (max 15 MB each)</span>
+    </div>
+    <div class="card-body">
+        {% if allow_member_document_upload %}
+        <form method="post" action="{{ url_for('members_document_upload', member_id=member.id) }}" enctype="multipart/form-data" class="row g-3 align-items-end mb-4 pb-3 border-bottom">
+            <div class="col-md-4 col-lg-3">
+                <label class="form-label small mb-0" for="doc-type">Document type</label>
+                <select name="document_type" id="doc-type" class="form-select form-select-sm" required>
+                    <option value="" disabled selected>Choose…</option>
+                    {% for dk, dlabel in member_document_types %}
+                    <option value="{{ dk }}">{{ dlabel }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5 col-lg-4">
+                <label class="form-label small mb-0" for="doc-file">File</label>
+                <input type="file" name="file" id="doc-file" class="form-control form-control-sm" required accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/*">
+            </div>
+            <div class="col-md-8 col-lg-3">
+                <label class="form-label small mb-0" for="doc-notes">Note (optional)</label>
+                <input type="text" name="notes" id="doc-notes" class="form-control form-control-sm" maxlength="500" placeholder="e.g. expiry date, reference">
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i class="ri-upload-2-line me-1"></i>Upload</button>
+            </div>
+        </form>
+        {% endif %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Type</th>
+                        <th>File name</th>
+                        <th>Uploaded</th>
+                        <th>Note</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in member_documents %}
+                    <tr>
+                        <td>{{ doc_type_labels.get(d.document_type, d.document_type|replace('_', ' ')|title) }}</td>
+                        <td class="small text-break">{{ d.original_name }}</td>
+                        <td class="text-nowrap small">{{ d.uploaded_at.strftime('%d %b %Y %H:%M') if d.uploaded_at else '—' }}{% if d.uploaded_by %} <span class="text-muted">· {{ d.uploaded_by.username }}</span>{% endif %}</td>
+                        <td class="small">{{ d.notes or '—' }}</td>
+                        <td class="text-end text-nowrap">
+                            <a href="{{ url_for('members_document_download', member_id=member.id, doc_id=d.id) }}" class="btn btn-sm btn-soft-primary py-0">Download</a>
+                            {% if allow_member_document_delete %}
+                            <form method="post" action="{{ url_for('members_document_delete', member_id=member.id, doc_id=d.id) }}" class="d-inline" onsubmit="return confirm('Remove this document from the record? The file will be deleted.');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger py-0">Remove</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-muted text-center py-4">No documents on file yet.{% if allow_member_document_upload %} Use the form above to add one.{% endif %}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

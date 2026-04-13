@@ -17,7 +17,7 @@
                         <td>{{ c.receipt_no }}</td>
                         <td>{{ c.date }}</td>
                         <td>{{ c.amount|money }}</td>
-                        <td>{{ c.payment_type }}</td>
+                        <td class="small">{{ c.payment_display_label() }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
