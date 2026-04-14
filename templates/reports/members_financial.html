@@ -100,7 +100,7 @@
                 {% set m = r.member %}
                 {% set mk = m.member_kind or 'member' %}
                 <tr>
-                    <td class="font-monospace small">{{ m.member_id }}</td>
+                    <td class="font-monospace small">{{ m.member_id_display }}</td>
                     <td>{{ m.full_name }}</td>
                     <td><span class="badge bg-{{ 'success' if m.status == 'Active' else 'secondary' }}">{{ m.status }}</span></td>
                     <td class="small">{% if m.agent %}{{ m.agent.agent_id }}{% else %}—{% endif %}</td>

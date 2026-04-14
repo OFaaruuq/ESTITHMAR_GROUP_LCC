@@ -50,7 +50,7 @@
                 <select name="member_id" class="form-select">
                     <option value="">All members</option>
                     {% for m in members %}
-                    <option value="{{ m.id }}" {{ 'selected' if member_id == m.id else '' }}>{{ m.member_id }} — {{ m.full_name }}</option>
+                    <option value="{{ m.id }}" {{ 'selected' if member_id == m.id else '' }}>{{ m.member_id_display }} — {{ m.full_name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -60,7 +60,7 @@
                 <select name="subscription_id" class="form-select">
                     <option value="">All</option>
                     {% for s in filter_subscriptions %}
-                    <option value="{{ s.id }}" {{ 'selected' if subscription_id == s.id else '' }}>{{ s.subscription_no }} — {{ s.member.member_id }}</option>
+                    <option value="{{ s.id }}" {{ 'selected' if subscription_id == s.id else '' }}>{{ s.subscription_no }} — {{ s.member.member_id_display }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -159,7 +159,7 @@
                         <td>{{ invoice_no }}</td>
                         <td>
                             <a href="{{ url_for('members_profile', id=c.member.id) }}" class="fw-medium text-reset">{{ c.member.full_name }}</a>
-                            <a href="{{ url_for('members_profile', id=c.member.id) }}" class="text-muted small d-block font-monospace">{{ c.member.member_id }}</a>
+                            <a href="{{ url_for('members_profile', id=c.member.id) }}" class="text-muted small d-block font-monospace">{{ c.member.member_id_display }}</a>
                         </td>
                         <td>{{ c.member.phone or c.member.national_id or '—' }}</td>
                         <td class="small">{% if c.member.agent %}{{ c.member.agent.region or '—' }}{% if c.member.agent.country %}, {{ c.member.agent.country }}{% endif %}{% else %}—{% endif %}</td>

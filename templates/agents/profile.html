@@ -150,7 +150,7 @@
                             {% for m in members_preview %}
                             {% set mk = m.member_kind or 'member' %}
                             <tr>
-                                <td class="font-monospace small">{{ m.member_id }}</td>
+                                <td class="font-monospace small">{{ m.member_id_display }}</td>
                                 <td><a href="{{ url_for('members_profile', id=m.id) }}" class="text-reset fw-medium">{{ m.full_name }}</a></td>
                                 <td><span class="badge text-bg-primary">{{ kind_labels.get(mk, mk) }}</span></td>
                                 <td><span class="badge bg-{{ 'success' if m.status == 'Active' else 'secondary' }}">{{ m.status }}</span></td>
@@ -186,7 +186,7 @@
             <div class="card-body py-3 d-flex flex-wrap gap-2 align-items-center">
                 <span class="text-muted small me-2">Quick links:</span>
                 {% for m in members_preview[:8] %}
-                <a href="{{ url_for('members_profile', id=m.id) }}" class="btn btn-sm btn-outline-secondary">{{ m.member_id }}</a>
+                <a href="{{ url_for('members_profile', id=m.id) }}" class="btn btn-sm btn-outline-secondary">{{ m.member_id_display }}</a>
                 {% endfor %}
                 {% if member_count > 8 %}
                 <a href="{{ url_for('members_list') }}?agent_id={{ agent.id }}" class="btn btn-sm btn-link">+ {{ member_count - 8 }} more</a>

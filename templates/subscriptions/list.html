@@ -66,7 +66,7 @@
                 <select name="member_id" class="form-select">
                     <option value="">All members</option>
                     {% for m in members %}
-                    <option value="{{ m.id }}" {{ 'selected' if member_id == m.id else '' }}>{{ m.member_id }} — {{ m.full_name }}</option>
+                    <option value="{{ m.id }}" {{ 'selected' if member_id == m.id else '' }}>{{ m.member_id_display }} — {{ m.full_name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -215,7 +215,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            <a href="{{ url_for('members_profile', id=s.member_id) }}" class="text-decoration-none">{{ s.member.member_id }}</a>
+                            <a href="{{ url_for('members_profile', id=s.member_id) }}" class="text-decoration-none">{{ s.member.member_id_display }}</a>
                             <div class="small text-muted text-truncate" style="max-width: 200px;">{{ s.member.full_name }}</div>
                         </td>
                         <td class="d-none d-lg-table-cell small">

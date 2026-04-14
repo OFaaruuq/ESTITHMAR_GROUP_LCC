@@ -93,6 +93,23 @@ MEMBER_GENDER_CHOICES = [
     ("female", "Female"),
 ]
 
+# Public member code prefix: ``{MEMBER_PUBLIC_ID_PREFIX}-{year}-{seq}`` (e.g. EST-2026-00001).
+MEMBER_PUBLIC_ID_PREFIX = "EST"
+# Legacy prefix (pre-rename). ``next_member_id`` still considers ``IST-{year}-*`` until rows are migrated.
+_LEGACY_MEMBER_PUBLIC_ID_PREFIX = "IST"
+
+
+def format_member_public_id(member_id: str | None) -> str:
+    """Public member code for UI and exports (maps legacy ``IST-*`` to ``EST-*`` until DB is migrated)."""
+    if not member_id:
+        return ""
+    s = str(member_id).strip()
+    legacy = f"{_LEGACY_MEMBER_PUBLIC_ID_PREFIX}-"
+    if s.startswith(legacy):
+        return f"{MEMBER_PUBLIC_ID_PREFIX}-{s[len(legacy):]}"
+    return s
+
+
 # Uploaded identity / KYC files (see MemberDocument).
 MEMBER_DOCUMENT_TYPES = [
     ("passport", "Passport"),
@@ -195,6 +212,11 @@ class Member(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     total_profit_received = db.Column(db.Numeric(14, 2), nullable=True)
     last_profit_distribution_date = db.Column(db.Date, nullable=True)
+
+    @property
+    def member_id_display(self) -> str:
+        """Use in templates instead of ``member_id`` so legacy ``IST-*`` shows as ``EST-*``."""
+        return format_member_public_id(self.member_id)
 
     contributions = db.relationship(
         "Contribution", backref="member", lazy="dynamic", cascade="all, delete-orphan"
@@ -742,23 +764,32 @@ class AppSettings(db.Model):
         return bool(self.get_extra().get(key, default))
 
 
+def _member_id_seq_suffix(member_id: str | None) -> int:
+    if not member_id:
+        return 0
+    try:
+        return int(member_id.split("-")[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
 def next_member_id() -> str:
     from datetime import datetime as dt
 
     year = dt.utcnow().year
-    prefix = f"IST-{year}-"
-    last = (
+    prefix = f"{MEMBER_PUBLIC_ID_PREFIX}-{year}-"
+    legacy_prefix = f"{_LEGACY_MEMBER_PUBLIC_ID_PREFIX}-{year}-"
+    last_new = (
         Member.query.filter(Member.member_id.like(f"{prefix}%"))
         .order_by(Member.member_id.desc())
         .first()
     )
-    if last:
-        try:
-            n = int(last.member_id.split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            n = 1
-    else:
-        n = 1
+    last_legacy = (
+        Member.query.filter(Member.member_id.like(f"{legacy_prefix}%"))
+        .order_by(Member.member_id.desc())
+        .first()
+    )
+    n = max(_member_id_seq_suffix(last_new.member_id if last_new else None), _member_id_seq_suffix(last_legacy.member_id if last_legacy else None)) + 1
     return f"{prefix}{n:05d}"
 
 

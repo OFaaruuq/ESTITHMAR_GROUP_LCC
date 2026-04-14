@@ -65,7 +65,7 @@
             <tbody>
                 {% for row in preview_rows %}
                 <tr>
-                    <td>{{ row.member.member_id }} — {{ row.member.full_name }}</td>
+                    <td>{{ row.member.member_id_display }} — {{ row.member.full_name }}</td>
                     <td class="text-end">{{ row.eligible_amount|money }}</td>
                     <td class="text-end">{{ row.pct }}%</td>
                     <td class="text-end fw-medium">{{ row.share|money }}</td>

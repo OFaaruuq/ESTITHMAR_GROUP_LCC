@@ -1,0 +1,236 @@
+/*
+  PDF-only (certificate_document.html): forces landscape A4 *content* layout to match print preview.
+  - Fills the printable band so signatures + company sit lower (flex spacer grows).
+  - Hides screen-only placeholders (.no-print) — must work for Chromium PDF.
+  Scoped to html.certificate-document-html only.
+*/
+
+/* Printable content band: A4 landscape 210mm tall minus 8mm*2 vertical margin = 194mm */
+html.certificate-document-html {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html.certificate-document-html body.certificate-document-body {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #fff !important;
+  width: 100% !important;
+  min-height: 194mm !important;
+  height: 194mm !important;
+  max-height: 194mm !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+  box-sizing: border-box !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+html.certificate-document-html .stock-cert-print-context {
+  max-width: none !important;
+  width: 100% !important;
+  padding: 0 !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  page-break-after: avoid !important;
+}
+
+html.certificate-document-html .stock-cert-page {
+  background: #fff !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-shadow: none !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  page-break-inside: avoid !important;
+}
+
+html.certificate-document-html .stock-cert-border-outer {
+  box-shadow: none !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  page-break-inside: avoid !important;
+}
+
+html.certificate-document-html .stock-cert-border-inner {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  page-break-inside: avoid !important;
+}
+
+html.certificate-document-html .stock-cert-border-inner::before {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+/* Main column: primary (top) + growing spacer + closing (bottom aligned in frame) */
+html.certificate-document-html .stock-cert-body--layout {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+html.certificate-document-html .stock-cert-body__primary {
+  flex: 0 0 auto !important;
+}
+
+html.certificate-document-html .stock-cert-body__spacer {
+  flex: 1 1 auto !important;
+  min-height: 12mm !important;
+  height: auto !important;
+  max-height: none !important;
+}
+
+html.certificate-document-html .stock-cert-body__closing {
+  flex: 0 0 auto !important;
+  margin-top: 0 !important;
+}
+
+html.certificate-document-html .stock-cert-body {
+  padding: 5mm 8mm 5mm !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+html.certificate-document-html .stock-cert-fleur--tr {
+  right: 9.5rem !important;
+  top: 5px !important;
+}
+
+html.certificate-document-html .stock-cert-title {
+  font-size: 28pt !important;
+  line-height: 1.05 !important;
+  text-rendering: geometricPrecision;
+}
+
+html.certificate-document-html .stock-cert-title__ornament {
+  margin: 0.25rem auto 0.55rem !important;
+}
+
+html.certificate-document-html .stock-cert-title__ornament-line {
+  max-width: 4.5rem !important;
+}
+
+html.certificate-document-html .stock-cert-company__seal {
+  width: 2rem !important;
+  height: 2rem !important;
+  margin-bottom: 0.4rem !important;
+}
+
+html.certificate-document-html .stock-cert-name-line {
+  font-size: 13pt !important;
+}
+
+html.certificate-document-html .stock-cert-owns__lead {
+  font-size: 7.5pt !important;
+  line-height: 1.35 !important;
+}
+html.certificate-document-html .stock-cert-owns__shares-phrase {
+  font-size: 8pt !important;
+  line-height: 1.4 !important;
+}
+html.certificate-document-html .stock-cert-owns-block .stock-cert-inline-blank--qty {
+  font-size: 9.5pt !important;
+}
+html.certificate-document-html .stock-cert-owns-block .stock-cert-inline-blank--wide {
+  font-size: 10.5pt !important;
+  line-height: 1.35 !important;
+}
+
+html.certificate-document-html .stock-cert-date {
+  font-size: 8.5pt !important;
+  margin-bottom: 0.65rem !important;
+}
+
+html.certificate-document-html .stock-cert-sigs {
+  gap: 1.75rem !important;
+  max-width: 100% !important;
+}
+
+html.certificate-document-html .stock-cert-company {
+  margin-top: 0.5rem !important;
+  padding-top: 0.5rem !important;
+}
+
+html.certificate-document-html .stock-cert-notes {
+  font-size: 7pt !important;
+  line-height: 1.35 !important;
+  margin-top: 0.35rem !important;
+  max-width: 100% !important;
+}
+
+html.certificate-document-html .stock-cert-fleur {
+  color: #2d4a6e !important;
+  width: 40px !important;
+  height: 40px !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+html.certificate-document-html .stock-cert-particulars {
+  background: linear-gradient(180deg, #ffffff 0%, #f5f3ee 100%) !important;
+  border-color: rgba(21, 44, 72, 0.2) !important;
+  max-width: 100% !important;
+  margin-bottom: 0.65rem !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+html.certificate-document-html .stock-cert-particulars__head {
+  padding: 0.35rem 0.5rem !important;
+  background: linear-gradient(180deg, #eef1f6 0%, #e2e6ee 100%) !important;
+  border-bottom-color: #c5c9d1 !important;
+}
+
+html.certificate-document-html .stock-cert-particulars__head-text {
+  font-size: 7.5pt !important;
+}
+
+html.certificate-document-html .stock-cert-particulars__row {
+  padding: 0.35rem 0.5rem !important;
+}
+
+html.certificate-document-html .stock-cert-particulars__label {
+  font-size: 7pt !important;
+}
+
+html.certificate-document-html .stock-cert-particulars__value {
+  font-size: 9.5pt !important;
+}
+
+html.certificate-document-html .stock-cert-sig__emdash-print {
+  display: inline !important;
+}
+
+html.certificate-document-html .stock-cert-sig__emdash-print::before {
+  content: "\2014";
+  color: #a1a1aa;
+  font-size: 0.75rem;
+}
+
+/* Screen-only helpers — PDF must never show these (Chromium uses print for PDF; rules are unconditional here). */
+html.certificate-document-html .no-print,
+html.certificate-document-html .stock-cert-company__hint {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  position: absolute !important;
+  left: -9999px !important;
+}

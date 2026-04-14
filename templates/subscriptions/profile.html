@@ -134,7 +134,7 @@
                     </div>
                     <div>
                         <a href="{{ url_for('members_profile', id=sub.member_id) }}" class="h6 mb-1 text-decoration-none d-block">{{ sub.member.full_name }}</a>
-                        <span class="font-monospace small text-muted">{{ sub.member.member_id }}</span>
+                        <span class="font-monospace small text-muted">{{ sub.member.member_id_display }}</span>
                         {% if sub.member.agent %}
                         <p class="small mb-0 mt-1 text-muted">Agent: <strong>{{ sub.member.agent.full_name }}</strong> ({{ sub.member.agent.agent_id }})</p>
                         {% endif %}

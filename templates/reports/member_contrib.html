@@ -2,7 +2,7 @@
 {% block title %}Member contributions{% endblock %}
 {% block page_heading %}Contribution report — {{ member.full_name }}{% endblock %}
 {% block content %}
-<p><strong>Member ID:</strong> {{ member.member_id }}</p>
+<p><strong>Member ID:</strong> {{ member.member_id_display }}</p>
 <p><strong>Total contributions:</strong> {{ member.contribution_total()|money }} USD</p>
 <div class="card">
     <div class="card-body p-0">

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" class="certificate-document-html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{% if request %}
+<base href="{{ request.url_root }}">
+{% endif %}
+<title>Certificate {{ cert.certificate_no }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Source+Sans+3:wght@400;600;700&family=UnifrakturMaguntia&display=block" rel="stylesheet">
+<style>
+/* Explicit landscape A4; Playwright may also set mm + margins in code. */
+@page {
+  size: 297mm 210mm;
+  margin: 0;
+}
+{% include 'certificates/_stock_certificate_styles.html' %}
+{% include 'certificates/_certificate_pdf_export.css' %}
+/* Standalone PDF shell */
+*, *::before, *::after { box-sizing: border-box; }
+.font-monospace { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.text-muted { color: #6c757d !important; }
+.small { font-size: 0.875em; }
+.mb-0 { margin-bottom: 0 !important; }
+.mt-1 { margin-top: 0.25rem !important; }
+.mt-3 { margin-top: 1rem !important; }
+.fst-italic { font-style: italic; }
+html.certificate-document-html,
+body.certificate-document-body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  box-sizing: border-box;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+body.certificate-document-body {
+  background: #fff;
+}
+.certificate-document-root {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+}
+.stock-cert-page {
+  margin-bottom: 0 !important;
+}
+</style>
+</head>
+<body class="certificate-document-body">
+<div class="certificate-document-root stock-cert-print-context">
+{% include 'certificates/_stock_certificate_block.html' %}
+</div>
+</body>
+</html>

@@ -105,7 +105,7 @@
                     {% set inv = r.investment %}
                     {% set mem = r.member %}
                     {% set batch = r.batch %}
-                    {% set search_blob = ((r.distribution_date|string) ~ ' ' ~ (batch.batch_no if batch else '') ~ ' ' ~ (inv.name if inv else '') ~ ' ' ~ mem.member_id ~ ' ' ~ (mem.full_name or ''))|lower %}
+                    {% set search_blob = ((r.distribution_date|string) ~ ' ' ~ (batch.batch_no if batch else '') ~ ' ' ~ (inv.name if inv else '') ~ ' ' ~ mem.member_id_display ~ ' ' ~ (mem.full_name or ''))|lower %}
                     <tr data-ph-row data-search="{{ search_blob|e }}">
                         <td class="text-nowrap small">{{ r.distribution_date }}</td>
                         <td class="font-monospace small">
@@ -123,7 +123,7 @@
                             {% else %}—{% endif %}
                         </td>
                         <td class="small">
-                            <a href="{{ url_for('members_profile', id=mem.id) }}" class="text-decoration-none">{{ mem.member_id }}</a>
+                            <a href="{{ url_for('members_profile', id=mem.id) }}" class="text-decoration-none">{{ mem.member_id_display }}</a>
                             <span class="text-muted d-none d-md-inline"> — </span>
                             <span class="d-none d-md-inline">{{ mem.full_name }}</span>
                         </td>

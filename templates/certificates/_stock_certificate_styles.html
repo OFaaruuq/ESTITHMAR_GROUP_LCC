@@ -1,0 +1,747 @@
+/* —— Certificate document —— formal stock certificate styling */
+.stock-cert-page {
+  --cert-navy: #152c48;
+  --cert-navy-mid: #1e3a5f;
+  --cert-navy-soft: #2d4a6e;
+  --cert-gold: #8b6914;
+  --cert-gold-mid: #b8922e;
+  --cert-gold-bright: #c9a227;
+  --cert-paper: #fffdf9;
+  --cert-paper-mid: #faf6ee;
+  --cert-ink: #0c1929;
+  --cert-muted: #5c6570;
+  --cert-font-serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --cert-font-sans: "Source Sans 3", "Segoe UI", system-ui, Arial, sans-serif;
+  width: 100%;
+  max-width: min(11in, 100%);
+  margin: 0 auto 2rem;
+  background: linear-gradient(165deg, #eef1f5 0%, #f7f5f0 48%, #ebe8e2 100%);
+  padding: clamp(0.35rem, 1.5vw, 0.65rem);
+  border-radius: 6px;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.1);
+}
+.stock-cert-border-outer {
+  width: 100%;
+  max-width: 100%;
+  border: 2px solid var(--cert-navy);
+  padding: clamp(5px, 1.3vw, 8px);
+  background: var(--cert-paper);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(201, 162, 39, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 1px 3px rgba(12, 25, 41, 0.12);
+}
+.stock-cert-border-inner {
+  width: 100%;
+  max-width: 100%;
+  border: 3px double var(--cert-navy-mid);
+  padding: 0;
+  min-height: 0;
+  position: relative;
+  background: linear-gradient(180deg, var(--cert-paper) 0%, var(--cert-paper-mid) 100%);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 1px;
+}
+/* PDF HTML debug in browser only — Playwright uses print media (no min-height stretch). */
+@media screen {
+  body.certificate-document-body .stock-cert-border-inner {
+    min-height: 176mm;
+  }
+}
+.cert-preview-wrap .stock-cert-border-inner {
+  min-height: min(520px, 65vh);
+}
+@media (min-width: 576px) {
+  .stock-cert-border-inner {
+    min-height: 340px;
+  }
+}
+@media (min-width: 992px) {
+  .stock-cert-border-inner {
+    min-height: 380px;
+  }
+}
+.stock-cert-border-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(ellipse 95% 55% at 50% -5%, rgba(201, 162, 39, 0.07), transparent 52%),
+    radial-gradient(ellipse 80% 45% at 80% 100%, rgba(21, 44, 72, 0.04), transparent 50%),
+    repeating-linear-gradient(
+      -32deg,
+      transparent,
+      transparent 7px,
+      rgba(21, 44, 72, 0.018) 7px,
+      rgba(21, 44, 72, 0.018) 8px
+    );
+  pointer-events: none;
+  z-index: 0;
+}
+.stock-cert-certno {
+  position: absolute;
+  top: clamp(6px, 1.5vw, 10px);
+  right: clamp(6px, 1.5vw, 10px);
+  z-index: 2;
+  max-width: min(48%, 11rem);
+  text-align: right;
+  font-family: var(--cert-font-sans);
+  font-size: clamp(0.55rem, 1.8vw, 0.62rem);
+  line-height: 1.25;
+  color: var(--cert-ink);
+  border: 1px solid rgba(21, 44, 72, 0.28);
+  border-top: 2px solid var(--cert-gold-mid);
+  border-radius: 3px;
+  padding: 0.38rem 0.5rem;
+  background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.07);
+  word-break: break-all;
+}
+.stock-cert-certno__label {
+  display: block;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 0.52rem;
+  color: var(--cert-navy-soft);
+}
+.stock-cert-certno__value {
+  font-weight: 600;
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  color: var(--cert-navy);
+}
+.stock-cert-fleur {
+  position: absolute;
+  width: clamp(40px, 9vw, 56px);
+  height: clamp(40px, 9vw, 56px);
+  opacity: 0.88;
+  pointer-events: none;
+  color: var(--cert-navy-soft);
+  filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.8));
+}
+.stock-cert-fleur--tl { top: clamp(4px, 1vw, 8px); left: clamp(4px, 1vw, 8px); }
+.stock-cert-fleur--tr { top: clamp(4px, 1vw, 8px); right: clamp(4px, 1vw, 8px); transform: scaleX(-1); }
+/* Leave room for certificate number badge (top-right). */
+.stock-cert-border-inner .stock-cert-fleur--tr {
+  right: clamp(10rem, 26vw, 12rem);
+}
+.stock-cert-fleur--bl { bottom: clamp(4px, 1vw, 8px); left: clamp(4px, 1vw, 8px); transform: scaleY(-1); }
+.stock-cert-fleur--br { bottom: clamp(4px, 1vw, 8px); right: clamp(4px, 1vw, 8px); transform: scale(-1); }
+.stock-cert-body {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 100%;
+  padding: clamp(1.1rem, 3.5vw, 2rem) clamp(0.65rem, 4vw, 7%) clamp(1rem, 2.5vw, 1.75rem);
+  text-align: center;
+}
+.stock-cert-body--layout {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+.stock-cert-body__primary {
+  flex: 0 0 auto;
+}
+.stock-cert-body__spacer {
+  flex: 1 1 18mm;
+  min-height: 10mm;
+  pointer-events: none;
+}
+.stock-cert-body__closing {
+  flex: 0 0 auto;
+  width: 100%;
+}
+.stock-cert-header {
+  margin: 0 0 0.15rem;
+}
+.stock-cert-title {
+  font-family: "UnifrakturMaguntia", "Old English Text MT", "Times New Roman", serif;
+  font-size: clamp(1.85rem, 6vw, 3.5rem);
+  font-weight: 400;
+  line-height: 1.05;
+  margin: 0;
+  color: var(--cert-ink);
+  letter-spacing: 0.03em;
+  max-width: 100%;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.stock-cert-title__ornament {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  margin: 0.4rem auto 0.95rem;
+  max-width: min(18rem, 92%);
+}
+.stock-cert-title__ornament-line {
+  flex: 1;
+  height: 1px;
+  max-width: 6rem;
+  background: linear-gradient(90deg, transparent, var(--cert-gold-mid) 20%, var(--cert-gold-bright) 50%, var(--cert-gold-mid) 80%, transparent);
+  opacity: 0.95;
+}
+.stock-cert-title__ornament-mark {
+  color: var(--cert-gold-mid);
+  font-size: 0.5rem;
+  line-height: 1;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.9);
+}
+.stock-cert-witness {
+  font-family: var(--cert-font-sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  margin: 0 0 1rem;
+  color: var(--cert-navy);
+}
+.stock-cert-name-line {
+  font-family: var(--cert-font-serif);
+  font-size: clamp(1.05rem, 2.9vw, 1.55rem);
+  font-weight: 600;
+  max-width: 100%;
+  width: 100%;
+  margin: 0 auto 1.25rem;
+  padding: 0.2rem 0.5rem 0.42rem;
+  border-bottom: 3px double var(--cert-ink);
+  color: var(--cert-ink);
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+  letter-spacing: 0.02em;
+}
+/* Ownership: three-line register (clearer than one all-caps paragraph) */
+.stock-cert-owns-block {
+  font-family: var(--cert-font-sans);
+  margin: 0 auto 1.25rem;
+  max-width: min(96%, 100%);
+  padding: 0 0.35rem;
+}
+.stock-cert-owns__lead {
+  margin: 0 0 0.35rem;
+  font-size: clamp(0.62rem, 1.65vw, 0.72rem);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #475569;
+  line-height: 1.35;
+}
+.stock-cert-owns__qty-row {
+  margin: 0 0 0.45rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35rem 0.55rem;
+  line-height: 1.5;
+}
+.stock-cert-owns__shares-phrase {
+  font-size: clamp(0.62rem, 1.7vw, 0.78rem);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #1e293b;
+}
+.stock-cert-owns__issuer-row {
+  margin: 0;
+  line-height: 1.45;
+}
+.stock-cert-owns-block .stock-cert-inline-blank {
+  display: inline-block;
+  border-bottom: 1.5px solid #0a0a0a;
+  min-width: 2.5rem;
+  padding: 0.12rem 0.45rem 0.2rem;
+  font-weight: 700;
+  color: #0a0a0a;
+}
+.stock-cert-owns-block .stock-cert-inline-blank--qty {
+  font-size: clamp(0.78rem, 2.1vw, 1rem);
+  letter-spacing: 0.04em;
+  min-width: 2.75rem;
+}
+.stock-cert-owns-block .stock-cert-inline-blank--wide {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  font-family: var(--cert-font-serif);
+  font-size: clamp(0.92rem, 2.5vw, 1.12rem);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: none;
+  padding-bottom: 0.25rem;
+}
+.stock-cert-inline-blank--month {
+  min-width: 6rem !important;
+}
+@media (min-width: 576px) {
+  .stock-cert-owns-block .stock-cert-inline-blank--wide {
+    min-width: min(42vw, 15rem);
+    max-width: 88%;
+  }
+}
+/* Formal particulars register (screen + print) */
+.stock-cert-particulars {
+  width: 100%;
+  max-width: min(92%, 100%);
+  margin: 0 auto 1.35rem;
+  border: 1px solid rgba(21, 44, 72, 0.22);
+  border-radius: 4px;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f3ee 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 1px 3px rgba(21, 44, 72, 0.07);
+}
+.stock-cert-particulars__head {
+  position: relative;
+  text-align: center;
+  font-family: var(--cert-font-sans);
+  padding: 0.55rem 0.85rem 0.45rem;
+  border-bottom: 1px solid rgba(21, 44, 72, 0.15);
+  background: linear-gradient(180deg, #e8edf4 0%, #dce3ee 100%);
+}
+.stock-cert-particulars__head::before,
+.stock-cert-particulars__head::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: min(18%, 4.5rem);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(71, 85, 105, 0.35), transparent);
+  pointer-events: none;
+}
+.stock-cert-particulars__head::before {
+  left: 6%;
+}
+.stock-cert-particulars__head::after {
+  right: 6%;
+}
+.stock-cert-particulars__head-text {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--cert-navy);
+}
+.stock-cert-particulars__rows {
+  padding: 0.1rem 0;
+}
+.stock-cert-particulars__row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 32%) 1fr;
+  gap: 0.55rem 1rem;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  text-align: left;
+  align-items: start;
+}
+.stock-cert-particulars__row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.55);
+}
+@media (max-width: 520px) {
+  .stock-cert-particulars__head::before,
+  .stock-cert-particulars__head::after {
+    display: none;
+  }
+  .stock-cert-particulars__row {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+    padding-top: 0.65rem;
+    padding-bottom: 0.65rem;
+  }
+}
+.stock-cert-particulars__row:last-child {
+  border-bottom: none;
+}
+.stock-cert-particulars__label {
+  font-family: var(--cert-font-sans);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cert-muted);
+  padding-top: 0.22rem;
+  line-height: 1.35;
+}
+.stock-cert-particulars__value {
+  font-family: var(--cert-font-serif);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--cert-ink);
+  line-height: 1.5;
+  word-break: break-word;
+}
+.stock-cert-particulars__value--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #1e293b;
+}
+.stock-cert-particulars__value--date {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.stock-cert-particulars__ownership-detail {
+  display: block;
+  font-family: var(--cert-font-sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--cert-navy-mid);
+  line-height: 1.5;
+}
+.stock-cert-particulars__registry-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  width: 100%;
+}
+.stock-cert-particulars__registry-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px dotted rgba(71, 85, 105, 0.2);
+}
+.stock-cert-particulars__registry-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.stock-cert-particulars__registry-k {
+  flex: 0 0 auto;
+  font-family: var(--cert-font-sans);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cert-muted);
+  min-width: 5.5rem;
+}
+.stock-cert-particulars__registry-v {
+  flex: 1 1 auto;
+  text-align: right;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+.stock-cert-particulars__registry-name {
+  flex: 1 1 auto;
+  text-align: right;
+  font-family: var(--cert-font-sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--cert-ink);
+  letter-spacing: 0.01em;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.stock-cert-date {
+  font-family: var(--cert-font-sans);
+  font-size: clamp(0.78rem, 1.35vw, 0.95rem);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 2rem;
+  color: var(--cert-navy);
+}
+.stock-cert-date .stock-cert-inline-blank {
+  display: inline-block;
+  border-bottom: 1.5px solid #0a0a0a;
+  min-width: 2rem;
+  padding: 0.08rem 0.3rem 0.12rem;
+  margin: 0 0.15rem;
+}
+.stock-cert-sigs {
+  display: flex;
+  justify-content: center;
+  gap: clamp(2rem, 12vw, 6rem);
+  max-width: 90%;
+  margin: 0 auto;
+  padding-top: 0.35rem;
+}
+.stock-cert-sig {
+  flex: 1;
+  max-width: 280px;
+  text-align: center;
+}
+.stock-cert-sig__line {
+  border-bottom: 1px solid rgba(21, 44, 72, 0.55);
+  min-height: 2.85rem;
+  margin-bottom: 0.35rem;
+  background: linear-gradient(180deg, transparent 65%, rgba(21, 44, 72, 0.04) 100%);
+}
+.stock-cert-sig__label {
+  font-family: var(--cert-font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--cert-navy-mid);
+}
+.stock-cert-sig__caption {
+  font-family: var(--cert-font-sans);
+  font-size: 0.68rem;
+  color: var(--cert-muted);
+  margin-top: 0.3rem;
+  line-height: 1.35;
+  min-height: 2.1em;
+}
+.stock-cert-sig__emdash-print {
+  display: none;
+}
+.stock-cert-company {
+  font-family: var(--cert-font-sans);
+  margin-top: 1.35rem;
+  padding-top: 1rem;
+  border-top: 2px solid rgba(21, 44, 72, 0.12);
+  max-width: 92%;
+  margin-left: auto;
+  margin-right: auto;
+}
+.stock-cert-company__seal {
+  width: 2.6rem;
+  height: 2.6rem;
+  margin: 0 auto 0.55rem;
+  border-radius: 50%;
+  border: 2px solid var(--cert-gold-mid);
+  box-shadow:
+    inset 0 0 0 2px var(--cert-paper),
+    inset 0 0 0 3px rgba(21, 44, 72, 0.35);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.35), transparent 55%);
+}
+.stock-cert-company__name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
+  color: var(--cert-ink);
+  margin: 0 0 0.35rem;
+  font-family: var(--cert-font-serif);
+}
+.stock-cert-company__addr,
+.stock-cert-company__reg {
+  font-size: 0.72rem;
+  color: var(--cert-muted);
+  margin: 0;
+  line-height: 1.45;
+}
+.stock-cert-company__meta {
+  font-size: 0.6rem;
+  color: #71717a;
+  margin: 0.6rem 0 0;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.stock-cert-notes {
+  max-width: min(88%, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  font-family: var(--cert-font-sans);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+.stock-cert-page.is-revoked .stock-cert-border-inner::after {
+  content: "REVOKED";
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%) rotate(-18deg);
+  font-family: var(--cert-font-sans);
+  font-size: clamp(3rem, 10vw, 5rem);
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: rgba(180, 0, 0, 0.2);
+  pointer-events: none;
+  z-index: 2;
+  white-space: nowrap;
+}
+.cert-footer-note.no-print {
+  max-width: 11in;
+  margin: 0 auto 2rem;
+  border-color: rgba(37, 99, 235, 0.12) !important;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.6) 0%, #fff 100%) !important;
+}
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+  /* One page: drop forced heights that exceeded the printable area (~194mm) and caused a 2nd sheet. */
+  html, body {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  #page-topbar, .vertical-menu, .footer, .no-print { display: none !important; }
+  .main-content { margin-left: 0 !important; padding-top: 0 !important; }
+  .page-content .container-fluid { padding: 0 !important; max-width: none !important; width: 100% !important; }
+  .stock-cert-print-context {
+    max-width: none !important;
+    width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+    display: block !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+  .certificate-document-root.stock-cert-print-context {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 0 0 auto !important;
+  }
+  body.certificate-document-body {
+    min-height: 0 !important;
+  }
+  .stock-cert-page {
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .stock-cert-border-outer {
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .stock-cert-border-inner {
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .stock-cert-border-inner::before {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .stock-cert-body--layout {
+    min-height: 0 !important;
+    flex: 0 1 auto !important;
+  }
+  /* Fixed gap between particulars block and date/signatures — do not flex-grow (avoids overflow to page 2). */
+  .stock-cert-body__spacer {
+    flex: 0 0 auto !important;
+    height: 6mm !important;
+    min-height: 0 !important;
+    max-height: 8mm !important;
+  }
+  .stock-cert-body {
+    padding: 6mm 9mm 6mm !important;
+  }
+  .stock-cert-fleur--tr {
+    right: 9.5rem !important;
+    top: 5px !important;
+  }
+  .stock-cert-title {
+    font-size: 32pt !important;
+  }
+  .stock-cert-title__ornament {
+    margin-top: 0.2rem !important;
+    margin-bottom: 0.7rem !important;
+  }
+  .stock-cert-title__ornament-line {
+    max-width: 5rem !important;
+  }
+  .stock-cert-company__seal {
+    width: 2.15rem !important;
+    height: 2.15rem !important;
+    margin-bottom: 0.45rem !important;
+  }
+  .stock-cert-name-line {
+    font-size: 14pt !important;
+  }
+  .stock-cert-owns__lead {
+    font-size: 7.5pt !important;
+  }
+  .stock-cert-owns__shares-phrase {
+    font-size: 8pt !important;
+  }
+  .stock-cert-owns-block .stock-cert-inline-blank--qty {
+    font-size: 10pt !important;
+  }
+  .stock-cert-owns-block .stock-cert-inline-blank--wide {
+    font-size: 11pt !important;
+  }
+  .stock-cert-date {
+    font-size: 9pt !important;
+    margin-bottom: 1rem !important;
+  }
+  .stock-cert-sigs {
+    gap: 2rem !important;
+    max-width: 100% !important;
+  }
+  .stock-cert-company {
+    margin-top: 0.75rem !important;
+    padding-top: 0.65rem !important;
+  }
+  .stock-cert-notes {
+    font-size: 7pt !important;
+    line-height: 1.35 !important;
+    margin-top: 0.5rem !important;
+    max-width: 100% !important;
+  }
+  .stock-cert-fleur {
+    color: #334155 !important;
+    opacity: 1 !important;
+    width: 44px !important;
+    height: 44px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .stock-cert-particulars {
+    background: linear-gradient(180deg, #ffffff 0%, #f5f3ee 100%) !important;
+    border-color: rgba(21, 44, 72, 0.2) !important;
+    max-width: 100% !important;
+    margin-bottom: 0.85rem !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .stock-cert-particulars__head {
+    padding: 0.4rem 0.55rem !important;
+    background: linear-gradient(180deg, #eef1f6 0%, #e2e6ee 100%) !important;
+    border-bottom-color: #c5c9d1 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .stock-cert-particulars__head-text {
+    font-size: 7.5pt !important;
+    color: #0f172a !important;
+  }
+  .stock-cert-particulars__row {
+    padding: 0.4rem 0.55rem !important;
+  }
+  .stock-cert-particulars__label {
+    font-size: 7pt !important;
+  }
+  .stock-cert-particulars__value {
+    font-size: 9.5pt !important;
+  }
+  .stock-cert-sig__emdash-print {
+    display: inline !important;
+  }
+  .stock-cert-sig__emdash-print::before {
+    content: "\2014";
+    color: #a1a1aa;
+    font-size: 0.75rem;
+  }
+  a[href]:after { content: none !important; }
+}

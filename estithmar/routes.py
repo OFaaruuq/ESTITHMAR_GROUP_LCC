@@ -34,6 +34,7 @@ from estithmar import db
 from estithmar.auth import admin_required, role_required
 from estithmar.config import PROJECT_ROOT, resolve_static_folder
 from estithmar.validators import validate_phone
+from estithmar.services.membership_form_pdf import build_membership_form_pdf
 from estithmar.services.member_notify import (
     notify_member_certificate_issued,
     notify_member_new_subscription,
@@ -65,6 +66,7 @@ from estithmar.models import (
     AuditLog,
     Contribution,
     EligibilitySnapshot,
+    format_member_public_id,
     InstallmentPlan,
     Investment,
     InvestmentProfitLog,
@@ -100,11 +102,7 @@ from estithmar.services import (
     total_invested_across_investments,
     total_member_contributions_collected,
 )
-from estithmar.services.certificates import (
-    certificate_share_position_detail,
-    certificate_stock_of_name,
-    format_certificate_share_quantity,
-)
+from estithmar.services.certificates import format_certificate_share_quantity
 from estithmar.dashboard_geo import build_members_region_map_data
 from estithmar.services.profit_distribution import (
     build_profit_distribution_preview,
@@ -112,7 +110,7 @@ from estithmar.services.profit_distribution import (
     policy_label_for_batch,
     profit_basis_verified_only,
 )
-from estithmar.services.certificate_pdf import build_share_certificate_pdf
+from estithmar.services.certificate_pdf import build_share_certificate_pdf, share_certificate_print_context
 from estithmar.accounting_models import Account, JournalEntry, JournalLine
 from estithmar.services.accounting_service import (
     JOURNAL_SOURCE_TYPES,
@@ -756,7 +754,7 @@ def build_header_notifications(mids: list[int] | None) -> dict:
     cq = cq.order_by(Contribution.created_at.desc()).limit(12)
     for c in cq:
         m = c.member
-        label = (m.full_name or m.member_id or f"Member #{m.id}").strip()
+        label = (m.full_name or format_member_public_id(m.member_id) or f"Member #{m.id}").strip()
         amt = _money_display(c.amount)
         body = f"{label} · {sym}{amt} ({c.payment_display_label()})"
         if c.receipt_no:
@@ -782,7 +780,7 @@ def build_header_notifications(mids: list[int] | None) -> dict:
     sq = sq.order_by(ShareSubscription.created_at.desc()).limit(10)
     for sub in sq:
         m = sub.member
-        label = (m.full_name or m.member_id or f"Member #{m.id}").strip()
+        label = (m.full_name or format_member_public_id(m.member_id) or f"Member #{m.id}").strip()
         raw.append(
             {
                 "title": "Share subscription",
@@ -2095,7 +2093,7 @@ def register_routes(app):
                 email=m.email,
                 phone=m.phone,
             )
-            flash(f"Registered ({m.member_kind}): {m.member_id}", "success")
+            flash(f"Registered ({m.member_kind}): {format_member_public_id(m.member_id)}", "success")
             return redirect(url_for("members_profile", id=m.id))
         return render_template("members/form.html", **_member_form_ctx(None, agents))
 
@@ -2240,6 +2238,37 @@ def register_routes(app):
             recent_certs=recent_certs,
             settings=settings,
         )
+
+    def _membership_form_pdf_response(member: Member):
+        pdf_bytes = build_membership_form_pdf(member)
+        safe_id = "".join(c for c in (member.member_id or str(member.id)) if c.isalnum() or c in "-_") or str(
+            member.id
+        )
+        return Response(
+            pdf_bytes,
+            mimetype="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="estithmar-membership-{safe_id}.pdf"'},
+        )
+
+    @app.route("/members/<int:id>/membership-form")
+    def members_membership_form_print(id):
+        """Printable membership application (HTML preview) or PDF download — staff only."""
+        if current_user.role not in ("admin", "operator", "agent"):
+            flash("Only staff can open the membership form for printing.", "warning")
+            return redirect(url_for("dashboard"))
+        m = members_scope().options(joinedload(Member.agent)).filter_by(id=id).first_or_404()
+        if (request.args.get("download") or "").strip().lower() in ("1", "true", "yes"):
+            return _membership_form_pdf_response(m)
+        return render_template("members/membership_form_print.html", member=m)
+
+    @app.route("/members/<int:id>/membership-form.pdf")
+    def members_membership_form_pdf(id):
+        """Membership PDF download (same file as ``membership-form?download=1``)."""
+        if current_user.role not in ("admin", "operator", "agent"):
+            flash("Only staff can download the membership form.", "warning")
+            return redirect(url_for("dashboard"))
+        m = members_scope().options(joinedload(Member.agent)).filter_by(id=id).first_or_404()
+        return _membership_form_pdf_response(m)
 
     @app.route("/members/<int:member_id>/documents", methods=["POST"])
     def members_document_upload(member_id):
@@ -2945,37 +2974,9 @@ def register_routes(app):
         cert = query.filter(ShareCertificate.id == id).first_or_404()
         s = get_or_create_settings()
         ex = s.get_extra()
-        sub = cert.subscription
-        cur = s.currency_code or "USD"
-        company_nm = (ex.get("company_name") or "Estithmar Investment Management").strip()
-        cert_share_qty = format_certificate_share_quantity(sub, cur)
-        cert_stock_of = certificate_stock_of_name(sub, company_nm)
-        sym = s.currency_symbol or "$"
-        cert_share_detail = certificate_share_position_detail(sub, sym, cur)
-        idate = cert.issued_date or date.today()
-        dnum = idate.day
-        if 11 <= (dnum % 100) <= 13:
-            day_ord = f"{dnum}th"
-        else:
-            day_ord = f"{dnum}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(dnum % 10, 'th') }"
-        cert_issued_by_label = None
-        if cert.issued_by:
-            cert_issued_by_label = (cert.issued_by.full_name or cert.issued_by.username or "").strip() or None
         return render_template(
             "certificates/print.html",
-            cert=cert,
-            settings=s,
-            extra=ex,
-            currency_code=cur,
-            cert_share_qty=cert_share_qty,
-            cert_stock_of=cert_stock_of,
-            cert_share_detail=cert_share_detail,
-            cert_issued_day=idate.day,
-            cert_issued_day_ordinal=day_ord,
-            cert_issued_month=idate.strftime("%B"),
-            cert_issued_year=idate.year,
-            company_display_name=company_nm,
-            cert_issued_by_label=cert_issued_by_label,
+            **share_certificate_print_context(cert, settings=s, extra=ex),
         )
 
     @app.route("/certificates/<int:id>/pdf")
@@ -3004,7 +3005,11 @@ def register_routes(app):
         pdf_extra = dict(s.get_extra())
         pdf_extra["currency_code"] = s.currency_code or "USD"
         pdf_extra["currency_symbol"] = s.currency_symbol or "$"
-        pdf_bytes = build_share_certificate_pdf(cert, extra=pdf_extra)
+        try:
+            pdf_bytes = build_share_certificate_pdf(cert, extra=pdf_extra)
+        except RuntimeError as exc:
+            flash(str(exc), "danger")
+            return redirect(url_for("certificates_print", id=id))
         safe_name = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in (cert.certificate_no or str(id)))
         return Response(
             pdf_bytes,
@@ -5806,7 +5811,7 @@ def register_routes(app):
         else:
             q = q.order_by(Member.join_date.desc(), Member.id.desc())
         for row, mem in enumerate(q.all(), 2):
-            ws.cell(row=row, column=1, value=mem.member_id)
+            ws.cell(row=row, column=1, value=format_member_public_id(mem.member_id))
             ws.cell(row=row, column=2, value=mem.full_name)
             ws.cell(row=row, column=3, value=kind_labels.get(getattr(mem, "member_kind", None) or "member", "Member"))
             ws.cell(row=row, column=4, value=mem.phone)
@@ -5923,7 +5928,7 @@ def register_routes(app):
                 sub_no = c.subscription.subscription_no
             ws.cell(row=row, column=1, value=c.id)
             ws.cell(row=row, column=2, value=c.receipt_no)
-            ws.cell(row=row, column=3, value=c.member.member_id)
+            ws.cell(row=row, column=3, value=format_member_public_id(c.member.member_id))
             ws.cell(row=row, column=4, value=c.member.full_name)
             ws.cell(row=row, column=5, value=sub_no)
             ws.cell(row=row, column=6, value=agent_label)
@@ -6005,7 +6010,7 @@ def register_routes(app):
         for row, r in enumerate(rows, 2):
             ws.cell(row=row, column=1, value=r.distribution_date.isoformat() if r.distribution_date else "")
             ws.cell(row=row, column=2, value=r.investment.name)
-            ws.cell(row=row, column=3, value=r.member.member_id)
+            ws.cell(row=row, column=3, value=format_member_public_id(r.member.member_id))
             ws.cell(row=row, column=4, value=r.member.full_name)
             ws.cell(row=row, column=5, value=float(r.eligible_amount_basis or 0))
             ws.cell(row=row, column=6, value=float(r.share_percentage or 0))
@@ -6076,7 +6081,7 @@ def register_routes(app):
             mk = getattr(mem, "member_kind", None) or "member"
             rows_data.append(
                 [
-                    mem.member_id,
+                    format_member_public_id(mem.member_id),
                     mem.full_name[:40],
                     kind_labels.get(mk, mk),
                     mem.phone or "",
@@ -6114,7 +6119,7 @@ def register_routes(app):
                 [
                     str(c.id),
                     c.receipt_no or "",
-                    c.member.member_id,
+                    format_member_public_id(c.member.member_id),
                     str(c.amount),
                     c.date.isoformat() if c.date else "",
                     c.payment_display_label(),

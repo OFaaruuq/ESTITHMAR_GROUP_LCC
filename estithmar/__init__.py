@@ -95,6 +95,13 @@ def create_app(config=None):
             "Other": "Other",
         }.get(key, key)
 
+    @app.template_filter("member_public_id")
+    def member_public_id_filter(v):
+        """Format a stored member public code (``IST-*`` → ``EST-*`` for display)."""
+        from estithmar.models import format_member_public_id
+
+        return format_member_public_id(v)
+
     try:
         with app.app_context():
             from estithmar import models  # noqa: F401

@@ -246,13 +246,13 @@
                     {% for c in rows %}
                     {% set inv = c.subscription.investment if c.subscription else none %}
                     {% set sq = share_qty_by_cert.get(c.id, '') %}
-                    {% set search_blob = (c.certificate_no ~ ' ' ~ (c.member.member_id or '') ~ ' ' ~ (c.member.full_name or '') ~ ' ' ~ (c.subscription.subscription_no if c.subscription else '') ~ ' ' ~ (inv.name if inv else '') ~ ' ' ~ sq)|lower %}
+                    {% set search_blob = (c.certificate_no ~ ' ' ~ (c.member.member_id_display or '') ~ ' ' ~ (c.member.full_name or '') ~ ' ' ~ (c.subscription.subscription_no if c.subscription else '') ~ ' ' ~ (inv.name if inv else '') ~ ' ' ~ sq)|lower %}
                     <tr data-cert-row data-status="{{ c.status|e }}" data-search="{{ search_blob|e }}">
                         <td>
                             <a href="{{ url_for('certificates_print', id=c.id) }}" class="cert-cert-link font-monospace fw-semibold">{{ c.certificate_no }}</a>
                         </td>
                         <td>
-                            <a href="{{ url_for('members_profile', id=c.member.id) }}" class="text-decoration-none fw-medium">{{ c.member.member_id }}</a>
+                            <a href="{{ url_for('members_profile', id=c.member.id) }}" class="text-decoration-none fw-medium">{{ c.member.member_id_display }}</a>
                             <span class="text-muted d-none d-sm-inline"> — </span>
                             <span class="d-none d-sm-inline">{{ c.member.full_name }}</span>
                             <span class="d-sm-none d-block small text-muted">{{ c.member.full_name }}</span>

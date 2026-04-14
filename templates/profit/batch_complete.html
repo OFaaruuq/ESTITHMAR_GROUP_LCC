@@ -82,7 +82,7 @@
 {% if highest %}
 <div class="alert alert-light border pbc-shell mb-4">
     <strong>Highest allocation:</strong>
-    <a href="{{ url_for('members_profile', id=highest.member_id) }}">{{ highest.member.member_id }} — {{ highest.member.full_name }}</a>
+    <a href="{{ url_for('members_profile', id=highest.member_id) }}">{{ highest.member.member_id_display }} — {{ highest.member.full_name }}</a>
     · {{ settings.currency_symbol }}{{ highest.amount|money }} {{ cur }}
 </div>
 {% endif %}
@@ -108,7 +108,7 @@
                     <tr>
                         <td>
                             <a href="{{ url_for('members_profile', id=r.member_id) }}" class="text-decoration-none">
-                                <span class="font-monospace small text-muted">{{ r.member.member_id }}</span>
+                                <span class="font-monospace small text-muted">{{ r.member.member_id_display }}</span>
                                 <span class="fw-medium">{{ r.member.full_name }}</span>
                             </a>
                         </td>

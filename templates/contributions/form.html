@@ -70,7 +70,7 @@
                         <select name="member_id" id="member_id" class="form-select form-select-lg" required>
                             <option value="">Choose an active member…</option>
                             {% for m in members %}
-                            <option value="{{ m.id }}" {{ 'selected' if preselect == m.id else '' }}>{{ m.member_id }} — {{ m.full_name }}</option>
+                            <option value="{{ m.id }}" {{ 'selected' if preselect == m.id else '' }}>{{ m.member_id_display }} — {{ m.full_name }}</option>
                             {% endfor %}
                         </select>
                         <div class="form-text">Changing the member reloads this page to load their subscriptions.</div>

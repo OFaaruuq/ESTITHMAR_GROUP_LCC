@@ -1,17 +1,71 @@
 """Share certificate PDF — visual and content parity with ``templates/certificates/print.html``."""
 from __future__ import annotations
 
+import logging
 import math
 import os
+import time
+from datetime import date
+
+# Set to 0/false/no to raise if Playwright/Chromium fails instead of using FPDF (layout differs).
+_CERT_PDF_FPDF_FALLBACK_ENV = "ESTITHMAR_CERTIFICATE_PDF_FPDF_FALLBACK"
+# Optional path to chromium/chrome executable (Playwright bundled or system Chrome).
+_CHROMIUM_EXECUTABLE_ENV = "ESTITHMAR_CHROMIUM_EXECUTABLE"
+# 1 (default) or 2 — higher DPI scaling for sharper PDF text (larger buffer).
+_CERT_PDF_DEVICE_SCALE_ENV = "ESTITHMAR_CERTIFICATE_PDF_DEVICE_SCALE"
 
 from fpdf import FPDF
 
-from estithmar.models import ShareCertificate
+from estithmar.models import ShareCertificate, format_member_public_id, get_or_create_settings
 from estithmar.services.certificates import (
     certificate_share_position_detail,
     certificate_stock_of_name,
     format_certificate_share_quantity,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def share_certificate_print_context(
+    cert: ShareCertificate,
+    *,
+    settings=None,
+    extra: dict | None = None,
+) -> dict:
+    """Template context for ``print.html`` and ``certificate_document.html`` (single source of truth)."""
+    s = settings or get_or_create_settings()
+    ex: dict = dict(extra) if extra is not None else dict(s.get_extra())
+    sub = cert.subscription
+    cur = s.currency_code or "USD"
+    company_nm = (ex.get("company_name") or "Estithmar Investment Management").strip()
+    cert_share_qty = format_certificate_share_quantity(sub, cur)
+    cert_stock_of = certificate_stock_of_name(sub, company_nm)
+    sym = s.currency_symbol or "$"
+    cert_share_detail = certificate_share_position_detail(sub, sym, cur)
+    idate = cert.issued_date or date.today()
+    dnum = idate.day
+    if 11 <= (dnum % 100) <= 13:
+        day_ord = f"{dnum}th"
+    else:
+        day_ord = f"{dnum}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(dnum % 10, 'th') }"
+    cert_issued_by_label = None
+    if cert.issued_by:
+        cert_issued_by_label = (cert.issued_by.full_name or cert.issued_by.username or "").strip() or None
+    return {
+        "cert": cert,
+        "settings": s,
+        "extra": ex,
+        "currency_code": cur,
+        "cert_share_qty": cert_share_qty,
+        "cert_stock_of": cert_stock_of,
+        "cert_share_detail": cert_share_detail,
+        "cert_issued_day": idate.day,
+        "cert_issued_day_ordinal": day_ord,
+        "cert_issued_month": idate.strftime("%B"),
+        "cert_issued_year": idate.year,
+        "company_display_name": company_nm,
+        "cert_issued_by_label": cert_issued_by_label,
+    }
 
 # Optional blackletter title (same family as print template). Drop TTF next to this file:
 # ``estithmar/fonts/UnifrakturMaguntia-Regular.ttf`` (from Google Fonts OFL).
@@ -19,9 +73,10 @@ _TITLE_FONT_TTF = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "fonts", "UnifrakturMaguntia-Regular.ttf")
 )
 
-_CERT_BLUE = (37, 99, 235)
-_CERT_BLUE_DEEP = (29, 78, 216)
-_CERT_BLUE_SOFT = (239, 246, 255)
+# Formal certificate palette (aligned with HTML stock certificate CSS)
+_CERT_BLUE = (21, 44, 72)
+_CERT_BLUE_DEEP = (15, 36, 62)
+_CERT_BLUE_SOFT = (232, 236, 244)
 _CREAM = (255, 254, 251)
 _TEXT_MUTED = (100, 100, 100)
 
@@ -65,7 +120,7 @@ def _draw_star_ornament(pdf: FPDF, cx: float, cy: float, outer: float, inner: fl
 
 def _draw_inner_stripes(pdf: FPDF, x: float, y: float, w: float, h: float) -> None:
     """Subtle diagonal hatch like ``.stock-cert-border-inner::before``."""
-    pdf.set_draw_color(230, 236, 252)
+    pdf.set_draw_color(236, 238, 244)
     pdf.set_line_width(0.06)
     span = w + h
     step = 1.8
@@ -114,64 +169,134 @@ def _draw_ownership_block(
     share_qty: str,
     stock_of: str,
 ) -> float:
-    """``Is The Owner Of … Shares Of Stock Of …`` with underlines like the HTML blanks."""
+    """Three-line ownership block aligned with the HTML template (lead / qty + phrase / issuer)."""
     qty = _safe_pdf_text(share_qty).upper()
     stock = _safe_pdf_text(stock_of).upper()
-    pdf.set_font("Helvetica", "B", 8.0)
+    y_line = y
+
+    pdf.set_font("Helvetica", "B", 7.0)
+    pdf.set_text_color(71, 85, 105)
+    pdf.set_xy(left, y_line)
+    pdf.cell(usable_w, 3.8, "IS THE OWNER OF", align="C", ln=1)
+    y_line = pdf.get_y() + 0.6
     pdf.set_text_color(17, 17, 17)
 
-    prefix = "IS THE OWNER OF "
-    mid = " SHARES OF STOCK OF "
-    p_w = pdf.get_string_width(prefix)
+    pdf.set_font("Helvetica", "B", 8.0)
+    tail = " SHARES OF STOCK OF"
     q_w = pdf.get_string_width(qty)
-    m_w = pdf.get_string_width(mid)
-    s_w = pdf.get_string_width(stock)
-    total = p_w + max(q_w, 18.0) + m_w + max(s_w, usable_w * 0.35)
-
-    if total <= usable_w * 0.96:
-        line = prefix + qty + mid + stock
-        tw = pdf.get_string_width(line)
-        x0 = left + (usable_w - tw) / 2
-        x = x0
-        y_line = y
-        for chunk, under, w_use in (
-            (prefix, False, p_w),
-            (qty, True, q_w),
-            (mid, False, m_w),
-            (stock, True, s_w),
-        ):
-            wch = pdf.get_string_width(chunk)
-            pdf.set_xy(x, y_line)
-            pdf.cell(wch, 4.5, chunk, ln=0)
-            if under:
-                pdf.line(x, y_line + 4.0, x + max(wch, w_use), y_line + 4.0)
-            x += wch
-        return y_line + 6.5
-
-    # Two lines (long investment name)
-    line1 = prefix + qty + " SHARES OF STOCK OF"
-    tw1 = pdf.get_string_width(line1)
-    x0 = left + (usable_w - tw1) / 2
-    x = x0
-    y_line = y
+    t_w = pdf.get_string_width(tail)
+    gap = 1.2
+    row_w = q_w + gap + t_w
+    x0 = left + (usable_w - row_w) / 2
     pdf.set_xy(x0, y_line)
-    for chunk, under in ((prefix, False), (qty, True), (" SHARES OF STOCK OF", False)):
-        wch = pdf.get_string_width(chunk)
-        pdf.set_xy(x, y_line)
-        pdf.cell(wch, 4.5, chunk, ln=0)
-        if under:
-            pdf.line(x, y_line + 4.0, x + wch, y_line + 4.0)
-        x += wch
-    y_line += 6.0
-    tw2 = pdf.get_string_width(stock)
-    x2 = left + (usable_w - tw2) / 2
-    pdf.set_xy(x2, y_line)
-    pdf.cell(tw2, 4.5, stock, ln=0)
-    pdf.line(x2, y_line + 4.0, x2 + tw2, y_line + 4.0)
-    return y_line + 6.5
+    pdf.cell(q_w, 4.6, qty, align="L", ln=0)
+    ul_w = max(q_w, 16.0)
+    pdf.line(x0, y_line + 4.0, x0 + ul_w, y_line + 4.0)
+    pdf.set_xy(x0 + q_w + gap, y_line)
+    pdf.cell(t_w, 4.6, tail, align="L", ln=1)
+    y_line = pdf.get_y() + 0.5
+
+    pdf.set_font("Times", "B", 9.5)
+    s_w = pdf.get_string_width(stock)
+    box_w = max(s_w + 3.0, min(usable_w * 0.88, s_w + 12.0))
+    x_stock = left + (usable_w - box_w) / 2
+    pdf.set_xy(x_stock, y_line)
+    pdf.cell(box_w, 5.0, stock, align="C", ln=0)
+    pdf.line(x_stock, y_line + 4.4, x_stock + box_w, y_line + 4.4)
+    return y_line + 6.8
 
 
-def build_share_certificate_pdf(cert: ShareCertificate, *, extra: dict | None = None) -> bytes:
+def _chromium_executable() -> str | None:
+    path = (os.environ.get(_CHROMIUM_EXECUTABLE_ENV) or "").strip()
+    return path if path and os.path.isfile(path) else None
+
+
+def _pdf_device_scale() -> int:
+    raw = (os.environ.get(_CERT_PDF_DEVICE_SCALE_ENV) or "1").strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        return 1
+    return 2 if n >= 2 else 1
+
+
+def _build_share_certificate_pdf_playwright(cert: ShareCertificate, *, extra: dict | None = None) -> bytes:
+    """Render ``certificate_document.html`` with Chromium — layout matches the print preview."""
+    from flask import render_template, request
+
+    ctx = share_certificate_print_context(cert, extra=extra)
+    ctx["certificate_pdf_export"] = True
+    html = render_template("certificates/certificate_document.html", **ctx)
+    base = (request.url_root if request else None) or "http://127.0.0.1/"
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as e:
+        raise RuntimeError(
+            "Playwright is required for template-accurate certificate PDFs. "
+            "Install: pip install playwright && python -m playwright install chromium"
+        ) from e
+
+    # Viewport ≈ printable area: 281mm × 194mm @ 96dpi (A4 landscape minus 8mm margins).
+    _vp_w = int(round((297 - 16) * 96 / 25.4))
+    _vp_h = int(round((210 - 16) * 96 / 25.4))
+    _launch_args = (
+        "--disable-dev-shm-usage",
+        "--no-sandbox",
+        "--font-render-hinting=medium",
+    )
+    _exe = _chromium_executable()
+    _scale = _pdf_device_scale()
+    with sync_playwright() as p:
+        launch_kw: dict = {"headless": True, "args": list(_launch_args)}
+        if _exe:
+            launch_kw["executable_path"] = _exe
+        browser = p.chromium.launch(**launch_kw)
+        context = None
+        try:
+            # Python Playwright has no base_url on set_content(); use context base_url for relative URLs.
+            context = browser.new_context(
+                viewport={"width": _vp_w, "height": _vp_h},
+                device_scale_factor=_scale,
+                base_url=base,
+            )
+            page = context.new_page()
+            page.emulate_media(media="print")
+            page.set_content(html, wait_until="load", timeout=120_000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=20_000)
+            except Exception:
+                pass
+            try:
+                page.evaluate("async () => { await document.fonts.ready; }")
+            except Exception:
+                pass
+            time.sleep(0.6 if _scale < 2 else 0.4)
+            # Explicit paper size avoids portrait/landscape mismatches with some @page + preferCSS combinations.
+            pdf_bytes = page.pdf(
+                width="297mm",
+                height="210mm",
+                print_background=True,
+                margin={"top": "8mm", "right": "8mm", "bottom": "8mm", "left": "8mm"},
+                prefer_css_page_size=False,
+            )
+        finally:
+            if context is not None:
+                context.close()
+            browser.close()
+
+    if not pdf_bytes or len(pdf_bytes) < 64 or not pdf_bytes.startswith(b"%PDF"):
+        raise RuntimeError("Chromium produced empty or invalid PDF bytes (expected %PDF header).")
+    logger.info(
+        "Certificate PDF (Playwright): %d bytes, viewport=%dx%d, device_scale=%s",
+        len(pdf_bytes),
+        _vp_w,
+        _vp_h,
+        _scale,
+    )
+    return pdf_bytes
+
+
+def build_share_certificate_pdf_fpdf(cert: ShareCertificate, *, extra: dict | None = None) -> bytes:
     """
     Landscape A4 certificate: same structure and styling cues as ``certificates/print.html``
     (triple frame, cert no. badge, blackletter title when font file present, corner stars,
@@ -267,7 +392,7 @@ def build_share_certificate_pdf(cert: ShareCertificate, *, extra: dict | None = 
     pdf.cell(box_w - 2.0, 2.8, "CERTIFICATE", align="R", ln=1)
     pdf.set_x(box_x + 1.0)
     pdf.set_font("Helvetica", "B", 8.5)
-    pdf.set_text_color(30, 58, 95)
+    pdf.set_text_color(*_CERT_BLUE)
     pdf.cell(box_w - 2.0, 4.0, _safe_pdf_text(cert.certificate_no or "—"), align="R", ln=1)
     pdf.set_text_color(0, 0, 0)
 
@@ -321,14 +446,11 @@ def build_share_certificate_pdf(cert: ShareCertificate, *, extra: dict | None = 
     pdf.line(left, row_top, left + usable_w, row_top)
 
     rows_data: list[tuple[str, str]] = [
-        ("Member reference", member.member_id or "—"),
+        ("Member reference", format_member_public_id(member.member_id) or "—"),
         ("Shareholding", share_detail),
         ("Date of issue", issued_line),
+        ("Official record", ""),
     ]
-    official_val = f"RECORD ID  #{cert.id}"
-    if cert_issued_by_label:
-        official_val += "\nRECORDED BY  " + cert_issued_by_label
-    rows_data.append(("Official record", official_val))
 
     y_row = row_top
     for i, (lbl, val) in enumerate(rows_data):
@@ -336,18 +458,41 @@ def build_share_certificate_pdf(cert: ShareCertificate, *, extra: dict | None = 
         y_start = y_row
         pdf.set_xy(left + pad_x, y_row)
         pdf.set_font("Helvetica", "B", 6.0)
-        pdf.set_text_color(90, 90, 90)
+        pdf.set_text_color(100, 116, 139)
         pdf.cell(label_w, 4.0, _safe_pdf_text(lbl.upper()), align="L", ln=0)
         pdf.set_xy(val_x, y_row)
-        if lbl == "Member reference":
+        if lbl == "Official record":
+            w_lab = 30.0
+            pdf.set_font("Helvetica", "B", 5.8)
+            pdf.set_text_color(100, 116, 139)
+            pdf.cell(w_lab, 3.5, "RECORD ID", align="L", ln=0)
             pdf.set_font("Courier", "B", 8.0)
+            pdf.set_text_color(15, 23, 42)
+            pdf.cell(val_w - w_lab, 3.5, _safe_pdf_text(f"#{cert.id}"), align="R", ln=1)
+            if cert_issued_by_label:
+                pdf.set_xy(val_x, pdf.get_y() + 0.25)
+                pdf.set_font("Helvetica", "B", 5.8)
+                pdf.set_text_color(100, 116, 139)
+                pdf.cell(w_lab, 3.5, "RECORDED BY", align="L", ln=0)
+                pdf.set_font("Helvetica", "B", 7.5)
+                pdf.set_text_color(15, 23, 42)
+                pdf.multi_cell(val_w - w_lab, 3.4, _safe_pdf_text(cert_issued_by_label), align="R")
+            y_row = max(pdf.get_y(), y_start + 4.5)
+        elif lbl == "Member reference":
+            pdf.set_font("Courier", "B", 8.0)
+            pdf.set_text_color(15, 23, 42)
+            pdf.multi_cell(val_w, 3.7, _safe_pdf_text(val), align="L")
+            y_row = max(pdf.get_y(), y_start + 4.5)
         elif lbl == "Shareholding":
             pdf.set_font("Times", "B", 8.0)
+            pdf.set_text_color(15, 23, 42)
+            pdf.multi_cell(val_w, 3.7, _safe_pdf_text(val), align="L")
+            y_row = max(pdf.get_y(), y_start + 4.5)
         else:
             pdf.set_font("Helvetica", "", 8.0)
-        pdf.set_text_color(10, 10, 10)
-        pdf.multi_cell(val_w, 3.7, _safe_pdf_text(val), align="L")
-        y_row = max(pdf.get_y(), y_start + 4.5)
+            pdf.set_text_color(15, 23, 42)
+            pdf.multi_cell(val_w, 3.7, _safe_pdf_text(val), align="L")
+            y_row = max(pdf.get_y(), y_start + 4.5)
         pdf.set_text_color(0, 0, 0)
         if i < len(rows_data) - 1:
             pdf.line(left, y_row, left + usable_w, y_row)
@@ -395,7 +540,7 @@ def build_share_certificate_pdf(cert: ShareCertificate, *, extra: dict | None = 
             cap1 += "\n" + _safe_pdf_text(sign_title)
     else:
         pdf.set_text_color(130, 130, 130)
-        cap1 = "Add in Settings"
+        cap1 = "-"  # ASCII only: Helvetica core font is Latin-1
     pdf.set_xy(left, cap_y)
     pdf.multi_cell(col_w, 3.2, cap1, align="C")
     c1_h = pdf.get_y() - cap_y
@@ -407,7 +552,7 @@ def build_share_certificate_pdf(cert: ShareCertificate, *, extra: dict | None = 
             cap2 += "\n" + _safe_pdf_text(second_title)
     else:
         pdf.set_text_color(130, 130, 130)
-        cap2 = "Optional second officer"
+        cap2 = "-"
     pdf.set_xy(left + col_w + gap, cap_y)
     pdf.multi_cell(col_w, 3.2, cap2, align="C")
     c2_h = pdf.get_y() - cap_y
@@ -431,25 +576,13 @@ def build_share_certificate_pdf(cert: ShareCertificate, *, extra: dict | None = 
     if reg_no:
         pdf.set_x(left)
         pdf.multi_cell(usable_w, 3.6, _safe_pdf_text(reg_no), align="C")
-    if not addr and not reg_no:
-        pdf.set_text_color(130, 130, 130)
-        pdf.set_font("Helvetica", "", 7.0)
-        pdf.set_x(left)
-        pdf.multi_cell(
-            usable_w,
-            3.6,
-            "Add registered address in Settings for official certificates.",
-            align="C",
-        )
-        pdf.set_text_color(0, 0, 0)
-
     pdf.set_font("Helvetica", "", 6.5)
     pdf.set_text_color(*_TEXT_MUTED)
     pdf.set_x(left)
     pdf.cell(
         usable_w,
         3.2,
-        _safe_pdf_text(f"Estithmar system · Certificate record #{cert.id}"),
+        _safe_pdf_text(f"Estithmar system - Certificate record #{cert.id}"),
         align="C",
         ln=1,
     )
@@ -485,3 +618,30 @@ def build_share_certificate_pdf(cert: ShareCertificate, *, extra: dict | None = 
     if isinstance(raw, str):
         return raw.encode("latin-1", errors="replace")
     return bytes(raw)
+
+
+def _fpdf_fallback_allowed() -> bool:
+    v = os.environ.get(_CERT_PDF_FPDF_FALLBACK_ENV, "1").strip().lower()
+    return v not in ("0", "false", "no", "off")
+
+
+def build_share_certificate_pdf(cert: ShareCertificate, *, extra: dict | None = None) -> bytes:
+    """PDF bytes — HTML template via Playwright first; optional FPDF fallback if Playwright fails."""
+    try:
+        return _build_share_certificate_pdf_playwright(cert, extra=extra)
+    except Exception as e:
+        logger.exception(
+            "Certificate HTML→PDF (Playwright) failed; template layout will not match until this is fixed."
+        )
+        if not _fpdf_fallback_allowed():
+            raise RuntimeError(
+                "Certificate PDF could not be generated with the HTML template (Playwright/Chromium). "
+                "Install Chromium: python -m playwright install chromium. "
+                f"Or set {_CERT_PDF_FPDF_FALLBACK_ENV} to allow legacy FPDF output. "
+                f"Original error: {e}"
+            ) from e
+        logger.warning(
+            "Using FPDF fallback (different layout). Set %s=0 to fail fast instead.",
+            _CERT_PDF_FPDF_FALLBACK_ENV,
+        )
+        return build_share_certificate_pdf_fpdf(cert, extra=extra)

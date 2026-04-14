@@ -53,7 +53,7 @@
                     {% for c in rows %}
                     <tr>
                         <td>{{ c.receipt_no }}</td>
-                        <td>{{ c.member.member_id }} — {{ c.member.full_name }}</td>
+                        <td>{{ c.member.member_id_display }} — {{ c.member.full_name }}</td>
                         <td>{{ c.amount|money }}</td>
                         <td>{{ c.date }}</td>
                         <td class="small">{{ c.payment_display_label() }}</td>

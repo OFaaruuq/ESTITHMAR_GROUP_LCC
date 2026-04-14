@@ -110,14 +110,14 @@
                     {% set sub = r.subscription %}
                     {% set m = sub.member %}
                     {% set inv = sub.investment %}
-                    {% set search_blob = ((sub.subscription_no or '') ~ ' ' ~ (m.member_id or '') ~ ' ' ~ (m.full_name or '') ~ ' ' ~ (inv.name if inv else ''))|lower %}
+                    {% set search_blob = ((sub.subscription_no or '') ~ ' ' ~ (m.member_id_display or '') ~ ' ' ~ (m.full_name or '') ~ ' ' ~ (inv.name if inv else ''))|lower %}
                     <tr data-inst-row data-search="{{ search_blob|e }}">
                         <td class="text-muted small">{{ r.sequence_no }}</td>
                         <td>
                             <a href="{{ url_for('subscriptions_profile', id=sub.id) }}" class="font-monospace small text-decoration-none fw-semibold">{{ sub.subscription_no }}</a>
                         </td>
                         <td>
-                            <a href="{{ url_for('members_profile', id=m.id) }}" class="text-decoration-none">{{ m.member_id }}</a>
+                            <a href="{{ url_for('members_profile', id=m.id) }}" class="text-decoration-none">{{ m.member_id_display }}</a>
                             <span class="text-muted d-none d-md-inline"> — </span>
                             <span class="d-none d-md-inline">{{ m.full_name }}</span>
                             <span class="d-md-none d-block small text-muted">{{ m.full_name }}</span>
@@ -193,12 +193,12 @@
                     {% for r, bal in unpaid_rows %}
                     {% set sub = r.subscription %}
                     {% set m = sub.member %}
-                    {% set search_blob = ((sub.subscription_no or '') ~ ' ' ~ (m.member_id or '') ~ ' ' ~ (m.full_name or '') ~ ' ' ~ (r.status or ''))|lower %}
+                    {% set search_blob = ((sub.subscription_no or '') ~ ' ' ~ (m.member_id_display or '') ~ ' ' ~ (m.full_name or '') ~ ' ' ~ (r.status or ''))|lower %}
                     <tr data-inst-row data-search="{{ search_blob|e }}">
                         <td class="text-muted small">{{ r.sequence_no }}</td>
                         <td>
                             <a href="{{ url_for('subscriptions_profile', id=sub.id) }}" class="font-monospace small text-decoration-none fw-semibold">{{ sub.subscription_no }}</a>
-                            <span class="d-none d-sm-block small text-muted">{{ m.member_id }} — {{ m.full_name }}</span>
+                            <span class="d-none d-sm-block small text-muted">{{ m.member_id_display }} — {{ m.full_name }}</span>
                         </td>
                         <td>
                             {% if r.status == 'Overdue' %}

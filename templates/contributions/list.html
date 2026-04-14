@@ -16,7 +16,7 @@
                 <select name="member_id" class="form-select">
                     <option value="">All members</option>
                     {% for m in members %}
-                    <option value="{{ m.id }}" {{ 'selected' if member_id == m.id else '' }}>{{ m.member_id }} — {{ m.full_name }}</option>
+                    <option value="{{ m.id }}" {{ 'selected' if member_id == m.id else '' }}>{{ m.member_id_display }} — {{ m.full_name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -26,7 +26,7 @@
                 <select name="subscription_id" class="form-select">
                     <option value="">All subscriptions</option>
                     {% for s in filter_subscriptions %}
-                    <option value="{{ s.id }}" {{ 'selected' if subscription_id == s.id else '' }}>{{ s.subscription_no }} — {{ s.member.member_id }}</option>
+                    <option value="{{ s.id }}" {{ 'selected' if subscription_id == s.id else '' }}>{{ s.subscription_no }} — {{ s.member.member_id_display }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -136,7 +136,7 @@
                     <tr>
                         <td><span class="text-muted">#{{ c.id }}</span></td>
                         <td><strong>{{ c.receipt_no or '—' }}</strong></td>
-                        <td>{{ c.member.member_id }}</td>
+                        <td>{{ c.member.member_id_display }}</td>
                         <td>{{ c.member.full_name }}</td>
                         <td>{{ c.subscription.subscription_no if c.subscription_id and c.subscription else '—' }}</td>
                         <td>{{ c.member.agent.agent_id if c.member.agent else '—' }}</td>

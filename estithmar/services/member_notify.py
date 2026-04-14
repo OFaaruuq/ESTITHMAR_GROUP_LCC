@@ -36,7 +36,7 @@ def notify_member_payment(contribution: Contribution, member: Member) -> None:
     receipt_path = url_for("contributions_receipt", id=contribution.id, _external=True)
     subj = f"Payment recorded — {sym}{amt:,.2f} {cur}"
     body = (
-        f"Hello {member.full_name or member.member_id},\n\n"
+        f"Hello {member.full_name or member.member_id_display},\n\n"
         f"A payment of {sym}{amt:,.2f} {cur} has been recorded on {contribution.date}.\n"
         f"Receipt / reference: {contribution.receipt_no or contribution.id}\n"
         f"Method: {contribution.payment_display_label()}\n\n"
@@ -66,7 +66,7 @@ def notify_member_new_subscription(sub: ShareSubscription, member: Member) -> No
     amt = sub.subscribed_amount or Decimal("0")
     subj = f"Share subscription created — {sub.subscription_no or sub.id}"
     body = (
-        f"Hello {member.full_name or member.member_id},\n\n"
+        f"Hello {member.full_name or member.member_id_display},\n\n"
         f"A share subscription was created: {sub.subscription_no or sub.id}\n"
         f"Subscribed amount: {sym}{amt:,.2f} {cur}\n"
         f"Status: {sub.status}\n\n"
@@ -102,7 +102,7 @@ def notify_member_profit_share(
     stmt_path = url_for("profit_statement", member_id=member.id, _external=True)
     subj = f"Profit distribution — {sym}{amount:,.2f} {cur}"
     body = (
-        f"Hello {member.full_name or member.member_id},\n\n"
+        f"Hello {member.full_name or member.member_id_display},\n\n"
         f"A profit share of {sym}{amount:,.2f} {cur} has been allocated to you.\n"
         f"Investment: {investment_name}\n"
         f"Batch: {batch_no or '—'}\n"
@@ -129,7 +129,7 @@ def notify_member_certificate_issued(cert: ShareCertificate, member: Member) -> 
     print_path = url_for("certificates_print", id=cert.id, _external=True)
     subj = f"Share certificate issued — {cert.certificate_no or cert.id}"
     body = (
-        f"Hello {member.full_name or member.member_id},\n\n"
+        f"Hello {member.full_name or member.member_id_display},\n\n"
         f"A share certificate has been issued: {cert.certificate_no or cert.id}\n"
         f"Issue date: {cert.issued_date}\n\n"
         f"View / print: {print_path}\n\n"

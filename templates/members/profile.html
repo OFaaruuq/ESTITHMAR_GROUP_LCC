@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ member.full_name }} — {{ member.member_id }}{% endblock %}
+{% block title %}{{ member.full_name }} — {{ member.member_id_display }}{% endblock %}
 {% block page_heading %}Member profile{% endblock %}
 {% block content %}
 {% set mk = member.member_kind or 'member' %}
@@ -11,7 +11,7 @@
 <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb mb-0">
         <li class="breadcrumb-item"><a href="{{ url_for('members_list') }}">{% if current_user.role == 'agent' %}My team{% else %}Members{% endif %}</a></li>
-        <li class="breadcrumb-item active" aria-current="page">{{ member.member_id }}</li>
+        <li class="breadcrumb-item active" aria-current="page">{{ member.member_id_display }}</li>
     </ol>
 </nav>
 
@@ -33,7 +33,7 @@
         </div>
         <div>
             <h4 class="mb-1">{{ member.full_name }}</h4>
-            <p class="mb-0 text-muted small font-monospace">{{ member.member_id }}</p>
+            <p class="mb-0 text-muted small font-monospace">{{ member.member_id_display }}</p>
             <div class="mt-1">
                 <span class="badge text-bg-primary">{{ kind_labels.get(mk, mk) }}</span>
                 <span class="badge bg-{{ 'success' if member.status == 'Active' else 'secondary' }}">{{ member.status }}</span>
@@ -42,6 +42,9 @@
     </div>
     <div class="d-flex flex-wrap gap-2">
         <a href="{{ url_for('members_edit', id=member.id) }}" class="btn btn-primary btn-sm"><i class="ri-pencil-line me-1"></i>Edit</a>
+        {% if current_user.role in ['admin', 'operator', 'agent'] %}
+        <a href="{{ url_for('members_membership_form_print', id=member.id) }}" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener" title="Opens printable membership application (print or save as PDF)"><i class="ri-file-text-line me-1"></i>Membership form</a>
+        {% endif %}
         <a href="{{ url_for('contributions_new') }}?preselect={{ member.id }}" class="btn btn-soft-primary btn-sm">Add contribution</a>
         <a href="{{ url_for('subscriptions_new') }}?member_id={{ member.id }}" class="btn btn-soft-primary btn-sm">New subscription</a>
         <div class="btn-group">

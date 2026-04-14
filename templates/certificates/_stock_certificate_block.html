@@ -1,0 +1,144 @@
+    <div class="stock-cert-page {% if cert.status == 'Revoked' %}is-revoked{% endif %}">
+        <div class="stock-cert-border-outer">
+            <div class="stock-cert-border-inner">
+                <div class="stock-cert-certno" aria-label="Certificate number">
+                    <span class="stock-cert-certno__label">Certificate</span>
+                    <span class="stock-cert-certno__value font-monospace">{{ cert.certificate_no }}</span>
+                </div>
+                <svg class="stock-cert-fleur stock-cert-fleur--tl" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+                    <path fill="currentColor" stroke="currentColor" stroke-width="0.4" stroke-linejoin="round" d="M24 4 L26 16 L38 12 L28 24 L38 36 L26 32 L24 44 L22 32 L10 36 L20 24 L10 12 L22 16 Z"/>
+                    <circle cx="24" cy="24" r="3" fill="currentColor"/>
+                </svg>
+                <svg class="stock-cert-fleur stock-cert-fleur--tr" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+                    <path fill="currentColor" stroke="currentColor" stroke-width="0.4" stroke-linejoin="round" d="M24 4 L26 16 L38 12 L28 24 L38 36 L26 32 L24 44 L22 32 L10 36 L20 24 L10 12 L22 16 Z"/>
+                    <circle cx="24" cy="24" r="3" fill="currentColor"/>
+                </svg>
+                <svg class="stock-cert-fleur stock-cert-fleur--bl" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+                    <path fill="currentColor" stroke="currentColor" stroke-width="0.4" stroke-linejoin="round" d="M24 4 L26 16 L38 12 L28 24 L38 36 L26 32 L24 44 L22 32 L10 36 L20 24 L10 12 L22 16 Z"/>
+                    <circle cx="24" cy="24" r="3" fill="currentColor"/>
+                </svg>
+                <svg class="stock-cert-fleur stock-cert-fleur--br" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+                    <path fill="currentColor" stroke="currentColor" stroke-width="0.4" stroke-linejoin="round" d="M24 4 L26 16 L38 12 L28 24 L38 36 L26 32 L24 44 L22 32 L10 36 L20 24 L10 12 L22 16 Z"/>
+                    <circle cx="24" cy="24" r="3" fill="currentColor"/>
+                </svg>
+
+                <div class="stock-cert-body stock-cert-body--layout">
+                    <div class="stock-cert-body__primary">
+                        <header class="stock-cert-header">
+                            <h1 class="stock-cert-title">Stock Certificate</h1>
+                            <div class="stock-cert-title__ornament" aria-hidden="true">
+                                <span class="stock-cert-title__ornament-line"></span>
+                                <span class="stock-cert-title__ornament-mark">&#9670;</span>
+                                <span class="stock-cert-title__ornament-line"></span>
+                            </div>
+                        </header>
+                        <p class="stock-cert-witness">This is to certify that</p>
+
+                        <div class="stock-cert-name-line">{{ cert.member.full_name }}</div>
+
+                        <div class="stock-cert-owns-block" aria-label="Ownership statement">
+                            <p class="stock-cert-owns__lead">Is the owner of</p>
+                            <p class="stock-cert-owns__qty-row">
+                                <span class="stock-cert-inline-blank stock-cert-inline-blank--qty">{{ cert_share_qty }}</span>
+                                <span class="stock-cert-owns__shares-phrase">shares of stock of</span>
+                            </p>
+                            <p class="stock-cert-owns__issuer-row">
+                                <span class="stock-cert-inline-blank stock-cert-inline-blank--wide">{{ cert_stock_of }}</span>
+                            </p>
+                        </div>
+
+                        <div class="stock-cert-particulars" role="region" aria-label="Certificate particulars">
+                            <div class="stock-cert-particulars__head">
+                                <span class="stock-cert-particulars__head-text">Certificate particulars</span>
+                            </div>
+                            <div class="stock-cert-particulars__rows">
+                                <div class="stock-cert-particulars__row">
+                                    <div class="stock-cert-particulars__label">Member reference</div>
+                                    <div class="stock-cert-particulars__value stock-cert-particulars__value--mono">{{ cert.member.member_id_display }}</div>
+                                </div>
+                                <div class="stock-cert-particulars__row">
+                                    <div class="stock-cert-particulars__label">Shareholding</div>
+                                    <div class="stock-cert-particulars__value">
+                                        <span class="stock-cert-particulars__ownership-detail">{{ cert_share_detail }}</span>
+                                    </div>
+                                </div>
+                                <div class="stock-cert-particulars__row">
+                                    <div class="stock-cert-particulars__label">Date of issue</div>
+                                    <div class="stock-cert-particulars__value stock-cert-particulars__value--date">{% if cert.issued_date %}{{ cert.issued_date.strftime('%d %B %Y') }}{% else %}—{% endif %}</div>
+                                </div>
+                                <div class="stock-cert-particulars__row stock-cert-particulars__row--official">
+                                    <div class="stock-cert-particulars__label">Official record</div>
+                                    <div class="stock-cert-particulars__value">
+                                        <div class="stock-cert-particulars__registry-grid">
+                                            <div class="stock-cert-particulars__registry-row">
+                                                <span class="stock-cert-particulars__registry-k">Record ID</span>
+                                                <span class="stock-cert-particulars__registry-v">#{{ cert.id }}</span>
+                                            </div>
+                                            {% if cert_issued_by_label %}
+                                            <div class="stock-cert-particulars__registry-row">
+                                                <span class="stock-cert-particulars__registry-k">Recorded by</span>
+                                                <span class="stock-cert-particulars__registry-name">{{ cert_issued_by_label }}</span>
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="stock-cert-body__spacer" aria-hidden="true"></div>
+
+                    <div class="stock-cert-body__closing">
+                        <p class="stock-cert-date">
+                            On the <span class="stock-cert-inline-blank">{{ cert_issued_day_ordinal }}</span> Day of
+                            <span class="stock-cert-inline-blank stock-cert-inline-blank--month">{{ cert_issued_month }}</span> In the Year
+                            <span class="stock-cert-inline-blank">{{ cert_issued_year }}</span>
+                        </p>
+
+                        <div class="stock-cert-sigs">
+                            <div class="stock-cert-sig">
+                                <div class="stock-cert-sig__line"></div>
+                                <div class="stock-cert-sig__label">Signature</div>
+                                {% if extra.authorized_signatory %}
+                                <div class="stock-cert-sig__caption">{{ extra.authorized_signatory }}{% if extra.signatory_title %}<br>{{ extra.signatory_title }}{% endif %}</div>
+                                {% else %}
+                                <div class="stock-cert-sig__caption">
+                                    <span class="no-print text-muted small">Add in Settings</span>
+                                    <span class="stock-cert-sig__emdash-print" aria-hidden="true"></span>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="stock-cert-sig">
+                                <div class="stock-cert-sig__line"></div>
+                                <div class="stock-cert-sig__label">Signature</div>
+                                {% if extra.second_signatory %}
+                                <div class="stock-cert-sig__caption">{{ extra.second_signatory }}{% if extra.second_signatory_title %}<br>{{ extra.second_signatory_title }}{% endif %}</div>
+                                {% else %}
+                                <div class="stock-cert-sig__caption">
+                                    <span class="no-print text-muted small">Optional second officer</span>
+                                    <span class="stock-cert-sig__emdash-print" aria-hidden="true"></span>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="stock-cert-company">
+                            <div class="stock-cert-company__seal" aria-hidden="true"></div>
+                            <p class="stock-cert-company__name">{{ company_display_name }}</p>
+                            {% if extra.company_address %}<p class="stock-cert-company__addr">{{ extra.company_address }}</p>{% endif %}
+                            {% if extra.company_registration %}<p class="stock-cert-company__reg">{{ extra.company_registration }}</p>{% endif %}
+                            {% if not extra.company_address and not extra.company_registration %}
+                            <p class="stock-cert-company__addr stock-cert-company__hint no-print text-muted small mb-0">Add registered address in Settings for official certificates.</p>
+                            {% endif %}
+                            <p class="stock-cert-company__meta">Estithmar system - Certificate record #{{ cert.id }}</p>
+                        </div>
+
+                        {% if cert.notes %}
+                        <p class="stock-cert-notes small text-muted mt-3 mb-0 fst-italic">{{ cert.notes }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>

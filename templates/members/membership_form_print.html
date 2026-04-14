@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estithmar Membership — {{ member.member_id_display }}</title>
+    {% if membership_pdf_mode %}
+    {# Local Bootstrap so server-side PDF (Playwright) matches layout without relying on CDN #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/bootstrap.min.css', _external=True) }}">
+    {% else %}
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    {% endif %}
+    <style>
+        {% if not membership_pdf_mode %}
+        @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap');
+        {% endif %}
+
+        body {
+            margin: 0;
+            padding: 40px 0;
+            background: #e9ecef;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body.membership-pdf-mode {
+            background: #fff;
+            padding: 0;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        body.membership-pdf-mode .corner-tl,
+        body.membership-pdf-mode .corner-tl::after,
+        body.membership-pdf-mode .corner-br,
+        body.membership-pdf-mode .corner-br::after,
+        body.membership-pdf-mode .footer-icon {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .membership-print-toolbar {
+            max-width: 794px;
+            margin: 0 auto 1rem;
+            padding: 0.75rem 1rem;
+            background: #fff;
+            border-radius: 0.5rem;
+            box-shadow: 0 0 12px rgba(0,0,0,0.08);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .membership-print-toolbar__hint {
+            font-size: 0.85rem;
+            color: #64748b;
+            flex: 1 1 12rem;
+        }
+
+        .page-wrapper {
+            width: 794px;
+            min-height: 1123px;
+            margin: 0 auto;
+            background: #fff;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 24px rgba(0,0,0,0.15);
+            padding: 60px 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .corner-tl {
+            position: absolute;
+            top: -15px; left: -15px;
+            width: 200px; height: 200px;
+            border-bottom-right-radius: 100%;
+            border-left: 28px solid #004a99;
+            border-top: 28px solid #004a99;
+            z-index: 1;
+        }
+
+        .corner-tl::after {
+            content: '';
+            position: absolute;
+            top: 18px; left: 18px;
+            width: 180px; height: 180px;
+            border-bottom-right-radius: 100%;
+            border-left: 10px solid #3bb54a;
+            border-top: 10px solid #3bb54a;
+        }
+
+        .corner-br {
+            position: absolute;
+            bottom: -15px; right: -15px;
+            width: 200px; height: 200px;
+            border-top-left-radius: 100%;
+            border-right: 28px solid #004a99;
+            border-bottom: 28px solid #004a99;
+            z-index: 1;
+        }
+
+        .corner-br::after {
+            content: '';
+            position: absolute;
+            bottom: 18px; right: 18px;
+            width: 180px; height: 180px;
+            border-top-left-radius: 100%;
+            border-right: 10px solid #3bb54a;
+            border-bottom: 10px solid #3bb54a;
+        }
+
+        .watermark {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.08;
+            z-index: 0;
+            width: 550px;
+            pointer-events: none;
+        }
+
+        .form-content {
+            position: relative;
+            z-index: 2;
+            padding: 0 85px;
+            flex-grow: 1;
+        }
+
+        .logo-area {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .logo-main {
+            width: 260px;
+            height: auto;
+        }
+
+        .header-divider {
+            border: none;
+            border-top: 1.5px solid #3bb54a;
+            width: 55%;
+            margin: 12px auto 35px;
+            opacity: 0.6;
+        }
+
+        .form-title {
+            text-align: center;
+            font-size: 26px;
+            font-weight: 700;
+            color: #1e4471;
+            letter-spacing: 1.2px;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .title-underline {
+            border: none;
+            border-top: 2.5px solid #1e4471;
+            width: 100%;
+            margin: 0 auto 35px;
+        }
+
+        .section-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #1e4471;
+            margin: 22px 0 12px;
+            border-left: 4px solid #3bb54a;
+            padding-left: 10px;
+        }
+
+        .field-group {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 14px;
+        }
+
+        .field-label {
+            font-size: 14.5px;
+            font-weight: 600;
+            color: #333;
+            white-space: nowrap;
+            margin-right: 12px;
+        }
+
+        .input-line {
+            flex-grow: 1;
+            border: none;
+            border-bottom: 1px solid #666;
+            padding-bottom: 2px;
+            background: transparent;
+            outline: none;
+            min-height: 1.35em;
+            font-size: 14.5px;
+            color: #222;
+            word-break: break-word;
+        }
+
+        .radio-container {
+            display: flex;
+            gap: 25px;
+            align-items: center;
+            margin-left: 10px;
+        }
+
+        .form-check-input:checked {
+            background-color: #004a99;
+            border-color: #004a99;
+        }
+
+        .form-check-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #444;
+        }
+
+        .gender-value {
+            font-size: 14.5px;
+            font-weight: 600;
+            color: #222;
+            margin-left: 10px;
+        }
+
+        .form-content .form-check-input {
+            pointer-events: none;
+        }
+
+        .footer-info {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            justify-content: center;
+            gap: 50px;
+            padding-bottom: 45px;
+        }
+
+        .footer-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #1e4471;
+            font-weight: 600;
+            font-size: 17px;
+        }
+
+        .footer-icon {
+            width: 38px;
+            height: 38px;
+            background: #3bb54a;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* PDF / Playwright: Chromium mis-orders layers for large opacity images — hide watermark so it never covers fields */
+        body.membership-pdf-mode .watermark {
+            display: none !important;
+        }
+
+        body.membership-pdf-mode .page-wrapper {
+            box-shadow: none;
+            margin-left: auto;
+            margin-right: auto;
+            min-height: 1123px;
+            display: flex;
+            flex-direction: column;
+            padding-top: 60px;
+            padding-bottom: 0;
+            overflow: visible;
+        }
+
+        body.membership-pdf-mode .logo-area {
+            position: relative;
+            z-index: 2;
+            flex: 0 0 auto;
+        }
+
+        body.membership-pdf-mode .form-content {
+            position: relative;
+            z-index: 2;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+
+        body.membership-pdf-mode .footer-info {
+            position: relative;
+            z-index: 2;
+            margin-top: auto;
+            flex: 0 0 auto;
+            padding-top: 28px;
+            padding-bottom: 48px;
+        }
+
+        @media print {
+            body { background: none; padding: 0; }
+            .page-wrapper { box-shadow: none; margin: 0; }
+            .corner-tl, .corner-br { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="{% if membership_pdf_mode %}membership-pdf-mode{% endif %}">
+{% set g = (member.gender or '')|lower %}
+{% set dob = member.date_of_birth.strftime('%d %B %Y') if member.date_of_birth else '' %}
+{% set logo_src = logo_data_uri if logo_data_uri is defined and logo_data_uri else brand_logo_light_lg %}
+
+{% if not membership_pdf_mode %}
+<div class="no-print membership-print-toolbar">
+    <div class="membership-print-toolbar__hint">
+        Membership form for <strong>{{ member.full_name }}</strong> ({{ member.member_id_display }}). Use <strong>Print</strong> or your browser&rsquo;s print dialog to save as PDF.
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('members_profile', id=member.id) }}">Back to profile</a>
+    <button type="button" class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+    <a class="btn btn-success btn-sm" href="{{ url_for('members_membership_form_pdf', id=member.id) }}">Download PDF</a>
+</div>
+{% endif %}
+
+<div class="page-wrapper">
+    <div class="corner-tl"></div>
+
+    <img src="{{ logo_src }}" class="watermark" alt="">
+
+    <div class="logo-area">
+        <img src="{{ logo_src }}" class="logo-main" alt="Estithmar">
+        <hr class="header-divider">
+    </div>
+
+    <div class="form-content">
+        <h1 class="form-title">ESTITHMAR MEMBERSHIP APPLICATION FORM</h1>
+        <hr class="title-underline">
+
+        <div class="field-group">
+            <span class="field-label">Member Name:</span>
+            <div class="input-line">{{ member.full_name }}</div>
+        </div>
+        <div class="field-group">
+            <span class="field-label">Address:</span>
+            <div class="input-line">{{ member.address or '' }}</div>
+        </div>
+
+        <h2 class="section-title">1. Personal Information</h2>
+
+        <div class="field-group">
+            <span class="field-label">Full Name:</span>
+            <div class="input-line">{{ member.full_name }}</div>
+        </div>
+
+        <div class="row g-4 align-items-center">
+            <div class="col-6">
+                <div class="field-group">
+                    <span class="field-label">Date of Birth:</span>
+                    <div class="input-line">{{ dob }}</div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="field-group mb-0">
+                    <span class="field-label">Gender:</span>
+                    <div class="radio-container flex-grow-1 align-items-baseline">
+                        {% if membership_pdf_mode %}
+                        <span class="gender-value text-body">{% if g == 'male' %}Male{% elif g == 'female' %}Female{% endif %}</span>
+                        {% else %}
+                        <div class="d-flex gap-3 d-print-none">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="gender_{{ member.id }}" id="male_{{ member.id }}" {% if g == 'male' %}checked{% endif %} tabindex="-1">
+                                <label class="form-check-label" for="male_{{ member.id }}">Male</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="gender_{{ member.id }}" id="female_{{ member.id }}" {% if g == 'female' %}checked{% endif %} tabindex="-1">
+                                <label class="form-check-label" for="female_{{ member.id }}">Female</label>
+                            </div>
+                        </div>
+                        <span class="gender-value d-none d-print-inline text-body">{% if g == 'male' %}Male{% elif g == 'female' %}Female{% endif %}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="field-group">
+            <span class="field-label">National ID / Passport No:</span>
+            <div class="input-line">{{ member.national_id or '' }}</div>
+        </div>
+
+        <div class="field-group">
+            <span class="field-label">Phone Number:</span>
+            <div class="input-line">{{ member.phone or '' }}</div>
+        </div>
+
+        <div class="field-group">
+            <span class="field-label">Email Address:</span>
+            <div class="input-line">{{ member.email or '' }}</div>
+        </div>
+
+        <div class="field-group">
+            <span class="field-label">Residential Address:</span>
+            <div class="input-line">{{ member.address or '' }}</div>
+        </div>
+
+        <div class="field-group">
+            <span class="field-label">Occupation / Employer:</span>
+            <div class="input-line">{{ member.occupation_employer or '' }}</div>
+        </div>
+
+        <h2 class="section-title">2. Next of Kin (Emergency Contact)</h2>
+
+        <div class="field-group">
+            <span class="field-label">Name:</span>
+            <div class="input-line">{{ member.next_of_kin_name or '' }}</div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-12">
+                <div class="field-group">
+                    <span class="field-label">Relationship:</span>
+                    <div class="input-line">{{ member.next_of_kin_relationship or '' }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="field-group">
+            <span class="field-label">Phone Number:</span>
+            <div class="input-line">{{ member.next_of_kin_phone or '' }}</div>
+        </div>
+
+        <div class="field-group">
+            <span class="field-label">Physical Address:</span>
+            <div class="input-line">{{ member.next_of_kin_address or '' }}</div>
+        </div>
+    </div>
+
+    <div class="footer-info">
+        <div class="footer-item">
+            <div class="footer-icon">
+                <svg width="22" height="22" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M3.654 1.328a.678.678 0 0 0-1.015-.063L1.605 2.3c-.483.484-.661 1.169-.45 1.77a17.568 17.568 0 0 0 4.168 6.608 17.569 17.569 0 0 0 6.608 4.168c.601.211 1.286.033 1.77-.45l1.034-1.034a.678.678 0 0 0-.063-1.015l-2.307-1.794a.678.678 0 0 0-.58-.122l-2.19.547a1.745 1.745 0 0 1-1.657-.459L5.482 8.062a1.745 1.745 0 0 1-.46-1.657l.548-2.19a.678.678 0 0 0-.122-.58L3.654 1.328z"/>
+                </svg>
+            </div>
+            +252772233330
+        </div>
+        <div class="footer-item">
+            <div class="footer-icon">
+                <svg width="22" height="22" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
+                </svg>
+            </div>
+            Mogadisho-Somalia
+        </div>
+    </div>
+
+    <div class="corner-br"></div>
+</div>
+
+</body>
+</html>
