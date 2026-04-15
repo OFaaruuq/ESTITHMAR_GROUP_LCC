@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>{% block title %}Estithmar{% endblock %} | Investment Management</title>
+    <title>{% block title %}Home{% endblock %} · {{ app_display_name }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" href="{{ url_for('static', filename='assets/images/favicon.ico') }}">
     <script src="{{ url_for('static', filename='assets/js/layout.js') }}"></script>
@@ -33,7 +33,7 @@
                     <a href="{{ url_for('logout') }}" class="btn btn-sm btn-soft-secondary">Logout</a>
                 </div>
                 {% endif %}
-                {% if current_user.role != 'member' %}
+                {% if current_user.role != 'member' and request.endpoint not in ('settings_page', 'settings_notifications', 'settings_payment_methods') %}
                 <form class="app-search d-none d-lg-block me-3" method="get" action="{{ url_for('members_list') }}">
                     <div class="position-relative">
                         <input type="text" name="q" class="form-control" placeholder="Search members…" value="">
@@ -66,8 +66,8 @@
         <footer class="footer">
             <div class="container-fluid">
                 <div class="row">
-                    <div class="col-sm-6"><script>document.write(new Date().getFullYear())</script> © Estithmar Investment Management.</div>
-                    <div class="col-sm-6 text-sm-end d-none d-sm-block">Offline community investment system</div>
+                    <div class="col-sm-6"><script>document.write(new Date().getFullYear())</script> © {{ app_display_name }}</div>
+                    <div class="col-sm-6 text-sm-end d-none d-sm-block">{{ app_footer_tagline }}</div>
                 </div>
             </div>
         </footer>

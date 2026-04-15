@@ -87,13 +87,155 @@
   .invoice-toolbar .d-flex.gap-2 { width: 100%; }
   .invoice-toolbar .btn { flex: 1 1 auto; justify-content: center; }
 }
+.invoice-brand-logo {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 150px;
+  height: 100px;
+  object-fit: contain;
+  object-position: center;
+}
+.invoice-brand-block {
+  text-align: center;
+}
 @media print {
-  @page { margin: 14mm; size: auto; }
-  #page-topbar, .vertical-menu, .footer, .no-print { display: none !important; }
-  .main-content { margin-left: 0 !important; padding-top: 0 !important; }
-  .invoice-card { box-shadow: none !important; border: 1px solid #ccc !important; }
-  .invoice-toolbar { display: none !important; }
-  .invoice-page { max-width: none; }
+  @page {
+    margin: 10mm 12mm;
+    size: A4 portrait;
+  }
+  html, body {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  #layout-wrapper {
+    display: block !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  #page-topbar,
+  .vertical-menu,
+  .footer,
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+  }
+  .main-content {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  .page-content {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .page-content > .container-fluid {
+    max-width: none !important;
+    width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin: 0 !important;
+  }
+  .invoice-page {
+    max-width: 920px !important;
+    width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  .invoice-card {
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    border-radius: 0.625rem !important;
+    box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.06) !important;
+    overflow: visible !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .invoice-card .card-body {
+    padding: 1.25rem 1.5rem !important;
+  }
+  .invoice-accent,
+  .invoice-hero,
+  .invoice-info-card,
+  .invoice-pill,
+  .invoice-line-wrap,
+  .invoice-table,
+  .invoice-table .table-light,
+  .invoice-total-row td > div,
+  .invoice-verify-panel,
+  .invoice-verify-ok,
+  .invoice-verify-warn,
+  .invoice-card .alert,
+  .invoice-subscription-alert,
+  .invoice-card .badge,
+  .invoice-card .bg-light {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .invoice-card .text-primary {
+    color: var(--bs-primary) !important;
+  }
+  /* Print viewport is narrow — keep two-column layouts like the browser. */
+  .invoice-two-col {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  .invoice-two-col > [class*="col-"] {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+    width: 50% !important;
+    padding-left: calc(var(--bs-gutter-x) * 0.5) !important;
+    padding-right: calc(var(--bs-gutter-x) * 0.5) !important;
+  }
+  .invoice-hero-inner {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  .invoice-hero-inner > .col-lg-7 {
+    flex: 0 0 58% !important;
+    max-width: 58% !important;
+    width: 58% !important;
+    text-align: left !important;
+    padding-left: calc(var(--bs-gutter-x) * 0.5) !important;
+    padding-right: calc(var(--bs-gutter-x) * 0.5) !important;
+  }
+  .invoice-hero-inner > .col-lg-5 {
+    flex: 0 0 42% !important;
+    max-width: 42% !important;
+    width: 42% !important;
+    text-align: right !important;
+    padding-left: calc(var(--bs-gutter-x) * 0.5) !important;
+    padding-right: calc(var(--bs-gutter-x) * 0.5) !important;
+  }
+  .invoice-brand-logo {
+    width: 150px !important;
+    height: 100px !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+  .invoice-table thead {
+    display: table-header-group;
+  }
   a[href]:after { content: none !important; }
 }
 </style>
@@ -136,23 +278,21 @@
 <div class="card invoice-card invoice-page border-0">
     <div class="invoice-accent"></div>
     <div class="card-body p-3 p-md-4 p-lg-5">
-        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-            <div class="d-flex gap-3 align-items-start">
-                <img src="{{ brand_logo_light_lg }}" alt="" height="36" class="flex-shrink-0 mt-1"/>
-                <div>
-                    <h2 class="h5 mb-1 fw-semibold">{{ extra.company_name or 'Estithmar Investment Management' }}</h2>
-                    {% if extra.company_address %}
-                    <p class="text-muted small mb-0">{{ extra.company_address }}</p>
-                    {% endif %}
-                    {% if extra.company_registration %}
-                    <p class="text-muted small mb-0">{{ extra.company_registration }}</p>
-                    {% endif %}
-                </div>
-            </div>
+        <div class="invoice-brand-block mb-4">
+            <img src="{{ brand_logo_light_lg }}" alt="{% if extra.company_name %}{{ extra.company_name }}{% else %}Organization logo{% endif %}" class="invoice-brand-logo"/>
+            {% if extra.company_name %}
+            <h2 class="h5 mb-1 fw-semibold mt-3">{{ extra.company_name }}</h2>
+            {% endif %}
+            {% if extra.company_address %}
+            <p class="text-muted small mb-0">{{ extra.company_address }}</p>
+            {% endif %}
+            {% if extra.company_registration %}
+            <p class="text-muted small mb-0">{{ extra.company_registration }}</p>
+            {% endif %}
         </div>
 
         <div class="invoice-hero mb-4">
-            <div class="row g-3 align-items-center">
+            <div class="row g-3 align-items-center invoice-hero-inner">
                 <div class="col-lg-7">
                     <p class="small text-uppercase text-muted mb-1" style="letter-spacing: .12em;">Payment invoice</p>
                     <h3 class="h4 mb-2 mb-lg-3 fw-bold">#{{ invoice_no }}</h3>
@@ -178,7 +318,7 @@
             </div>
         </div>
 
-        <div class="row g-3 mb-4">
+        <div class="row g-3 mb-4 invoice-two-col">
             <div class="col-md-6">
                 <div class="invoice-info-card">
                     <div class="invoice-section-title">Billed to</div>
@@ -223,8 +363,8 @@
                         <tr>
                             <th style="width: 48px;">#</th>
                             <th>Description</th>
-                            <th class="d-none d-md-table-cell" style="min-width: 110px;">Method</th>
-                            <th class="d-none d-lg-table-cell" style="min-width: 100px;">Reference</th>
+                            <th class="d-none d-md-table-cell d-print-table-cell" style="min-width: 110px;">Method</th>
+                            <th class="d-none d-lg-table-cell d-print-table-cell" style="min-width: 100px;">Reference</th>
                             <th class="text-end" style="min-width: 130px;">Amount</th>
                         </tr>
                     </thead>
@@ -234,13 +374,13 @@
                             <td>
                                 <div class="fw-medium">Contribution payment</div>
                                 <div class="small text-muted">Member contribution or installment</div>
-                                <div class="d-md-none small mt-1">
+                                <div class="d-md-none d-print-none small mt-1">
                                     <span class="badge bg-light text-dark border text-wrap text-start fw-normal">{{ c.payment_display_label() }}</span>
                                     {% if c.method_ref %}<span class="text-muted ms-1">Ref: {{ c.method_ref }}</span>{% endif %}
                                 </div>
                             </td>
-                            <td class="d-none d-md-table-cell"><span class="badge bg-light text-dark border text-wrap text-start fw-normal">{{ c.payment_display_label() }}</span></td>
-                            <td class="d-none d-lg-table-cell text-muted">{{ c.method_ref or '—' }}</td>
+                            <td class="d-none d-md-table-cell d-print-table-cell"><span class="badge bg-light text-dark border text-wrap text-start fw-normal">{{ c.payment_display_label() }}</span></td>
+                            <td class="d-none d-lg-table-cell d-print-table-cell text-muted">{{ c.method_ref or '—' }}</td>
                             <td class="text-end fw-semibold text-nowrap">{{ settings.currency_symbol }}{{ c.amount|money }} <span class="text-muted small fw-normal">{{ settings.currency_code or 'USD' }}</span></td>
                         </tr>
                         <tr class="invoice-total-row">
@@ -284,7 +424,7 @@
         {% endif %}
 
         {% if c.subscription %}
-        <div class="alert alert-primary border-0 mb-0" style="--bs-alert-bg: rgba(13, 110, 253, 0.08); --bs-alert-border-color: rgba(13, 110, 253, 0.2);">
+        <div class="alert alert-primary border-0 mb-0 invoice-subscription-alert" style="--bs-alert-bg: rgba(13, 110, 253, 0.08); --bs-alert-border-color: rgba(13, 110, 253, 0.2);">
             <div class="d-flex flex-wrap align-items-start gap-3 justify-content-between">
                 <div class="d-flex gap-2">
                     <i class="ri-links-line fs-5 text-primary flex-shrink-0"></i>
@@ -300,12 +440,14 @@
             </div>
         </div>
         {% endif %}
-    </div>
-</div>
 
-<div class="no-print text-center small text-muted mt-3 mb-2 invoice-page">
-    {% if c.created_at %}
-    <span><i class="ri-time-line me-1"></i>Recorded {{ c.created_at.strftime('%d %b %Y, %H:%M') }} UTC</span>
-    {% endif %}
+        <div class="mt-4 pt-3 border-top text-center small text-muted invoice-doc-meta">
+            <p class="mb-1">This invoice reflects the same payment as the official receipt.</p>
+            {% if c.created_at %}
+            <p class="mb-1"><i class="ri-time-line me-1"></i>Recorded {{ c.created_at.strftime('%d %b %Y, %H:%M') }} UTC</p>
+            {% endif %}
+            <p class="mb-0 font-monospace text-break small">{{ request.url }}</p>
+        </div>
+    </div>
 </div>
 {% endblock %}

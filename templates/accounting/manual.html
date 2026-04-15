@@ -65,7 +65,7 @@
                 <h5 class="mb-1">Manual journal entry</h5>
                 <p class="text-muted small mb-0" style="max-width: 40rem;">
                     Record a balanced two-line entry: <strong>debit</strong> increases the first account, <strong>credit</strong> increases the second (by the same amount). Currency: <span class="font-monospace">{{ cur_sym }} {{ cur_code }}</span>
-                    {% if current_user.role == 'admin' %}· <a href="{{ url_for('settings_page') }}" class="text-decoration-none">Change currency</a>{% endif %}
+                    {% if current_user.role in ('admin', 'operator') %}· <a href="{{ url_for('settings_page') }}" class="text-decoration-none">Change currency</a>{% endif %}
                 </p>
             </div>
         </div>

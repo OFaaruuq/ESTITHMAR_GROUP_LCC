@@ -1,132 +1,440 @@
 {% extends "base.html" %}
 {% block title %}Settings{% endblock %}
-{% block page_heading %}System settings{% endblock %}
+{% block page_heading %}Settings · General{% endblock %}
 {% block extra_css %}
 <style>
-.set-shell { max-width: 1100px; margin-left: auto; margin-right: auto; }
-.set-hero { border-radius: 0.5rem; border: 1px solid rgba(13, 110, 253, 0.12); background: linear-gradient(135deg, rgba(13, 110, 253, 0.06) 0%, #fff 55%); }
-.set-card { border-radius: 0.5rem; border: 1px solid rgba(0,0,0,.08); box-shadow: 0 0.15rem 0.75rem rgba(0,0,0,.05); }
-.set-section-title { font-size: 0.7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--bs-secondary); font-weight: 600; }
-.set-preview { font-size: 1.35rem; font-weight: 600; }
-.set-nav .nav-link { border-radius: 0.5rem; }
-.set-nav .nav-link.active { background: rgba(13, 110, 253, 0.1); color: #0d6efd; font-weight: 600; }
+/* Settings workspace — scoped, calmer hierarchy than dashboard */
+.set-page {
+  --set-accent: #0d6efd;
+  --set-radius: 0.5rem;
+  --set-rail: rgba(0, 0, 0, 0.04);
+  max-width: 1120px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-bottom: 2rem;
+}
+.set-page .set-nav-rail {
+  background: var(--set-rail);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 0.5rem;
+  padding: 0.3rem 0.4rem;
+}
+.set-page .set-nav-rail .nav-link {
+  border-radius: 0.35rem;
+  color: var(--bs-body-color);
+  border: 1px solid transparent;
+}
+.set-page .set-nav-rail .nav-link:hover {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(0, 0, 0, 0.05);
+}
+.set-page .set-nav-rail .nav-link.active {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  color: var(--set-accent);
+  font-weight: 600;
+}
+.set-page .set-toolbar {
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: var(--set-radius);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.set-page .set-pool-inline {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+}
+.set-page .set-pool-inline .sep { opacity: 0.45; margin: 0 0.35rem; }
+.set-page .set-toc-col {
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+}
+@media (max-width: 991.98px) {
+  .set-page .set-toc-col { border-right: 0; }
+}
+.set-page .set-card {
+  border-radius: var(--set-radius);
+  border: 1px solid rgba(0,0,0,.07);
+  box-shadow: 0 0.125rem 0.65rem rgba(0,0,0,.045);
+  scroll-margin-top: 5.75rem;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.set-page .set-card:focus-within {
+  border-color: rgba(13, 110, 253, 0.22);
+  box-shadow: 0 0.25rem 1rem rgba(13, 110, 253, 0.08);
+}
+.set-page .set-card-header {
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+.set-page .set-card-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 110, 253, 0.1);
+  color: var(--set-accent);
+  flex-shrink: 0;
+}
+.set-page .set-section-kicker {
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+.set-page .set-preview {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.set-page .set-nav-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  margin-bottom: 0.25rem;
+}
+.set-page .set-nav {
+  flex-wrap: nowrap;
+  min-width: min-content;
+  gap: 0.35rem;
+  padding-bottom: 0.15rem;
+}
+.set-page .set-nav .nav-link {
+  padding: 0.42rem 0.85rem;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.set-page .set-toc .list-group-item {
+  border: 0;
+  border-radius: 0.5rem !important;
+  margin-bottom: 0.2rem;
+  font-size: 0.8125rem;
+  padding: 0.5rem 0.65rem;
+  color: inherit;
+}
+.set-page .set-toc .list-group-item:hover {
+  background: rgba(13, 110, 253, 0.08);
+}
+.set-page .set-toc .list-group-item.active {
+  background: rgba(13, 110, 253, 0.14);
+  color: var(--set-accent);
+  font-weight: 600;
+}
+.set-page .set-card-header-muted {
+  background: rgba(0, 0, 0, 0.02);
+}
+.set-page .set-logo-preview {
+  min-height: 3.5rem;
+  display: flex;
+  align-items: center;
+}
+.set-page .set-switch .form-check-label { padding-top: 0.1rem; line-height: 1.45; }
+.set-page .set-save-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin-top: 1rem;
+  margin-left: -0.25rem;
+  margin-right: -0.25rem;
+  padding: 1rem 1rem 1.25rem;
+  background: var(--bs-body-bg, #fff);
+  box-shadow: 0 -0.35rem 1.25rem rgba(0,0,0,.08);
+  border-top: 1px solid rgba(0,0,0,.08);
+  border-radius: var(--set-radius) var(--set-radius) 0 0;
+}
+.set-page .set-mobile-jump { max-width: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .set-page .set-card { transition: none; }
+}
 </style>
 {% endblock %}
 {% block content %}
 {% set cur = settings.currency_code or 'USD' %}
 
-<nav aria-label="breadcrumb" class="mb-3 set-shell">
+<div class="set-page">
+<nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb mb-0 small">
         <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
         <li class="breadcrumb-item active" aria-current="page">Settings</li>
     </ol>
 </nav>
 
-<div class="set-shell mb-3">
-    <ul class="nav set-nav flex-wrap gap-1">
-        <li class="nav-item">
-            <a class="nav-link active" href="{{ url_for('settings_page') }}"><i class="ri-settings-3-line me-1"></i> General</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('settings_notifications') }}"><i class="ri-mail-send-line me-1"></i> SMTP &amp; WhatsApp</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('settings_payment_methods') }}"><i class="ri-bank-card-line me-1"></i> Payment methods</a>
-        </li>
-    </ul>
+<div class="set-nav-wrap mb-3">
+    <div class="set-nav-rail d-inline-block w-100">
+        <ul class="nav set-nav d-flex flex-nowrap" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" href="{{ url_for('settings_page') }}" aria-current="page"><i class="ri-settings-3-line me-1"></i>General</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('settings_notifications') }}"><i class="ri-mail-send-line me-1"></i>Email &amp; WhatsApp</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('settings_payment_methods') }}"><i class="ri-bank-card-line me-1"></i>Payment methods</a>
+            </li>
+            {% if current_user.role in ('admin', 'operator') %}
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('accounting_settings') }}"><i class="ri-book-2-line me-1"></i>Fiscal &amp; GL</a>
+            </li>
+            {% endif %}
+            {% if current_user.role == 'admin' %}
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('users_list') }}"><i class="ri-shield-user-line me-1"></i>Users</a>
+            </li>
+            {% endif %}
+        </ul>
+    </div>
+    <p class="text-muted small mb-0 mt-2">Switch area above — this page edits <strong>general</strong> organization defaults only.</p>
 </div>
 
-<div class="set-hero p-3 p-md-4 mb-4 set-shell">
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
-        <div>
-            <h5 class="mb-2"><i class="ri-settings-3-line me-2 text-primary"></i>Organization &amp; policy</h5>
-            <p class="text-muted small mb-0" style="max-width: 42rem;">
-                Currency and reference text apply across the app. Policy flags affect members, certificates, profit allocation, and how the <strong>investment pool</strong> is calculated.
-                Company details appear on printed certificates.
-            </p>
+<div class="set-toolbar px-3 py-3 px-md-4 mb-3">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+        <div class="flex-grow-1" style="min-width: 220px;">
+            <p class="set-section-kicker mb-1">General</p>
+            <h1 class="h5 mb-1 fw-semibold text-body">Organization defaults</h1>
+            <p class="text-muted small mb-0 lh-sm">Branding, currency, share rules, policies, and certificate text. GL on/off: admin only.</p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-soft-primary"><i class="ri-file-chart-line me-1"></i>Reports</a>
-            <a href="{{ url_for('investments_list') }}" class="btn btn-sm btn-outline-primary"><i class="ri-line-chart-line me-1"></i>Investments</a>
+        <div class="dropdown">
+            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="set-workspace-dd" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="ri-external-link-line me-1"></i>Workspace
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow border-0" aria-labelledby="set-workspace-dd">
+                <li><h6 class="dropdown-header text-uppercase small text-muted">Open in app</h6></li>
+                <li><a class="dropdown-item" href="{{ url_for('reports_hub') }}"><i class="ri-file-chart-line me-2 text-primary"></i>Reports</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('investments_list') }}"><i class="ri-line-chart-line me-2 text-primary"></i>Investments</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('subscriptions_list') }}"><i class="ri-stack-line me-2 text-primary"></i>Subscriptions</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('contributions_list') }}"><i class="ri-exchange-dollar-line me-2 text-primary"></i>Contributions</a></li>
+            </ul>
         </div>
+    </div>
+    <div class="set-pool-inline mt-3 pt-2 font-monospace">
+        <span class="text-body">Fund context</span>
+        <span class="sep">·</span>
+        <span title="Total collected">Coll. <strong>{{ settings.currency_symbol }}{{ pool.collected|money }}</strong></span>
+        <span class="sep">·</span>
+        <span title="Deployed to investments">Dep <strong>{{ settings.currency_symbol }}{{ pool.invested|money }}</strong></span>
+        <span class="sep">·</span>
+        <span title="Remaining for new deployment" class="text-success">Avl <strong>{{ settings.currency_symbol }}{{ pool.available|money }}</strong></span>
+        <span class="sep">·</span>
+        <span>{% if pool.verified_only %}verified pool{% else %}all receipts{% endif %}</span>
+        <span class="sep">·</span>
+        <a href="#sec-policy" class="text-decoration-none">Policy toggles</a>
     </div>
 </div>
 
-<div class="row g-4 set-shell">
-    <div class="col-lg-8">
-        <form method="post" id="settings-form" enctype="multipart/form-data">
-            <div class="card set-card border-0 mb-4">
-                <div class="card-body p-3 p-md-4">
-                    <p class="set-section-title mb-3"><i class="ri-image-line me-1"></i> Branding — logos</p>
-                    <p class="small text-muted mb-3">
-                        Custom images replace the default Tocly logos in the header, sidebar, login, invoices, and certificates.
-                        Use a <strong>horizontal</strong> logo for best results; the same file is used for compact and expanded layouts.
-                    </p>
+<details class="d-lg-none mb-3 border rounded set-card">
+    <summary class="px-3 py-2 small fw-medium text-body user-select-none" style="cursor: pointer;">Liquidity snapshot</summary>
+    <div class="px-3 pb-3 small border-top bg-light bg-opacity-25">
+        <dl class="row mb-0 pt-2 gy-1">
+            <dt class="col-5 text-muted">Available</dt><dd class="col-7 fw-semibold text-success text-end">{{ settings.currency_symbol }}{{ pool.available|money }} {{ cur }}</dd>
+            <dt class="col-5 text-muted">Collected</dt><dd class="col-7 fw-medium text-end">{{ settings.currency_symbol }}{{ pool.collected|money }} {{ cur }}</dd>
+            <dt class="col-5 text-muted">Deployed</dt><dd class="col-7 fw-medium text-end">{{ settings.currency_symbol }}{{ pool.invested|money }} {{ cur }}</dd>
+        </dl>
+    </div>
+</details>
+
+<div class="d-lg-none mb-3">
+    <label for="set-mobile-section" class="form-label small text-muted mb-1">Jump to section</label>
+    <select id="set-mobile-section" class="form-select form-select-sm set-mobile-jump" autocomplete="off">
+        <option value="">Choose a section…</option>
+        <option value="#sec-portal">Portal &amp; browser</option>
+        <option value="#sec-branding">Logos</option>
+        <option value="#sec-currency">Currency</option>
+        <option value="#sec-shares">Share product</option>
+        <option value="#sec-reference">Reference text</option>
+        <option value="#sec-policy">Business policy</option>
+        <option value="#sec-company">Company &amp; signatories</option>
+        <option value="#set-save-anchor">Save</option>
+    </select>
+</div>
+
+<div class="row g-3 flex-lg-nowrap">
+    <div class="col-lg-auto d-none d-lg-block set-toc-col pe-lg-3" style="width: 11.5rem; flex-shrink: 0;">
+        <nav class="set-toc sticky-top" style="top: 5.25rem;" aria-label="Sections on this page">
+            <p class="set-section-kicker mb-2 px-1">Sections</p>
+            <div class="list-group list-group-flush mb-3">
+                <a class="list-group-item list-group-item-action set-toc-link active" href="#sec-portal" data-set-section="sec-portal"><i class="ri-apps-2-line me-2"></i>Portal &amp; browser</a>
+                <a class="list-group-item list-group-item-action set-toc-link" href="#sec-branding" data-set-section="sec-branding"><i class="ri-image-line me-2"></i>Logos</a>
+                <a class="list-group-item list-group-item-action set-toc-link" href="#sec-currency" data-set-section="sec-currency"><i class="ri-money-dollar-circle-line me-2"></i>Currency</a>
+                <a class="list-group-item list-group-item-action set-toc-link" href="#sec-shares" data-set-section="sec-shares"><i class="ri-stock-line me-2"></i>Share product</a>
+                <a class="list-group-item list-group-item-action set-toc-link" href="#sec-reference" data-set-section="sec-reference"><i class="ri-file-text-line me-2"></i>Reference text</a>
+                <a class="list-group-item list-group-item-action set-toc-link" href="#sec-policy" data-set-section="sec-policy"><i class="ri-toggle-line me-2"></i>Business policy</a>
+                <a class="list-group-item list-group-item-action set-toc-link" href="#sec-company" data-set-section="sec-company"><i class="ri-building-line me-2"></i>Company</a>
+            </div>
+            <div class="card border bg-light bg-opacity-50 shadow-none">
+                <div class="card-body small py-2 px-2">
+                    <p class="text-uppercase text-muted mb-2" style="letter-spacing: .06em; font-size: 0.65rem;">Liquidity</p>
+                    <dl class="mb-0 small row g-0">
+                        <dt class="col-5 text-muted fw-normal">Avail.</dt>
+                        <dd class="col-7 text-end fw-semibold text-success mb-1">{{ settings.currency_symbol }}{{ pool.available|money }}</dd>
+                        <dt class="col-5 text-muted fw-normal">Coll.</dt>
+                        <dd class="col-7 text-end fw-medium mb-1">{{ settings.currency_symbol }}{{ pool.collected|money }}</dd>
+                        <dt class="col-5 text-muted fw-normal">Dep.</dt>
+                        <dd class="col-7 text-end fw-medium mb-0">{{ settings.currency_symbol }}{{ pool.invested|money }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </nav>
+    </div>
+
+    <div class="col-lg min-w-0">
+        <form method="post" id="settings-form" enctype="multipart/form-data" novalidate>
+            <section id="sec-portal" class="card set-card border-0 mb-4" aria-labelledby="set-h-portal">
+                <div class="card-header set-card-header set-card-header-muted py-3 px-3 px-md-4">
+                    <div class="d-flex gap-3 align-items-start">
+                        <span class="set-card-icon" aria-hidden="true"><i class="ri-apps-2-line fs-5"></i></span>
+                        <div>
+                            <h2 id="set-h-portal" class="h6 mb-1">Portal &amp; browser chrome</h2>
+                            <p class="small text-muted mb-0">Browser title suffix and footer line. Leave blank for defaults.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-3 p-md-4 pt-2">
+                    <div class="mb-3">
+                        <label class="form-label fw-medium" for="set-app-name">Application display name</label>
+                        <input type="text" name="app_display_name" id="set-app-name" class="form-control" value="{{ extra.get('app_display_name', '') }}" maxlength="120" placeholder="Estithmar" autocomplete="organization" aria-describedby="set-app-name-hint">
+                        <div id="set-app-name-hint" class="form-text">Appears as <span class="font-monospace">Page title · this name</span> in the browser tab.</div>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label fw-medium" for="set-app-foot">Footer tagline (right column)</label>
+                        <input type="text" name="app_footer_tagline" id="set-app-foot" class="form-control" value="{{ extra.get('app_footer_tagline', '') }}" maxlength="240" placeholder="Offline community investment system" aria-describedby="set-app-foot-hint">
+                        <div id="set-app-foot-hint" class="form-text">Short line next to the copyright year.</div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sec-branding" class="card set-card border-0 mb-4" aria-labelledby="set-h-brand">
+                <div class="card-header set-card-header set-card-header-muted py-3 px-3 px-md-4">
+                    <div class="d-flex gap-3 align-items-start">
+                        <span class="set-card-icon" aria-hidden="true"><i class="ri-image-line fs-5"></i></span>
+                        <div>
+                            <h2 id="set-h-brand" class="h6 mb-1">Branding — logos</h2>
+                            <p class="small text-muted mb-0">PNG, JPG, GIF, or WebP. Horizontal logos work best in the header and sidebar.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-3 p-md-4 pt-2">
                     <div class="row g-4">
                         <div class="col-md-6">
-                            <label class="form-label fw-medium">Logo — light sidebar / light theme</label>
-                            <p class="small text-muted mb-2">Shown on colored sidebar and light backgrounds.</p>
-                            {% if extra.get('logo_light') %}
-                            <div class="mb-2 p-2 rounded border bg-light d-inline-block">
-                                <img src="{{ url_for('static', filename=extra.get('logo_light')) }}" alt="Current light logo" style="max-height: 48px; max-width: 100%;">
+                            <label class="form-label fw-medium" for="logo_light_input">Light theme logo</label>
+                            <p class="small text-muted mb-2">Sidebar and light backgrounds.</p>
+                            <div class="set-logo-preview mb-2 p-3 rounded border bg-light">
+                                {% if extra.get('logo_light') %}
+                                <img src="{{ url_for('static', filename=extra.get('logo_light')) }}" alt="Current light theme logo" style="max-height: 52px; max-width: 100%;">
+                                {% else %}
+                                <span class="text-muted small">No custom logo — theme default</span>
+                                {% endif %}
                             </div>
-                            {% else %}
-                            <p class="small text-muted mb-2">Using theme default.</p>
-                            {% endif %}
-                            <input type="file" name="logo_light" class="form-control form-control-sm mb-2" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="clear_logo_light" value="1" id="clear_logo_light">
-                                <label class="form-check-label small" for="clear_logo_light">Remove custom light logo (revert to default)</label>
+                            <input type="file" name="logo_light" id="logo_light_input" class="form-control form-control-sm mb-2" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp" aria-describedby="logo-light-hint">
+                            <div id="logo-light-hint" class="form-text mb-2">Max practical width ~400px.</div>
+                            <div class="form-check form-switch set-switch">
+                                <input class="form-check-input" type="checkbox" name="clear_logo_light" value="1" id="clear_logo_light" role="switch">
+                                <label class="form-check-label small" for="clear_logo_light">Remove custom light logo</label>
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-medium">Logo — dark top bar / dark theme</label>
-                            <p class="small text-muted mb-2">Shown when the top bar uses a dark background.</p>
-                            {% if extra.get('logo_dark') %}
-                            <div class="mb-2 p-2 rounded border bg-dark d-inline-block">
-                                <img src="{{ url_for('static', filename=extra.get('logo_dark')) }}" alt="Current dark logo" style="max-height: 48px; max-width: 100%;">
+                            <label class="form-label fw-medium" for="logo_dark_input">Dark theme logo</label>
+                            <p class="small text-muted mb-2">Top bar on dark backgrounds.</p>
+                            <div class="set-logo-preview mb-2 p-3 rounded border bg-dark bg-opacity-10">
+                                {% if extra.get('logo_dark') %}
+                                <img src="{{ url_for('static', filename=extra.get('logo_dark')) }}" alt="Current dark theme logo" style="max-height: 52px; max-width: 100%;">
+                                {% else %}
+                                <span class="text-muted small">No custom logo — theme default</span>
+                                {% endif %}
                             </div>
-                            {% else %}
-                            <p class="small text-muted mb-2">Using theme default.</p>
-                            {% endif %}
-                            <input type="file" name="logo_dark" class="form-control form-control-sm mb-2" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="clear_logo_dark" value="1" id="clear_logo_dark">
-                                <label class="form-check-label small" for="clear_logo_dark">Remove custom dark logo (revert to default)</label>
+                            <input type="file" name="logo_dark" id="logo_dark_input" class="form-control form-control-sm mb-2" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp">
+                            <div class="form-check form-switch set-switch">
+                                <input class="form-check-input" type="checkbox" name="clear_logo_dark" value="1" id="clear_logo_dark" role="switch">
+                                <label class="form-check-label small" for="clear_logo_dark">Remove custom dark logo</label>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="card set-card border-0 mb-4">
-                <div class="card-body p-3 p-md-4">
-                    <p class="set-section-title mb-3"><i class="ri-money-dollar-circle-line me-1"></i> Currency</p>
+            <section id="sec-currency" class="card set-card border-0 mb-4" aria-labelledby="set-h-cur">
+                <div class="card-header set-card-header set-card-header-muted py-3 px-3 px-md-4">
+                    <div class="d-flex gap-3 align-items-start">
+                        <span class="set-card-icon" aria-hidden="true"><i class="ri-money-dollar-circle-line fs-5"></i></span>
+                        <div>
+                            <h2 id="set-h-cur" class="h6 mb-1">Currency</h2>
+                            <p class="small text-muted mb-0">Used across amounts, PDFs, and exports.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-3 p-md-4 pt-2">
                     <div class="row g-3 align-items-start">
-                        <div class="col-md-4">
+                        <div class="col-sm-6 col-lg-4">
                             <label class="form-label fw-medium" for="set-cur-code">Currency code</label>
-                            <input type="text" name="currency_code" id="set-cur-code" class="form-control font-monospace" value="{{ settings.currency_code }}" maxlength="10" placeholder="USD" autocomplete="off">
-                            <div class="form-text">ISO-style code (e.g. USD, EUR).</div>
+                            <input type="text" name="currency_code" id="set-cur-code" class="form-control font-monospace" value="{{ settings.currency_code }}" maxlength="10" placeholder="USD" autocomplete="off" inputmode="text" aria-describedby="set-cur-code-hint">
+                            <div id="set-cur-code-hint" class="form-text">ISO-style (USD, EUR, SOS…).</div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-sm-6 col-lg-4">
                             <label class="form-label fw-medium" for="set-cur-sym">Symbol</label>
-                            <input type="text" name="currency_symbol" id="set-cur-sym" class="form-control" value="{{ settings.currency_symbol }}" maxlength="8" placeholder="$" autocomplete="off">
-                            <div class="form-text">Shown before amounts in lists and forms.</div>
+                            <input type="text" name="currency_symbol" id="set-cur-sym" class="form-control" value="{{ settings.currency_symbol }}" maxlength="8" placeholder="$" autocomplete="off" aria-describedby="set-cur-sym-hint">
+                            <div id="set-cur-sym-hint" class="form-text">Prefix in lists and forms.</div>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label text-muted small">Preview</label>
-                            <div class="p-3 rounded border bg-light">
-                                <p class="set-preview text-primary mb-0">{{ settings.currency_symbol }}1,234.56 <span class="fs-6 fw-normal text-muted">{{ cur }}</span></p>
+                        <div class="col-lg-4">
+                            <label class="form-label text-muted small" id="set-preview-label">Live preview</label>
+                            <div class="p-3 rounded border bg-light" role="region" aria-labelledby="set-preview-label">
+                                <p class="set-preview text-primary mb-0"><span id="set-preview-sym">{{ settings.currency_symbol }}</span>1,234.56 <span class="fs-6 fw-normal text-muted" id="set-preview-code">{{ cur }}</span></p>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="card set-card border-0 mb-4">
-                <div class="card-body p-3 p-md-4">
-                    <p class="set-section-title mb-3"><i class="ri-file-text-line me-1"></i> Reference text</p>
-                    <p class="small text-muted mb-3">Optional text for members and staff (e.g. policy wording). Not used automatically in calculations.</p>
+            <section id="sec-shares" class="card set-card border-0 mb-4" aria-labelledby="set-h-shares">
+                {% set share_unit_num = share_cfg.share_unit_price|float %}
+                <div class="card-header set-card-header set-card-header-muted py-3 px-3 px-md-4">
+                    <div class="d-flex gap-3 align-items-start">
+                        <span class="set-card-icon" aria-hidden="true"><i class="ri-stock-line fs-5"></i></span>
+                        <div>
+                            <h2 id="set-h-shares" class="h6 mb-1">Share subscription product</h2>
+                            <p class="small text-muted mb-0">Whole shares only. Defaults in code: {{ code_share_defaults.unit }} × {{ '{:,}'.format(code_share_defaults.min) }}–{{ '{:,}'.format(code_share_defaults.max) }} shares.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-3 p-md-4 pt-2">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-medium" for="set-share-price">Price per share</label>
+                            <div class="input-group">
+                                <span class="input-group-text text-muted" id="set-share-cur">{{ cur }}</span>
+                                <input type="text" name="share_unit_price" id="set-share-price" class="form-control font-monospace" required value="{{ share_cfg.share_unit_price }}" inputmode="decimal" autocomplete="off" aria-describedby="set-share-price-hint">
+                            </div>
+                            <div id="set-share-price-hint" class="form-text">Per whole share, in your currency.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-medium" for="set-share-min">Minimum shares</label>
+                            <input type="number" name="min_share_units" id="set-share-min" class="form-control" required min="1" value="{{ share_cfg.min_share_units }}" step="1" aria-describedby="set-share-range-hint">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-medium" for="set-share-max">Maximum shares</label>
+                            <input type="number" name="max_share_units" id="set-share-max" class="form-control" required min="1" value="{{ share_cfg.max_share_units }}" step="1" aria-describedby="set-share-range-hint">
+                        </div>
+                    </div>
+                    <p id="set-share-range-hint" class="small text-muted border-start border-3 border-primary ps-2 mt-3 mb-0">
+                        Approx. commitment range: <strong>{{ settings.currency_symbol }}{{ (share_unit_num * share_cfg.min_share_units)|round(2) }}</strong>
+                        – <strong>{{ settings.currency_symbol }}{{ (share_unit_num * share_cfg.max_share_units)|round(2) }}</strong> {{ cur }}.
+                    </p>
+                </div>
+            </section>
+
+            <section id="sec-reference" class="card set-card border-0 mb-4" aria-labelledby="set-h-ref">
+                <div class="card-header set-card-header set-card-header-muted py-3 px-3 px-md-4">
+                    <div class="d-flex gap-3 align-items-start">
+                        <span class="set-card-icon" aria-hidden="true"><i class="ri-file-text-line fs-5"></i></span>
+                        <div>
+                            <h2 id="set-h-ref" class="h6 mb-1">Reference text</h2>
+                            <p class="small text-muted mb-0">For staff and members — not used in automated calculations.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-3 p-md-4 pt-2">
                     <div class="mb-3">
                         <label class="form-label fw-medium" for="set-contrib">Contribution rules</label>
                         <textarea name="contribution_rules" id="set-contrib" class="form-control" rows="3" placeholder="How contributions are accepted, verified, etc.">{{ settings.contribution_rules or '' }}</textarea>
@@ -136,57 +444,76 @@
                         <textarea name="profit_rules" id="set-profit" class="form-control" rows="3" placeholder="How profit is defined for your organization.">{{ settings.profit_rules or '' }}</textarea>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="card set-card border-0 mb-4">
-                <div class="card-body p-3 p-md-4">
-                    <p class="set-section-title mb-3"><i class="ri-toggle-line me-1"></i> Business policy</p>
-
-                    <div class="border rounded p-3 mb-3 bg-light bg-opacity-50">
-                        <p class="small fw-semibold text-muted mb-2">Members &amp; certificates</p>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="require_agent_on_member" value="1" id="req_agent" {{ 'checked' if extra.get('require_agent_on_member') else '' }}>
-                            <label class="form-check-label" for="req_agent">Require every new/edited member to have an <strong>agent</strong> assigned</label>
-                        </div>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="auto_issue_certificate" value="1" id="auto_cert" {{ 'checked' if extra.get('auto_issue_certificate') else '' }}>
-                            <label class="form-check-label" for="auto_cert">Automatically issue share certificate when a subscription becomes <strong>fully paid</strong> (subject to verification rule below)</label>
-                        </div>
-                        <div class="form-check mb-0">
-                            <input class="form-check-input" type="checkbox" name="require_verification_for_certificate" value="1" id="req_ver_cert" {{ 'checked' if extra.get('require_verification_for_certificate') else '' }}>
-                            <label class="form-check-label" for="req_ver_cert">Require all payments on the subscription to be <strong>verified</strong> before certificate issuance (manual or automatic)</label>
-                        </div>
-                    </div>
-
-                    <div class="border rounded p-3 mb-3">
-                        <p class="small fw-semibold text-muted mb-2">Profit &amp; investment pool</p>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="profit_use_investment_scope" value="1" id="inv_scope" {{ 'checked' if extra.get('profit_use_investment_scope') else '' }}>
-                            <label class="form-check-label" for="inv_scope"><strong>Investment-scoped profit</strong> — only share subscriptions <strong>linked to the investment</strong> participate in that investment’s distribution (off = global pool)</label>
-                        </div>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="profit_basis_verified_only" value="1" id="profit_ver" {{ 'checked' if extra.get('profit_basis_verified_only') else '' }}>
-                            <label class="form-check-label" for="profit_ver"><strong>Profit basis — verified only</strong> — count only <strong>verified</strong> contributions toward paid amounts when allocating profit shares</label>
-                        </div>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="profit_global_fully_paid_only" value="1" id="profit_full" {{ 'checked' if extra.get('profit_global_fully_paid_only') else '' }}>
-                            <label class="form-check-label" for="profit_full"><strong>Profit participation — fully paid subscriptions only (org-wide)</strong> — only members with <strong>Fully Paid</strong> share subscriptions participate in profit pools; basis is still paid money. Overrides per-subscription “paid proportional” for profit. Unlinked contributions are excluded from global pool when this is on.</label>
-                        </div>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="pool_use_verified_contributions" value="1" id="pool_ver" {{ 'checked' if extra.get('pool_use_verified_contributions') else '' }}>
-                            <label class="form-check-label" for="pool_ver"><strong>Investment pool — verified only</strong> — count only <strong>verified</strong> contributions toward the collected pool for new investment limits</label>
-                        </div>
-                        <div class="form-check mb-0">
-                            <input class="form-check-input" type="checkbox" name="accounting_enabled" value="1" id="acct_en" {{ 'checked' if extra.get('accounting_enabled', True) else '' }}>
-                            <label class="form-check-label" for="acct_en"><strong>General ledger posting</strong> — when enabled, verified contributions, deployment changes, and profit batches create double-entry journal lines (Accounting module).</label>
+            <section id="sec-policy" class="card set-card border-0 mb-4" aria-labelledby="set-h-policy">
+                <div class="card-header set-card-header set-card-header-muted py-3 px-3 px-md-4">
+                    <div class="d-flex gap-3 align-items-start">
+                        <span class="set-card-icon" aria-hidden="true"><i class="ri-toggle-line fs-5"></i></span>
+                        <div>
+                            <h2 id="set-h-policy" class="h6 mb-1">Business policy</h2>
+                            <p class="small text-muted mb-0">Toggles apply immediately after you save at the bottom.</p>
                         </div>
                     </div>
                 </div>
-            </div>
+                <div class="card-body p-3 p-md-4 pt-2">
+                    <div class="border rounded-3 p-3 mb-3 bg-light bg-opacity-50" role="group" aria-labelledby="set-grp-mem">
+                        <p id="set-grp-mem" class="small fw-semibold text-muted mb-3">Members &amp; certificates</p>
+                        <div class="form-check form-switch set-switch mb-3" style="padding-left: 2.25rem;">
+                            <input class="form-check-input" type="checkbox" name="require_agent_on_member" value="1" id="req_agent" role="switch" {{ 'checked' if extra.get('require_agent_on_member') else '' }}>
+                            <label class="form-check-label" for="req_agent">Require an <strong>agent</strong> on every member (create &amp; edit)</label>
+                        </div>
+                        <div class="form-check form-switch set-switch mb-3" style="padding-left: 2.25rem;">
+                            <input class="form-check-input" type="checkbox" name="auto_issue_certificate" value="1" id="auto_cert" role="switch" {{ 'checked' if extra.get('auto_issue_certificate') else '' }}>
+                            <label class="form-check-label" for="auto_cert">Auto-issue share certificate when a subscription is <strong>fully paid</strong></label>
+                        </div>
+                        <div class="form-check form-switch set-switch mb-0" style="padding-left: 2.25rem;">
+                            <input class="form-check-input" type="checkbox" name="require_verification_for_certificate" value="1" id="req_ver_cert" role="switch" {{ 'checked' if extra.get('require_verification_for_certificate') else '' }}>
+                            <label class="form-check-label" for="req_ver_cert">Require <strong>verified</strong> payments before certificate (manual or auto)</label>
+                        </div>
+                    </div>
 
-            <div class="card set-card border-0 mb-4">
-                <div class="card-body p-3 p-md-4">
-                    <p class="set-section-title mb-3"><i class="ri-building-line me-1"></i> Company details (certificates &amp; print)</p>
+                    <div class="border rounded-3 p-3 mb-0" role="group" aria-labelledby="set-grp-profit">
+                        <p id="set-grp-profit" class="small fw-semibold text-muted mb-3">Profit &amp; pool</p>
+                        <div class="form-check form-switch set-switch mb-3" style="padding-left: 2.25rem;">
+                            <input class="form-check-input" type="checkbox" name="profit_use_investment_scope" value="1" id="inv_scope" role="switch" {{ 'checked' if extra.get('profit_use_investment_scope') else '' }}>
+                            <label class="form-check-label" for="inv_scope"><strong>Investment-scoped profit</strong> — only subscriptions linked to the investment count in that pool</label>
+                        </div>
+                        <div class="form-check form-switch set-switch mb-3" style="padding-left: 2.25rem;">
+                            <input class="form-check-input" type="checkbox" name="profit_basis_verified_only" value="1" id="profit_ver" role="switch" {{ 'checked' if extra.get('profit_basis_verified_only') else '' }}>
+                            <label class="form-check-label" for="profit_ver"><strong>Verified-only</strong> basis for profit allocation</label>
+                        </div>
+                        <div class="form-check form-switch set-switch mb-3" style="padding-left: 2.25rem;">
+                            <input class="form-check-input" type="checkbox" name="profit_global_fully_paid_only" value="1" id="profit_full" role="switch" {{ 'checked' if extra.get('profit_global_fully_paid_only') else '' }}>
+                            <label class="form-check-label" for="profit_full"><strong>Fully paid subscriptions only</strong> for org-wide profit participation</label>
+                        </div>
+                        <div class="form-check form-switch set-switch mb-3" style="padding-left: 2.25rem;">
+                            <input class="form-check-input" type="checkbox" name="pool_use_verified_contributions" value="1" id="pool_ver" role="switch" {{ 'checked' if extra.get('pool_use_verified_contributions') else '' }}>
+                            <label class="form-check-label" for="pool_ver"><strong>Verified-only</strong> contributions for deployment pool limits</label>
+                        </div>
+                        {% if current_user.role == 'admin' %}
+                        <div class="form-check form-switch set-switch mb-0" style="padding-left: 2.25rem;">
+                            <input class="form-check-input" type="checkbox" name="accounting_enabled" value="1" id="acct_en" role="switch" {{ 'checked' if extra.get('accounting_enabled', True) else '' }}>
+                            <label class="form-check-label" for="acct_en"><strong>General ledger posting</strong> (contributions, deployment, profit)</label>
+                        </div>
+                        {% else %}
+                        <p class="small text-muted mb-0 ps-1"><i class="ri-lock-line me-1"></i>Only an <strong>administrator</strong> can turn GL posting on or off. Current: {% if extra.get('accounting_enabled', True) %}<span class="badge bg-success bg-opacity-10 text-success">On</span>{% else %}<span class="badge bg-warning bg-opacity-10 text-warning">Off</span>{% endif %}.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+
+            <section id="sec-company" class="card set-card border-0 mb-3" aria-labelledby="set-h-co">
+                <div class="card-header set-card-header set-card-header-muted py-3 px-3 px-md-4">
+                    <div class="d-flex gap-3 align-items-start">
+                        <span class="set-card-icon" aria-hidden="true"><i class="ri-building-line fs-5"></i></span>
+                        <div>
+                            <h2 id="set-h-co" class="h6 mb-1">Company details</h2>
+                            <p class="small text-muted mb-0">Printed on certificates and formal documents.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-3 p-md-4 pt-2">
                     <div class="mb-3">
                         <label class="form-label fw-medium" for="set-co-name">Legal / company name</label>
                         <input type="text" name="company_name" id="set-co-name" class="form-control" value="{{ extra.get('company_name', '') }}" autocomplete="organization">
@@ -201,7 +528,7 @@
                     </div>
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label" for="set-sign">Authorized signatory (first line)</label>
+                            <label class="form-label" for="set-sign">Authorized signatory</label>
                             <input type="text" name="authorized_signatory" id="set-sign" class="form-control" value="{{ extra.get('authorized_signatory', '') }}">
                         </div>
                         <div class="col-md-6">
@@ -209,8 +536,8 @@
                             <input type="text" name="signatory_title" id="set-title" class="form-control" value="{{ extra.get('signatory_title', '') }}" placeholder="e.g. Managing Director">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label" for="set-sign2">Second signatory (optional)</label>
-                            <input type="text" name="second_signatory" id="set-sign2" class="form-control" value="{{ extra.get('second_signatory', '') }}" placeholder="e.g. Company Secretary">
+                            <label class="form-label" for="set-sign2">Second signatory <span class="text-muted fw-normal">(optional)</span></label>
+                            <input type="text" name="second_signatory" id="set-sign2" class="form-control" value="{{ extra.get('second_signatory', '') }}">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label" for="set-title2">Second title</label>
@@ -218,42 +545,108 @@
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="d-flex flex-wrap gap-2 align-items-center pb-5">
-                <button type="submit" class="btn btn-primary btn-lg px-4"><i class="ri-save-line me-1"></i>Save settings</button>
-                <span class="text-muted small">Changes apply immediately after save.</span>
+            <span id="set-save-anchor" class="d-block"></span>
+            <div class="set-save-sticky">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <div class="text-muted small order-2 order-md-1">
+                        <span id="set-unsaved-hint" class="d-none text-warning"><i class="ri-error-warning-line me-1"></i>Unsaved changes</span>
+                        <span class="d-none d-md-inline">Changes apply after save.</span>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 order-1 order-md-2 ms-md-auto">
+                        <button type="button" class="btn btn-outline-secondary btn-sm d-none d-sm-inline-flex" id="set-reset-scroll"><i class="ri-arrow-up-line me-1"></i>Top</button>
+                        <button type="submit" class="btn btn-primary px-4" id="set-save-btn">
+                            <i class="ri-save-3-line me-1"></i>Save settings
+                        </button>
+                    </div>
+                </div>
             </div>
         </form>
     </div>
+</div>
 
-    <div class="col-lg-4">
-        <div class="card border-0 shadow-sm mb-4 sticky-lg-top" style="top: 1rem;">
-            <div class="card-body">
-                <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing: .06em;">Pool snapshot</h6>
-                <p class="small text-muted mb-2">Current fund limits use {% if pool.verified_only %}<strong>verified</strong> contributions only{% else %}<strong>all</strong> collected contributions{% endif %} (see flags above).</p>
-                <dl class="small mb-0">
-                    <dt class="text-muted fw-normal">Collected</dt>
-                    <dd class="fw-semibold mb-2">{{ settings.currency_symbol }}{{ pool.collected|money }} {{ cur }}</dd>
-                    <dt class="text-muted fw-normal">Allocated</dt>
-                    <dd class="fw-semibold mb-2">{{ settings.currency_symbol }}{{ pool.invested|money }} {{ cur }}</dd>
-                    <dt class="text-muted fw-normal">Available</dt>
-                    <dd class="fw-semibold text-success mb-0">{{ settings.currency_symbol }}{{ pool.available|money }} {{ cur }}</dd>
-                </dl>
-                <hr class="my-3">
-                <a href="{{ url_for('investments_list') }}" class="btn btn-sm btn-outline-primary w-100 mb-2"><i class="ri-line-chart-line me-1"></i>Investments</a>
-                <a href="{{ url_for('contributions_list') }}" class="btn btn-sm btn-outline-secondary w-100"><i class="ri-exchange-dollar-line me-1"></i>Contributions</a>
-            </div>
-        </div>
-
-        <div class="card border-0 shadow-sm border-warning border-opacity-50">
-            <div class="card-header bg-warning bg-opacity-10 border-bottom">
-                <h6 class="mb-0"><i class="ri-database-2-line me-2 text-warning"></i>Backup &amp; restore</h6>
-            </div>
-            <div class="card-body">
-                <p class="text-muted small mb-0">Backups use <strong>PostgreSQL</strong> tooling: schedule <code>pg_dump</code> / <code>pg_restore</code> (or your host&rsquo;s managed backups). Test restores regularly.</p>
-            </div>
+<div class="mb-5">
+    <div class="alert alert-warning border-0 d-flex gap-2 align-items-start mb-0" role="status">
+        <i class="ri-database-2-line fs-5 mt-1 flex-shrink-0" aria-hidden="true"></i>
+        <div class="small">
+            <strong>Backups.</strong> Schedule database dumps (<code>pg_dump</code> / host tooling) and test restores.
+            {% if current_user.role == 'admin' %}
+            <a href="{{ url_for('audit_logs') }}" class="alert-link">Audit log</a> records many configuration changes.
+            {% endif %}
         </div>
     </div>
 </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var root = document.querySelector('.set-page');
+  if (!root) return;
+
+  var form = document.getElementById('settings-form');
+  var tocLinks = root.querySelectorAll('.set-toc-link');
+  var sections = ['sec-portal', 'sec-branding', 'sec-currency', 'sec-shares', 'sec-reference', 'sec-policy', 'sec-company'];
+  var mobileSel = document.getElementById('set-mobile-section');
+  var unsavedHint = document.getElementById('set-unsaved-hint');
+  var curCode = document.getElementById('set-cur-code');
+  var curSym = document.getElementById('set-cur-sym');
+  var prevSym = document.getElementById('set-preview-sym');
+  var prevCode = document.getElementById('set-preview-code');
+
+  if (curCode && curSym && prevSym && prevCode) {
+    function syncPreview() {
+      prevSym.textContent = curSym.value || '$';
+      prevCode.textContent = (curCode.value || 'USD').trim() || 'USD';
+    }
+    curCode.addEventListener('input', syncPreview);
+    curSym.addEventListener('input', syncPreview);
+  }
+
+  if (mobileSel) {
+    mobileSel.addEventListener('change', function () {
+      var v = mobileSel.value;
+      if (!v) return;
+      var el = document.querySelector(v);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      mobileSel.value = '';
+    });
+  }
+
+  document.getElementById('set-reset-scroll') && document.getElementById('set-reset-scroll').addEventListener('click', function () {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  if (form && unsavedHint) {
+    form.addEventListener('input', function () { unsavedHint.classList.remove('d-none'); });
+    form.addEventListener('change', function () { unsavedHint.classList.remove('d-none'); });
+    form.addEventListener('submit', function () { unsavedHint.classList.add('d-none'); });
+  }
+
+  if (!('IntersectionObserver' in window) || !tocLinks.length) return;
+  var byId = {};
+  sections.forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) byId[id] = el;
+  });
+  var obs = new IntersectionObserver(function (entries) {
+    var best = null;
+    entries.forEach(function (en) {
+      if (!en.isIntersecting) return;
+      if (!best || en.intersectionRatio > best.ratio) {
+        best = { id: en.target.id, ratio: en.intersectionRatio };
+      }
+    });
+    if (!best) return;
+    tocLinks.forEach(function (a) {
+      a.classList.toggle('active', a.getAttribute('data-set-section') === best.id);
+    });
+  }, { rootMargin: '-72px 0px -50% 0px', threshold: [0, 0.1, 0.25, 0.5] });
+  sections.forEach(function (id) {
+    if (byId[id]) obs.observe(byId[id]);
+  });
+})();
+</script>
 {% endblock %}

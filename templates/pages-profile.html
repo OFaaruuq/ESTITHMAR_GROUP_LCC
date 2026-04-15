@@ -157,7 +157,7 @@
         <div class="card pp-card border-0 bg-light h-100">
             <div class="card-body">
                 <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing: .08em;">Workspace</h6>
-                <p class="small text-muted">Shortcuts based on your role. Financial amounts use <strong>{{ settings.currency_symbol }}</strong> {{ cur }} from <a href="{{ url_for('settings_page') }}">settings</a> (admin).</p>
+                <p class="small text-muted">Shortcuts based on your role. Financial amounts use <strong>{{ settings.currency_symbol }}</strong> {{ cur }} from <a href="{{ url_for('settings_page') }}">organization settings</a>.</p>
                 <div class="d-grid gap-2">
                     <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-light border text-start"><i class="ri-dashboard-line me-2 text-primary"></i>Dashboard</a>
                     <a href="{{ url_for('members_list') }}" class="btn btn-sm btn-light border text-start"><i class="ri-group-line me-2 text-primary"></i>Members</a>
@@ -166,8 +166,10 @@
                     <a href="{{ url_for('investments_list') }}" class="btn btn-sm btn-light border text-start"><i class="ri-line-chart-line me-2 text-primary"></i>Investments</a>
                     <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-light border text-start"><i class="ri-file-chart-line me-2 text-primary"></i>Reports</a>
                     {% endif %}
+                    {% if current_user.role in ('admin', 'operator') %}
+                    <a href="{{ url_for('settings_page') }}" class="btn btn-sm btn-light border text-start"><i class="ri-settings-3-line me-2 text-primary"></i>System settings</a>
+                    {% endif %}
                     {% if current_user.role == 'admin' %}
-                    <a href="{{ url_for('settings_page') }}" class="btn btn-sm btn-light border text-start"><i class="ri-settings-3-line me-2 text-danger"></i>System settings</a>
                     <a href="{{ url_for('users_edit', id=user.id) }}" class="btn btn-sm btn-light border text-start"><i class="ri-user-settings-line me-2 text-danger"></i>Advanced account (admin)</a>
                     <a href="{{ url_for('audit_logs') }}" class="btn btn-sm btn-light border text-start"><i class="ri-shield-keyhole-line me-2 text-danger"></i>Audit log</a>
                     {% endif %}

@@ -48,7 +48,13 @@
                         <tbody>
                             {% for inv, amt in by_investment_rows %}
                             <tr>
-                                <td><a href="{{ url_for('investments_edit', id=inv.id) }}">{{ inv.name }}</a></td>
+                                <td>
+                                    {% if current_user.role in ('admin', 'operator') %}
+                                    <a href="{{ url_for('investments_edit', id=inv.id) }}">{{ inv.name }}</a>
+                                    {% else %}
+                                    <a href="{{ url_for('investments_profile', id=inv.id) }}">{{ inv.name }}</a>
+                                    {% endif %}
+                                </td>
                                 <td class="text-end">{{ amt|money }} USD</td>
                             </tr>
                             {% else %}

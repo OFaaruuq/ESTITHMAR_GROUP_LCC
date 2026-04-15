@@ -50,7 +50,7 @@
                 <p class="text-muted small mb-0" style="max-width: 36rem;">
                     Link payments to a <strong>share subscription</strong> when they should reduce balance and update status.
                     General member payments stay unlinked. Currency: <span class="font-monospace">{{ cur_sym }}{{ cur_code }}</span>
-                    {% if current_user.role == 'admin' %}· <a href="{{ url_for('settings_page') }}" class="text-decoration-none">Settings</a>
+                    {% if current_user.role in ('admin', 'operator') %}· <a href="{{ url_for('settings_page') }}" class="text-decoration-none">Settings</a>
                     · <a href="{{ url_for('settings_payment_methods') }}" class="text-decoration-none">Payment methods</a>{% endif %}
                 </p>
             </div>

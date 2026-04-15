@@ -88,7 +88,7 @@
                         <span>Accounting</span>
                     </a>
                     <ul class="sub-menu" aria-expanded="false">
-                        <li><a href="{{ url_for('accounting_hub') }}">Dashboard</a></li>
+                        <li><a href="{{ url_for('accounting_hub') }}">Overview</a></li>
                         <li><a href="{{ url_for('accounting_settings') }}">Account settings</a></li>
                         <li><a href="{{ url_for('accounting_chart') }}">Chart of accounts</a></li>
                         <li><a href="{{ url_for('accounting_journal') }}">Journal entries</a></li>
@@ -113,7 +113,7 @@
                     </a>
                 </li>
                 {% endif %}
-                {% if current_user.role == 'admin' %}
+                {% if current_user.role in ('admin', 'operator') %}
                 <li>
                     <a href="javascript:void(0);" class="has-arrow waves-effect">
                         <i class="ri-settings-3-line"></i>
@@ -121,29 +121,25 @@
                     </a>
                     <ul class="sub-menu" aria-expanded="false">
                         <li><a href="{{ url_for('settings_page') }}">General</a></li>
-                        <li><a href="{{ url_for('settings_notifications') }}">Notifications</a></li>
+                        <li><a href="{{ url_for('settings_notifications') }}">Email &amp; WhatsApp</a></li>
+                        <li><a href="{{ url_for('settings_payment_methods') }}">Payment methods</a></li>
+                        <li><a href="{{ url_for('accounting_settings') }}">Fiscal &amp; GL</a></li>
                     </ul>
-                </li>
-                <li>
-                    <a href="{{ url_for('users_list') }}" class="waves-effect">
-                        <i class="ri-shield-user-line"></i>
-                        <span>User Management</span>
-                    </a>
-                </li>
-                {% endif %}
-                <li>
-                    <a href="{{ url_for('contributions_list') }}" class="waves-effect">
-                        <i class="ri-exchange-dollar-line"></i>
-                        <span>Transactions</span>
-                    </a>
                 </li>
                 {% if current_user.role == 'admin' %}
                 <li>
-                    <a href="{{ url_for('audit_logs') }}" class="waves-effect">
-                        <i class="ri-history-line"></i>
-                        <span>Audit Logs</span>
+                    <a href="{{ url_for('users_list') }}" class="waves-effect">
+                        <i class="ri-shield-user-line"></i>
+                        <span>User management</span>
                     </a>
                 </li>
+                <li>
+                    <a href="{{ url_for('audit_logs') }}" class="waves-effect">
+                        <i class="ri-history-line"></i>
+                        <span>Audit logs</span>
+                    </a>
+                </li>
+                {% endif %}
                 {% endif %}
             </ul>
         </div>
@@ -166,7 +162,7 @@
         <div class="dropdown-menu dropdown-menu-end" aria-labelledby="sidebar-footer-user-dropdown">
             <a class="dropdown-item" href="{{ url_for('pages_profile') }}"><i class="mdi mdi-account-circle text-muted font-size-16 align-middle me-1"></i> <span class="align-middle">Profile</span></a>
             <div class="dropdown-divider"></div>
-            {% if current_user.role == 'admin' %}
+            {% if current_user.role in ('admin', 'operator') %}
             <a class="dropdown-item" href="{{ url_for('settings_page') }}"><i class="mdi mdi-cog-outline text-muted font-size-16 align-middle me-1"></i> <span class="align-middle">Settings</span></a>
             {% endif %}
             <a class="dropdown-item" href="{{ url_for('logout') }}"><i class="mdi mdi-logout text-muted font-size-16 align-middle me-1"></i> <span class="align-middle">Logout</span></a>

@@ -44,14 +44,187 @@
   border-radius: 0.25rem;
   border: 2px solid currentColor;
 }
+.receipt-brand-logo {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 150px;
+  height: 100px;
+  object-fit: contain;
+  object-position: center;
+}
 @media print {
-  @page { margin: 14mm; size: auto; }
-  #page-topbar, .vertical-menu, .footer, .no-print { display: none !important; }
-  .main-content { margin-left: 0 !important; padding-top: 0 !important; }
-  .receipt-card { box-shadow: none !important; border: 1px solid #ccc !important; }
-  .table { font-size: 0.85rem; }
-  thead { display: table-header-group; }
-  tr, .amount-panel, .receipt-no-box { break-inside: avoid; }
+  @page {
+    margin: 10mm 12mm;
+    size: A4 portrait;
+  }
+  html, body {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  #layout-wrapper {
+    display: block !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  #page-topbar,
+  .vertical-menu,
+  .footer,
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+  }
+  .main-content {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  .page-content {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .page-content > .container-fluid {
+    max-width: none !important;
+    width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin: 0 !important;
+  }
+  .receipt-shell {
+    max-width: none !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  /* Match on-screen card: do not shrink type or strip chrome — only hide app shell. */
+  .receipt-card {
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    border-radius: 0.5rem !important;
+    box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.06) !important;
+    max-width: 760px !important;
+    width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    background: #fff !important;
+    color: inherit !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt-card .card-body {
+    padding: 1.5rem 1.75rem !important;
+  }
+  .receipt-accent {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt-brand-logo {
+    width: 150px !important;
+    height: 100px !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+  .receipt-card .amount-panel,
+  .receipt-card .receipt-no-box,
+  .receipt-card .status-pill-verified,
+  .receipt-card .status-pill-pending,
+  .receipt-card .progress,
+  .receipt-card .progress-bar,
+  .receipt-card .table,
+  .receipt-card .table-light,
+  .receipt-card .table-primary,
+  .receipt-card .bg-light,
+  .receipt-card .badge,
+  .receipt-card .border,
+  .receipt-card .border-secondary,
+  .receipt-card .receipt-stamp {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt-card .text-primary {
+    color: var(--bs-primary) !important;
+  }
+  /* Chrome print often uses a narrow width — keep the same grid as the browser view. */
+  .receipt-primary-row,
+  .receipt-subscription-stats,
+  .receipt-subscription-intro,
+  .receipt-general-outstanding {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  .receipt-primary-row {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    --bs-gutter-x: 1rem;
+    --bs-gutter-y: 0;
+  }
+  .receipt-primary-row > [class*="col-"] {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+    width: 50% !important;
+    padding-left: calc(var(--bs-gutter-x) * 0.5) !important;
+    padding-right: calc(var(--bs-gutter-x) * 0.5) !important;
+  }
+  .receipt-subscription-stats {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+  }
+  .receipt-subscription-stats > [class*="col-"] {
+    flex: 0 0 33.333% !important;
+    max-width: 33.333% !important;
+    width: 33.333% !important;
+    padding-left: calc(var(--bs-gutter-x) * 0.5) !important;
+    padding-right: calc(var(--bs-gutter-x) * 0.5) !important;
+  }
+  .receipt-subscription-intro {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+  }
+  .receipt-subscription-intro > [class*="col-"] {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+    width: 50% !important;
+  }
+  .receipt-general-outstanding {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+  }
+  .receipt-general-outstanding > [class*="col-"] {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+    width: 50% !important;
+  }
+  .receipt-payment-table-wrap {
+    overflow: visible !important;
+  }
+  .receipt-payment-table thead {
+    display: table-header-group;
+  }
+  .receipt-payment-table tfoot {
+    display: table-footer-group;
+  }
+  .receipt-no-box,
+  .receipt-card .amount-panel {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   a[href]:after { content: none !important; }
 }
 </style>
@@ -93,9 +266,14 @@
 
 <div class="card receipt-card receipt-shell border-0">
     <div class="receipt-accent"></div>
-    <div class="card-body p-4 p-md-5">
-        <div class="text-center mb-4 pb-3 border-bottom">
-            <h3 class="mb-1">{{ extra.company_name or 'Estithmar Investment Management' }}</h3>
+    <div class="card-body p-4 p-md-5 receipt-card-body">
+        <div class="text-center mb-4 pb-3 border-bottom receipt-brand-header">
+            <div class="receipt-brand-mark mb-2">
+                <img src="{{ brand_logo_light_lg }}" alt="{% if extra.company_name %}{{ extra.company_name }}{% else %}Organization logo{% endif %}" class="receipt-brand-logo">
+            </div>
+            {% if extra.company_name %}
+            <h3 class="mb-1">{{ extra.company_name }}</h3>
+            {% endif %}
             {% if extra.company_address %}
             <p class="text-muted small mb-0">{{ extra.company_address }}</p>
             {% endif %}
@@ -105,7 +283,7 @@
             <p class="text-uppercase text-muted small mt-3 mb-0" style="letter-spacing: .08em;">Official payment receipt</p>
         </div>
 
-        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4 receipt-top-meta">
             <div class="flex-grow-1" style="min-width: 200px;">
                 <p class="small text-muted mb-1">Receipt number</p>
                 <div class="receipt-no-box fs-5 fw-bold text-dark">{{ c.receipt_no or '—' }}</div>
@@ -121,7 +299,7 @@
             </div>
         </div>
 
-        <div class="row g-4">
+        <div class="row g-3 g-md-4 receipt-primary-row">
             <div class="col-md-6">
                 <h6 class="text-muted text-uppercase small mb-3">Paid by</h6>
                 <dl class="row small mb-0">
@@ -157,7 +335,7 @@
             </div>
         </div>
 
-        <div class="mt-4 p-3 rounded-3 {{ 'status-pill-verified' if c.verified else 'status-pill-pending' }}">
+        <div class="mt-4 p-3 rounded-3 receipt-verify-panel {{ 'status-pill-verified' if c.verified else 'status-pill-pending' }}">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div>
                     <strong class="d-block">{{ 'Payment verified' if c.verified else 'Not yet verified' }}</strong>
@@ -184,15 +362,15 @@
         {% endif %}
 
         {% if subscription %}
-        <hr class="my-4">
+        <hr class="my-4 receipt-section-hr">
         <h6 class="fw-semibold mb-3">Linked share subscription</h6>
-        <div class="row g-2 small mb-3">
+        <div class="row g-2 small mb-3 receipt-subscription-intro">
             <div class="col-sm-6"><span class="text-muted">Subscription</span><br><strong>{{ subscription.subscription_no }}</strong></div>
             <div class="col-sm-6"><span class="text-muted">Subscribed amount</span><br><strong>{{ subscription.subscribed_amount|money }} {{ settings.currency_code or 'USD' }}</strong></div>
         </div>
         {% if receipt_schedule and receipt_schedule|length > 0 %}
         {% set last = receipt_schedule[-1] %}
-        <div class="row g-3 small mb-2">
+        <div class="row g-3 small mb-2 receipt-subscription-stats">
             <div class="col-md-4">
                 <span class="text-muted d-block">Total paid after this payment</span>
                 <strong class="fs-6">{{ last.cum_paid|money }}</strong>
@@ -206,6 +384,7 @@
                 <strong class="fs-6">{{ last.pct_paid }}%</strong>
             </div>
         </div>
+        <div class="receipt-subscription-history">
         <div class="mb-1 d-flex justify-content-between small text-muted">
             <span>Progress</span>
             <span>{{ last.pct_paid }}%</span>
@@ -216,8 +395,8 @@
             <div class="progress-bar bg-primary" style="width: {{ bar_pct }}%; min-width: 0;"></div>
         </div>
         <p class="small fw-semibold mb-2">Payment history (this subscription)</p>
-        <div class="table-responsive">
-            <table class="table table-sm table-bordered align-middle mb-0">
+        <div class="table-responsive receipt-payment-table-wrap">
+            <table class="table table-sm table-bordered align-middle mb-0 receipt-payment-table">
                 <caption class="visually-hidden">Chronological payments for this subscription</caption>
                 <thead class="table-light">
                     <tr>
@@ -243,20 +422,21 @@
             </table>
         </div>
         <p class="small text-muted mt-2 mb-0">Highlighted row is this receipt.</p>
+        </div>
         {% endif %}
         {% else %}
-        <hr class="my-4">
-        <div class="p-4 rounded-3 border bg-light">
+        <hr class="my-4 receipt-section-hr">
+        <div class="p-4 rounded-3 border bg-light receipt-general-panel">
             <h6 class="mb-2"><i class="ri-exchange-dollar-line me-1"></i>General payment</h6>
             <p class="text-muted small mb-3">This payment is not linked to a share subscription. It applies to the member&rsquo;s general contribution pool (for example community pool or unallocated funds), according to your organization&rsquo;s rules.</p>
             {% if member_sub_outstanding > 0 %}
-            <div class="row g-2 small">
+            <div class="row g-2 small receipt-general-outstanding">
                 <div class="col-md-6">
                     <span class="text-muted d-block">Outstanding on open subscriptions (after this payment)</span>
                     <strong class="fs-6">{{ member_sub_outstanding|money }} {{ settings.currency_code or 'USD' }}</strong>
                 </div>
                 <div class="col-md-6 d-flex align-items-end">
-                    <a href="{{ url_for('subscriptions_list', member_id=c.member_id) }}" class="btn btn-sm btn-soft-primary">View subscriptions</a>
+                    <a href="{{ url_for('subscriptions_list', member_id=c.member_id) }}" class="btn btn-sm btn-soft-primary no-print">View subscriptions</a>
                 </div>
             </div>
             {% endif %}
@@ -264,7 +444,7 @@
         {% endif %}
 
         {% if extra.get('authorized_signatory') %}
-        <div class="mt-5 pt-4 border-top text-center">
+        <div class="mt-5 pt-4 border-top text-center receipt-signatory">
             <p class="mb-0">{{ extra.authorized_signatory }}</p>
             {% if extra.get('signatory_title') %}
             <p class="small text-muted mb-0">{{ extra.signatory_title }}</p>
@@ -272,9 +452,9 @@
         </div>
         {% endif %}
 
-        <div class="mt-4 pt-3 border-top text-center">
+        <div class="mt-4 pt-3 border-top text-center receipt-footer-note">
             <p class="small text-muted mb-1">This document was generated when the payment was recorded.</p>
-            <p class="small text-muted mb-0 no-print font-monospace text-break">{{ receipt_url }}</p>
+            <p class="small text-muted mb-0 font-monospace text-break receipt-receipt-url">{{ receipt_url }}</p>
         </div>
     </div>
 </div>

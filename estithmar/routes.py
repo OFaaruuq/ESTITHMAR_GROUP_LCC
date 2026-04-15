@@ -134,6 +134,9 @@ from estithmar.share_policy import (
     MAX_SHARE_UNITS,
     MIN_SHARE_UNITS,
     SHARE_UNIT_PRICE,
+    effective_max_share_units,
+    effective_min_share_units,
+    effective_share_unit_price,
     max_subscribed_amount,
     min_subscribed_amount,
 )
@@ -143,6 +146,7 @@ _MEMBER_PORTAL_BLOCKED_ENDPOINTS = frozenset(
     {
         "settings_page",
         "settings_notifications",
+        "settings_payment_methods",
         "members_new",
         "members_edit",
         "subscriptions_new",
@@ -703,6 +707,7 @@ def _audit_notification_item(log: AuditLog) -> dict | None:
         "subscription_cancelled": "Subscription cancelled",
         "subscription_investment_updated": "Subscription investment link updated",
         "settings_branding_updated": "Branding / logos updated",
+        "settings_updated": "System settings updated",
         "settings_notifications_updated": "Notification settings updated",
         "profit_distributed": "Profit distribution recorded",
         "investment_created": "Investment created",
@@ -934,11 +939,19 @@ def register_routes(app):
             except Exception:
                 return url_for("static", filename=default_path)
 
+        ex_meta = get_or_create_settings().get_extra()
+        app_name = (ex_meta.get("app_display_name") or "").strip()[:120] or "Estithmar"
+        footer_right = (ex_meta.get("app_footer_tagline") or "").strip()[:240]
+        if not footer_right:
+            footer_right = "Offline community investment system"
+
         return {
             "brand_logo_light_sm": _u(lt, "assets/images/logo-sm-light.png"),
             "brand_logo_light_lg": _u(lt, "assets/images/logo-light.png"),
             "brand_logo_dark_sm": _u(dk, "assets/images/logo-sm-dark.png"),
             "brand_logo_dark_lg": _u(dk, "assets/images/logo-dark.png"),
+            "app_display_name": app_name,
+            "app_footer_tagline": footer_right,
         }
 
     def members_scope():
@@ -2594,12 +2607,15 @@ def register_routes(app):
             mn = min_subscribed_amount()
             mx = max_subscribed_amount()
             sym = settings_sn.currency_symbol or "$"
+            unit = effective_share_unit_price()
+            min_u = effective_min_share_units()
+            max_u = effective_max_share_units()
             return {
-                "share_unit_price": SHARE_UNIT_PRICE,
-                "share_unit_price_js": float(SHARE_UNIT_PRICE),
-                "share_unit_price_str": f"{SHARE_UNIT_PRICE:,.2f}",
-                "min_share_units": MIN_SHARE_UNITS,
-                "max_share_units": MAX_SHARE_UNITS,
+                "share_unit_price": unit,
+                "share_unit_price_js": float(unit),
+                "share_unit_price_str": f"{unit:,.2f}",
+                "min_share_units": min_u,
+                "max_share_units": max_u,
                 "min_subscribed_amount": mn,
                 "max_subscribed_amount": mx,
                 "min_subscribed_amount_str": f"{mn:,.2f}",
@@ -3510,6 +3526,7 @@ def register_routes(app):
         )
 
     @app.route("/projects/new", methods=["GET", "POST"])
+    @role_required("admin", "operator")
     def projects_new():
         settings = get_or_create_settings()
         form_ctx = {
@@ -3608,6 +3625,7 @@ def register_routes(app):
         )
 
     @app.route("/projects/<int:id>/edit", methods=["GET", "POST"])
+    @role_required("admin", "operator")
     def projects_edit(id):
         p = Project.query.get_or_404(id)
         settings = get_or_create_settings()
@@ -3752,6 +3770,7 @@ def register_routes(app):
         )
 
     @app.route("/investments/new", methods=["GET", "POST"])
+    @role_required("admin", "operator")
     def investments_new():
         projects = Project.query.order_by(Project.name).all()
         preselect_project_id = request.args.get("project_id", type=int)
@@ -3865,6 +3884,7 @@ def register_routes(app):
         return render_template("investments/form.html", **ctx)
 
     @app.route("/investments/<int:id>/edit", methods=["GET", "POST"])
+    @role_required("admin", "operator")
     def investments_edit(id):
         inv = Investment.query.options(joinedload(Investment.project)).get_or_404(id)
         projects = Project.query.order_by(Project.name).all()
@@ -4416,10 +4436,26 @@ def register_routes(app):
 
     # --- Settings ---
     @app.route("/settings", methods=["GET", "POST"])
-    @admin_required
+    @role_required("admin", "operator")
     def settings_page():
         s = get_or_create_settings()
         if request.method == "POST":
+            sup = _parse_decimal(request.form.get("share_unit_price"))
+            mi = request.form.get("min_share_units", type=int)
+            ma = request.form.get("max_share_units", type=int)
+            if sup is None or sup <= 0:
+                flash("Share unit price must be a positive amount. No changes were saved.", "danger")
+                return redirect(url_for("settings_page"))
+            if mi is None or mi < 1:
+                flash("Minimum shares must be at least 1. No changes were saved.", "danger")
+                return redirect(url_for("settings_page"))
+            if ma is None or ma < mi:
+                flash(
+                    "Maximum shares must be greater than or equal to minimum shares. No changes were saved.",
+                    "danger",
+                )
+                return redirect(url_for("settings_page"))
+
             s.currency_code = request.form.get("currency_code", "USD").strip()[:10]
             s.currency_symbol = request.form.get("currency_symbol", "$").strip()[:8]
             s.contribution_rules = request.form.get("contribution_rules", "")
@@ -4433,7 +4469,8 @@ def register_routes(app):
             ex["profit_use_investment_scope"] = request.form.get("profit_use_investment_scope") == "1"
             ex["profit_basis_verified_only"] = request.form.get("profit_basis_verified_only") == "1"
             ex["profit_global_fully_paid_only"] = request.form.get("profit_global_fully_paid_only") == "1"
-            ex["accounting_enabled"] = request.form.get("accounting_enabled") == "1"
+            if current_user.role == "admin":
+                ex["accounting_enabled"] = request.form.get("accounting_enabled") == "1"
             ex["pool_use_verified_contributions"] = request.form.get("pool_use_verified_contributions") == "1"
             ex["company_name"] = request.form.get("company_name", "").strip()
             ex["company_address"] = request.form.get("company_address", "").strip()
@@ -4442,6 +4479,11 @@ def register_routes(app):
             ex["signatory_title"] = request.form.get("signatory_title", "").strip()
             ex["second_signatory"] = request.form.get("second_signatory", "").strip()
             ex["second_signatory_title"] = request.form.get("second_signatory_title", "").strip()
+            ex["app_display_name"] = request.form.get("app_display_name", "").strip()[:120]
+            ex["app_footer_tagline"] = request.form.get("app_footer_tagline", "").strip()[:240]
+            ex["share_unit_price"] = str(sup.quantize(Decimal("0.01")))
+            ex["min_share_units"] = int(mi)
+            ex["max_share_units"] = int(ma)
 
             branding_note = []
             if request.form.get("clear_logo_light") == "1":
@@ -4483,23 +4525,31 @@ def register_routes(app):
 
             s.set_extra(ex)
             db.session.commit()
+            log_audit("settings_updated", "AppSettings", s.id, "general, shares, portal")
             flash("Settings saved.", "success")
             return redirect(url_for("settings_page"))
+        share_cfg = {
+            "share_unit_price": str(effective_share_unit_price()),
+            "min_share_units": effective_min_share_units(),
+            "max_share_units": effective_max_share_units(),
+        }
         return render_template(
             "settings/index.html",
             settings=s,
             extra=_extra_for_settings_template(s.get_extra()),
             pool=_funds_pool_summary(),
+            share_cfg=share_cfg,
+            code_share_defaults={"unit": SHARE_UNIT_PRICE, "min": MIN_SHARE_UNITS, "max": MAX_SHARE_UNITS},
         )
 
     @app.route("/setting")
     @app.route("/setting/")
-    @admin_required
+    @role_required("admin", "operator")
     def settings_page_alias():
         return redirect(url_for("settings_page"))
 
     @app.route("/settings/notifications", methods=["GET", "POST"])
-    @admin_required
+    @role_required("admin", "operator")
     def settings_notifications():
         s = get_or_create_settings()
         ex = s.get_extra()
@@ -4567,7 +4617,7 @@ def register_routes(app):
         )
 
     @app.route("/settings/payment-methods", methods=["GET", "POST"])
-    @admin_required
+    @role_required("admin", "operator")
     def settings_payment_methods():
         if request.method == "POST":
             act = (request.form.get("action") or "").strip()
@@ -6384,6 +6434,12 @@ def register_routes(app):
             flash("Invoice id is required.", "warning")
             return redirect(url_for("invoices_list"))
         return redirect(url_for("invoice_detail", id=invoice_id))
+
+    @app.route("/invoice-detail")
+    def invoice_detail_missing_id():
+        """Avoid a bare 404 when users open /invoice-detail without an id."""
+        flash("Open an invoice from the Invoices list — each payment has its own invoice link.", "info")
+        return redirect(url_for("invoices_list"))
 
     @app.route("/invoice-detail/<int:id>")
     def invoice_detail(id):
