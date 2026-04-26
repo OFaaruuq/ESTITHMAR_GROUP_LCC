@@ -259,6 +259,12 @@
                 </form>
                 {% endif %}
             {% endif %}
+            {% if current_user.is_authenticated and current_user.role == 'admin' %}
+            <form method="post" action="{{ url_for('contributions_delete', id=c.id) }}" class="d-inline mb-0" onsubmit="return confirm('Permanently delete this receipt? This cannot be undone. Use only for incorrect entries.');">
+                <input type="hidden" name="next" value="{{ url_for('contributions_list') }}">
+                <button type="submit" class="btn btn-outline-danger btn-sm"><i class="ri-delete-bin-line me-1"></i>Delete receipt</button>
+            </form>
+            {% endif %}
         </div>
     </div>
     <div class="alert alert-success py-2 px-3 mt-2 mb-0 d-none" id="copy-receipt-toast" role="status">Link copied to clipboard.</div>
@@ -454,7 +460,7 @@
 
         <div class="mt-4 pt-3 border-top text-center receipt-footer-note">
             <p class="small text-muted mb-1">This document was generated when the payment was recorded.</p>
-            <p class="small text-muted mb-0 font-monospace text-break receipt-receipt-url">{{ receipt_url }}</p>
+            <p class="small text-muted mb-0 font-monospace text-break receipt-receipt-url no-print">{{ receipt_url }}</p>
         </div>
     </div>
 </div>

@@ -35,6 +35,79 @@ def recompute_installment_statuses(
     return rows
 
 
+def apply_significant_amount_to_installments(
+    subscription_id: int,
+    payment_amount: Decimal,
+    *,
+    payment_date: date | None = None,
+    commit: bool = False,
+) -> tuple[Decimal, list[InstallmentPlan]]:
+    """
+    Register a signed payment on the subscription's installment plan.
+
+    - Positive: allocate forward to pending rows (same as recording a payment).
+    - Negative: remove allocation in reverse (last paid row first) — for reversals.
+
+    For cancelled subscriptions, the guard that blocked *positive* allocation is relaxed so
+    reversals can back out what was already applied, while *new* positive allocation stays blocked.
+    """
+    sub = db.session.get(ShareSubscription, subscription_id)
+    if sub is None:
+        raise ValueError("Invalid subscription.")
+    if sub.status == "Cancelled" and (payment_amount or Decimal("0")) > 0:
+        raise ValueError("Cannot allocate new payments to a cancelled subscription.")
+
+    today = payment_date or date.today()
+    touched: list[InstallmentPlan] = []
+    amount_left = Decimal(str(payment_amount or "0"))
+
+    if amount_left == 0:
+        return Decimal("0"), []
+
+    rows_asc = (
+        sub.installments.order_by(InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()).all()
+    )
+
+    if amount_left > 0:
+        for row in rows_asc:
+            if amount_left <= 0:
+                break
+            if row.status == "Cancelled":
+                continue
+            due = row.due_amount or Decimal("0")
+            paid = row.paid_amount or Decimal("0")
+            bal = due - paid
+            if bal <= 0:
+                row.status = "Fully Paid"
+                continue
+            alloc = bal if amount_left >= bal else amount_left
+            row.paid_amount = paid + alloc
+            amount_left -= alloc
+            touched.append(row)
+    else:
+        # Unallocate from the end: reverse the order in which we filled rows.
+        remaining = -amount_left
+        for row in reversed(rows_asc):
+            if remaining <= 0:
+                break
+            if row.status == "Cancelled":
+                continue
+            paid = row.paid_amount or Decimal("0")
+            if paid <= 0:
+                continue
+            take = paid if remaining >= paid else remaining
+            row.paid_amount = paid - take
+            remaining -= take
+            touched.append(row)
+        amount_left = -remaining  # any remainder still to undo (if rows exhausted)
+
+    recompute_installment_statuses(sub.id, as_of=today, commit=False)
+
+    if commit:
+        db.session.commit()
+    return amount_left, touched
+
+
 def auto_allocate_payment_to_installments(
     subscription_id: int,
     payment_amount: Decimal,
@@ -42,39 +115,8 @@ def auto_allocate_payment_to_installments(
     payment_date: date | None = None,
     commit: bool = False,
 ) -> tuple[Decimal, list[InstallmentPlan]]:
-    sub = db.session.get(ShareSubscription, subscription_id)
-    if sub is None:
-        raise ValueError("Invalid subscription.")
-    if sub.status == "Cancelled":
-        raise ValueError("Cannot allocate against a cancelled subscription.")
-
-    amount_left = Decimal(str(payment_amount or "0"))
-    if amount_left <= 0:
-        return Decimal("0"), []
-
-    today = payment_date or date.today()
-    touched: list[InstallmentPlan] = []
-    rows = (
-        sub.installments.order_by(InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()).all()
+    if (payment_amount or Decimal("0")) < 0:
+        raise ValueError("Use apply_significant_amount_to_installments for negative (reversal) amounts.")
+    return apply_significant_amount_to_installments(
+        subscription_id, payment_amount, payment_date=payment_date, commit=commit
     )
-    for row in rows:
-        if amount_left <= 0:
-            break
-        if row.status == "Cancelled":
-            continue
-        due = row.due_amount or Decimal("0")
-        paid = row.paid_amount or Decimal("0")
-        bal = due - paid
-        if bal <= 0:
-            row.status = "Fully Paid"
-            continue
-        alloc = bal if amount_left >= bal else amount_left
-        row.paid_amount = paid + alloc
-        amount_left -= alloc
-        touched.append(row)
-
-    recompute_installment_statuses(sub.id, as_of=today, commit=False)
-
-    if commit:
-        db.session.commit()
-    return amount_left, touched

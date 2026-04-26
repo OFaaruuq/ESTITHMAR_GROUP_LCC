@@ -95,6 +95,7 @@ from estithmar.models import (
     next_receipt_no,
 )
 from estithmar.services import (
+    apply_significant_amount_to_installments,
     auto_allocate_payment_to_installments,
     available_pool_for_investment,
     create_subscription,
@@ -180,6 +181,7 @@ _MEMBER_PORTAL_BLOCKED_ENDPOINTS = frozenset(
         "certificates_reinstate",
         "contributions_verify",
         "contributions_unverify",
+        "contributions_delete",
         "subscriptions_set_investment",
         "subscriptions_cancel",
     }
@@ -3923,7 +3925,14 @@ def register_routes(app):
         )
         db.session.add(rev)
         if c.subscription_id:
-            auto_allocate_payment_to_installments(c.subscription_id, rev.amount, payment_date=rev.date, commit=False)
+            try:
+                apply_significant_amount_to_installments(
+                    c.subscription_id, rev.amount, payment_date=rev.date, commit=False
+                )
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), "danger")
+                return redirect(request.referrer or url_for("contributions_list"))
             recompute_subscription_status(c.subscription_id, commit=False)
         log_audit(
             "contribution_reversed",
@@ -3939,6 +3948,68 @@ def register_routes(app):
             db.session.rollback()
         flash("Payment reversed with audit trail.", "warning")
         return redirect(request.referrer or url_for("contributions_list"))
+
+    @app.route("/contributions/<int:id>/delete", methods=["POST"])
+    @admin_required
+    def contributions_delete(id):
+        """
+        Permanently remove a contribution (receipt) row. Admin only.
+        Blocked if a reversal entry exists for this payment (delete the reversal first).
+        """
+        c = Contribution.query.get_or_404(id)
+        if Contribution.query.filter_by(reversal_of_id=c.id).first():
+            flash(
+                "This payment has a reversal on file. Delete the reversal entry first, then you can delete the original receipt.",
+                "warning",
+            )
+            nxt = (request.form.get("next") or "").strip()
+            if nxt.startswith("/") and not nxt.startswith("//"):
+                return redirect(nxt)
+            return redirect(request.referrer or url_for("contributions_list"))
+        if _is_closed_period(c.date):
+            flash("Accounting period is closed for this payment date; receipt cannot be deleted.", "danger")
+            nxt = (request.form.get("next") or "").strip()
+            if nxt.startswith("/") and not nxt.startswith("//"):
+                return redirect(nxt)
+            return redirect(request.referrer or url_for("contributions_list"))
+
+        sub_id = c.subscription_id
+        receipt_ref = c.receipt_no or str(c.id)
+        mem_id = c.member_id
+        try:
+            post_contribution_unverified(c.id)
+        except Exception:
+            db.session.rollback()
+        if sub_id:
+            try:
+                apply_significant_amount_to_installments(
+                    sub_id,
+                    -(c.amount or Decimal("0")),
+                    payment_date=c.date,
+                    commit=False,
+                )
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), "danger")
+                nxt = (request.form.get("next") or "").strip()
+                if nxt.startswith("/") and not nxt.startswith("//"):
+                    return redirect(nxt)
+                return redirect(request.referrer or url_for("contributions_list"))
+            recompute_subscription_status(sub_id, commit=False)
+
+        log_audit(
+            "contribution_deleted",
+            "Contribution",
+            c.id,
+            f"receipt={receipt_ref} member_id={mem_id} subscription_id={sub_id or 'none'}",
+        )
+        db.session.delete(c)
+        db.session.commit()
+        flash(f"Receipt {receipt_ref} was deleted and balances were recalculated.", "success")
+        nxt = (request.form.get("next") or "").strip()
+        if nxt.startswith("/") and not nxt.startswith("//"):
+            return redirect(nxt)
+        return redirect(url_for("contributions_list"))
 
     # --- Projects ---
     @app.route("/projects")

@@ -446,7 +446,7 @@
             {% if c.created_at %}
             <p class="mb-1"><i class="ri-time-line me-1"></i>Recorded {{ c.created_at.strftime('%d %b %Y, %H:%M') }} UTC</p>
             {% endif %}
-            <p class="mb-0 font-monospace text-break small">{{ request.url }}</p>
+            <p class="mb-0 font-monospace text-break small no-print">{{ request.url }}</p>
         </div>
     </div>
 </div>
