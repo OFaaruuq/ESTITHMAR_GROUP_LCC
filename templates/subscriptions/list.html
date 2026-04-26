@@ -255,6 +255,14 @@
                         <td class="d-none d-lg-table-cell small text-muted">{{ s.subscription_date }}</td>
                         <td class="text-end text-nowrap">
                             <a class="btn btn-sm btn-soft-primary" href="{{ url_for('subscriptions_profile', id=s.id) }}">Open</a>
+                            {% if current_user.role in ['admin', 'operator', 'agent'] %}
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('subscriptions_edit', id=s.id) }}">Edit</a>
+                            {% endif %}
+                            {% if current_user.role in ['admin', 'operator'] and s.status not in ['Cancelled', 'Fully Paid'] %}
+                            <form method="post" action="{{ url_for('subscriptions_cancel', id=s.id) }}" class="d-inline" onsubmit="return confirm('Cancel this share subscription?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Cancel</button>
+                            </form>
+                            {% endif %}
                             <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('contributions_list', subscription_id=s.id) }}" title="Payments for this subscription">Payments</a>
                         </td>
                     </tr>

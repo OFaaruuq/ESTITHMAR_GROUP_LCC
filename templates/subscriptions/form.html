@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}New subscription{% endblock %}
-{% block page_heading %}Create subscription{% endblock %}
+{% block title %}{{ 'Edit subscription' if edit_mode else 'New subscription' }}{% endblock %}
+{% block page_heading %}{{ 'Edit subscription' if edit_mode else 'Create subscription' }}{% endblock %}
 {% block content %}
 <div class="alert alert-info py-2 small mb-3" style="max-width:700px">
     <strong>Share rules.</strong> Each share is <strong>{{ currency_symbol }}{{ share_unit_price_str }}</strong>.
@@ -18,18 +18,23 @@
             <div class="row g-3">
                 <div class="col-md-12">
                     <label class="form-label">Member *</label>
+                    {% if edit_mode %}
+                    <input type="text" class="form-control" value="{{ form_sub.member.member_id_display }} — {{ form_sub.member.full_name }}" readonly>
+                    {% else %}
                     <select name="member_id" class="form-select" required>
                         <option value="">— Select —</option>
                         {% for m in members %}
                         <option value="{{ m.id }}" {{ 'selected' if preselect == m.id else '' }}>{{ m.member_id_display }} — {{ m.full_name }}</option>
                         {% endfor %}
                     </select>
+                    {% endif %}
                 </div>
                 <div class="col-md-6">
                     <label class="form-label" for="share_units">Number of shares *</label>
                     <input type="number" name="share_units" id="share_units" class="form-control" required
                            min="{{ min_share_units }}" max="{{ max_share_units }}" step="1"
-                           placeholder="{{ min_share_units }}">
+                           placeholder="{{ min_share_units }}"
+                           value="{{ form_values.get('share_units', '') }}">
                     <div class="form-text">Whole shares only ({{ min_share_units }}–{{ '{:,}'.format(max_share_units) }}).</div>
                 </div>
                 <div class="col-md-6">
@@ -44,21 +49,21 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Subscription date</label>
-                    <input type="date" name="subscription_date" class="form-control">
+                    <input type="date" name="subscription_date" class="form-control" value="{{ form_values.get('subscription_date', '') }}">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Payment plan</label>
                     <select name="payment_plan" class="form-select">
-                        <option value="full">Full payment</option>
-                        <option value="installment">Installment</option>
+                        <option value="full" {{ 'selected' if form_values.get('payment_plan', 'full') == 'full' else '' }}>Full payment</option>
+                        <option value="installment" {{ 'selected' if form_values.get('payment_plan') == 'installment' else '' }}>Installment</option>
                     </select>
                     <div class="form-text">Installment defines a schedule (optional rows); subscription status still follows total paid vs subscribed.</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Eligibility policy</label>
                     <select name="eligibility_policy" class="form-select">
-                        <option value="paid_proportional">Paid proportional</option>
-                        <option value="fully_paid_only">Fully paid only</option>
+                        <option value="paid_proportional" {{ 'selected' if form_values.get('eligibility_policy', 'paid_proportional') == 'paid_proportional' else '' }}>Paid proportional</option>
+                        <option value="fully_paid_only" {{ 'selected' if form_values.get('eligibility_policy') == 'fully_paid_only' else '' }}>Fully paid only</option>
                     </select>
                     <div class="form-text">Profit share always uses <strong>actual payments</strong> (contributions). Paid proportional: partial payers participate with what they paid. Fully paid only: no share until status is Fully Paid; then basis is still <em>paid</em> money, not subscribed amount.</div>
                 </div>
@@ -67,15 +72,15 @@
                     <select name="investment_id" class="form-select">
                         <option value="">— Not linked —</option>
                         {% for inv in investments %}
-                        <option value="{{ inv.id }}" {{ 'selected' if preselect_investment_id == inv.id else '' }}>{{ inv.investment_code or inv.name }} — {{ inv.name }}</option>
+                        <option value="{{ inv.id }}" {{ 'selected' if form_values.get('investment_id', preselect_investment_id|string if preselect_investment_id else '') == (inv.id|string) else '' }}>{{ inv.investment_code or inv.name }} — {{ inv.name }}</option>
                         {% endfor %}
                     </select>
                     <div class="form-text">When <em>investment-scoped profit</em> is enabled in Settings, link this subscription so profit from that investment is shared correctly.</div>
                 </div>
             </div>
             <div class="mt-3">
-                <button type="submit" class="btn btn-primary">Create subscription</button>
-                <a href="{{ url_for('subscriptions_list') }}" class="btn btn-link">Cancel</a>
+                <button type="submit" class="btn btn-primary">{{ 'Update subscription' if edit_mode else 'Create subscription' }}</button>
+                <a href="{{ url_for('subscriptions_profile', id=form_sub.id) if edit_mode else url_for('subscriptions_list') }}" class="btn btn-link">Cancel</a>
             </div>
         </form>
     </div>

@@ -62,19 +62,35 @@
                         <div class="form-text">Optional. Used for system notifications when configured.</div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label" for="region">Region</label>
-                        <input type="text" name="region" id="region" class="form-control" maxlength="120"
-                               value="{{ agent.region if agent else '' }}" placeholder="e.g. East Africa">
+                        <label class="form-label" for="country">Country</label>
+                        <select name="country" id="country" class="form-select" autocomplete="country-name">
+                            <option value="">— Not set —</option>
+                            {% for val, label in agent_country_choices %}
+                            <option value="{{ val }}" {{ 'selected' if agent and agent.country == val else '' }}>{{ label }}</option>
+                            {% endfor %}
+                            {% if agent and agent.country and agent.country not in agent_country_value_set %}
+                            <option value="{{ agent.country }}" selected>{{ agent.country }} (saved — pick a standard name below to replace)</option>
+                            {% endif %}
+                        </select>
+                        <div class="form-text">Choose country first; region options below follow the UN geographic registry for that country.</div>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label" for="region">Region</label>
+                        {% if agent_country_is_legacy %}
+                        <input type="text" name="region" id="region" class="form-control" maxlength="120"
+                               value="{{ agent.region if agent else '' }}" placeholder="Free text until country is standardized">
+                        <div class="form-text">This record uses a non-standard country label. After you pick a standard country, region becomes a controlled list.</div>
+                        {% else %}
+                        <select name="region" id="region" class="form-select">
+                            <option value="">— Not set —</option>
+                        </select>
+                        <div class="form-text">Only values allowed for the selected country (UN region / sub-region / intermediate).</div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-0">
                         <label class="form-label" for="territory">Territory</label>
                         <input type="text" name="territory" id="territory" class="form-control" maxlength="120"
                                value="{{ agent.territory if agent else '' }}" placeholder="Optional sub-area or office">
-                    </div>
-                    <div class="mb-0">
-                        <label class="form-label" for="country">Country</label>
-                        <input type="text" name="country" id="country" class="form-control" maxlength="120"
-                               value="{{ agent.country if agent else '' }}" autocomplete="country-name">
                     </div>
                 </div>
             </div>
@@ -153,5 +169,48 @@
     form.classList.add('was-validated');
   }, false);
 })();
+{% if not agent_country_is_legacy %}
+(function () {
+  var GEO = {{ agent_regions_by_country|tojson }};
+  var countryEl = document.getElementById('country');
+  var regionEl = document.getElementById('region');
+  if (!countryEl || !regionEl || !GEO) return;
+  var initialRegion = {{ (agent.region if agent and agent.region else '')|tojson }};
+
+  function fillRegionOptions() {
+    var c = countryEl.value || '';
+    var keep = initialRegion;
+    initialRegion = '';
+    regionEl.innerHTML = '';
+    var o0 = document.createElement('option');
+    o0.value = '';
+    o0.textContent = '— Not set —';
+    regionEl.appendChild(o0);
+    var list = GEO[c] || [];
+    for (var i = 0; i < list.length; i++) {
+      var r = list[i];
+      var o = document.createElement('option');
+      o.value = r;
+      o.textContent = r;
+      regionEl.appendChild(o);
+    }
+    if (keep && list.indexOf(keep) === -1 && keep.length) {
+      var ox = document.createElement('option');
+      ox.value = keep;
+      ox.textContent = keep + ' (current — pick a registry value)';
+      regionEl.appendChild(ox);
+    }
+    if (keep) {
+      regionEl.value = keep;
+    }
+  }
+
+  countryEl.addEventListener('change', function () {
+    regionEl.value = '';
+    fillRegionOptions();
+  });
+  fillRegionOptions();
+})();
+{% endif %}
 </script>
 {% endblock %}

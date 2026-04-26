@@ -222,11 +222,22 @@
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-transparent py-3">
                     <h5 class="mb-0"><i class="ri-map-pin-user-line me-2 text-primary"></i>Assignment</h5>
+                    {% if allow_inline_agent_create %}
+                    <p class="text-muted small mb-0">Search existing agents or add a new one by name only — you can complete territory, phone, and other details later under <strong>Agents</strong>.</p>
+                    {% endif %}
                 </div>
                 <div class="card-body">
+                    {% if allow_inline_agent_create %}
+                    <div class="mb-3">
+                        <label class="form-label" for="agent_filter">Find agent</label>
+                        <input type="search" id="agent_filter" class="form-control" autocomplete="off"
+                               placeholder="Type to filter the list by name or agent ID…" aria-describedby="agent_filter_help">
+                        <div id="agent_filter_help" class="form-text">Matches any part of the dropdown labels below.</div>
+                    </div>
+                    {% endif %}
                     <div class="mb-0">
                         <label class="form-label" for="agent_id">Assigned agent{% if require_agent %} <span class="text-danger">*</span>{% endif %}</label>
-                        <select name="agent_id" id="agent_id" class="form-select" {{ 'required' if require_agent else '' }}>
+                        <select name="agent_id" id="agent_id" class="form-select" {{ 'required' if require_agent and not allow_inline_agent_create else '' }}>
                             <option value="">— None —</option>
                             {% for a in agents %}
                             <option value="{{ a.id }}" {{ 'selected' if member and member.agent_id == a.id else '' }}>
@@ -238,6 +249,21 @@
                         <div class="form-text text-warning">Current agent is inactive; choose an active agent when possible.</div>
                         {% endif %}
                     </div>
+                    {% if allow_inline_agent_create %}
+                    <hr class="my-3">
+                    <div class="mb-2">
+                        <label class="form-label" for="inline_new_agent">New agent (not in list yet)</label>
+                        <div class="input-group">
+                            <input type="text" name="inline_new_agent" id="inline_new_agent" class="form-control" maxlength="200" autocomplete="off"
+                                   placeholder="Full name only — e.g. field officer name">
+                            <button type="button" class="btn btn-outline-primary" id="btn_quick_create_agent" title="Creates the agent and selects them for this member">
+                                <i class="ri-user-add-line me-1"></i>Create &amp; assign
+                            </button>
+                        </div>
+                        <div class="form-text">Used only if <strong>Assigned agent</strong> is set to “None”. If you pick an agent above, this field is ignored.</div>
+                    </div>
+                    <div id="quick_agent_feedback" class="small" role="status" aria-live="polite"></div>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
@@ -318,5 +344,104 @@
     form.classList.add('was-validated');
   }, false);
 })();
+{% if allow_inline_agent_create and quick_create_agent_url %}
+(function () {
+  var memberForm = document.querySelector('form.needs-validation');
+  var sel = document.getElementById('agent_id');
+  var filter = document.getElementById('agent_filter');
+  var inline = document.getElementById('inline_new_agent');
+  var btn = document.getElementById('btn_quick_create_agent');
+  var fb = document.getElementById('quick_agent_feedback');
+  var apiUrl = {{ quick_create_agent_url | tojson }};
+  if (!memberForm || !sel || !inline || !btn || !apiUrl) return;
+
+  function setFeedback(msg, kind) {
+    if (!fb) return;
+    fb.textContent = msg || '';
+    fb.className = 'small' + (kind === 'ok' ? ' text-success' : kind === 'err' ? ' text-danger' : ' text-muted');
+  }
+
+  function optionLabel(opt) {
+    return (opt.textContent || '').trim();
+  }
+
+  function appendAndSelectAgent(id, agentId, fullName) {
+    var exists = false;
+    for (var i = 0; i < sel.options.length; i++) {
+      if (String(sel.options[i].value) === String(id)) {
+        exists = true;
+        sel.selectedIndex = i;
+        break;
+      }
+    }
+    if (!exists) {
+      var o = document.createElement('option');
+      o.value = String(id);
+      o.textContent = agentId + ' — ' + fullName;
+      sel.appendChild(o);
+      sel.value = String(id);
+    }
+    inline.value = '';
+    if (filter) filter.value = '';
+    for (var j = 0; j < sel.options.length; j++) {
+      sel.options[j].hidden = false;
+    }
+    setFeedback('Agent created: ' + agentId + ' — ' + fullName + '. Save the member when ready.', 'ok');
+  }
+
+  if (filter) {
+    filter.addEventListener('input', function () {
+      var q = (filter.value || '').toLowerCase().trim();
+      for (var i = 0; i < sel.options.length; i++) {
+        var opt = sel.options[i];
+        if (!opt.value) {
+          opt.hidden = false;
+          continue;
+        }
+        opt.hidden = q.length > 0 && optionLabel(opt).toLowerCase().indexOf(q) === -1;
+      }
+    });
+  }
+
+  btn.addEventListener('click', function () {
+    var name = (inline.value || '').trim();
+    if (name.length < 2) {
+      setFeedback('Enter at least 2 characters for the new agent name.', 'err');
+      inline.focus();
+      return;
+    }
+    if (sel.value) {
+      setFeedback('Clear “Assigned agent” (choose — None —) first, or leave the new-agent field empty.', 'err');
+      return;
+    }
+    setFeedback('Creating…', '');
+    btn.disabled = true;
+    fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ full_name: name })
+    }).then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (res) {
+        btn.disabled = false;
+        if (res.ok && res.data && res.data.ok) {
+          appendAndSelectAgent(res.data.id, res.data.agent_id, res.data.full_name);
+        } else {
+          var err = (res.data && res.data.error) ? res.data.error : 'Could not create agent.';
+          setFeedback(err, 'err');
+        }
+      })
+      .catch(function () {
+        btn.disabled = false;
+        setFeedback('Network error — try again or use Agents → New agent.', 'err');
+      });
+  });
+
+  memberForm.addEventListener('submit', function () {
+    if (sel.value) {
+      inline.value = '';
+    }
+  });
+})();
+{% endif %}
 </script>
 {% endblock %}

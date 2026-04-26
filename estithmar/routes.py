@@ -103,6 +103,12 @@ from estithmar.services import (
     total_member_contributions_collected,
 )
 from estithmar.services.certificates import format_certificate_share_quantity
+from estithmar.country_choices import (
+    get_agent_country_choices,
+    get_agent_country_value_set,
+    get_agent_regions_by_country_json,
+    get_region_choices_for_country,
+)
 from estithmar.dashboard_geo import build_members_region_map_data
 from estithmar.services.profit_distribution import (
     build_profit_distribution_preview,
@@ -139,6 +145,7 @@ from estithmar.share_policy import (
     effective_share_unit_price,
     max_subscribed_amount,
     min_subscribed_amount,
+    resolve_share_subscription_amounts,
 )
 
 # Member portal users: read-only, scoped data; block admin/ops/agent tools.
@@ -150,6 +157,7 @@ _MEMBER_PORTAL_BLOCKED_ENDPOINTS = frozenset(
         "members_new",
         "members_edit",
         "subscriptions_new",
+        "subscriptions_edit",
         "contributions_new",
         "projects_new",
         "projects_edit",
@@ -1703,6 +1711,7 @@ def register_routes(app):
     def _agents_filtered_query():
         q = request.args.get("q", "").strip()
         st = request.args.get("status", "").strip()
+        country = (request.args.get("country") or "").strip()
         query = Agent.query
         if q:
             like = f"%{q}%"
@@ -1718,6 +1727,8 @@ def register_routes(app):
             )
         if st in ("Active", "Inactive"):
             query = query.filter(Agent.status == st)
+        if country and country in get_agent_country_value_set():
+            query = query.filter(Agent.country == country)
         return query
 
     def _parse_optional_agent_email(raw: str | None) -> tuple[str | None, str | None]:
@@ -1766,8 +1777,39 @@ def register_routes(app):
                 out[aid]["share"] = Decimal(str(v))
         return out
 
+    def _normalize_agent_country(raw: str | None) -> str | None:
+        s = (raw or "").strip()[:120]
+        return s or None
+
+    def _normalize_agent_region(country: str | None, region_raw: str | None) -> tuple[str | None, str | None]:
+        """When country is a standard ISO list value, region must match UN tiers for that country."""
+        r = (region_raw or "").strip()[:120]
+        if not r:
+            return None, None
+        c = (country or "").strip()
+        if not c:
+            return None, "Select a country before choosing a region, or clear the region field."
+        cset = get_agent_country_value_set()
+        if c not in cset:
+            return r, None
+        allowed = get_region_choices_for_country(c)
+        if not allowed:
+            return None, "This country has no region tier in the registry — leave region blank."
+        if r in allowed:
+            return r, None
+        return None, "Region must be one of the values allowed for the selected country."
+
     def _agent_form_ctx(agent: Agent | None):
-        return {"agent": agent, "is_edit": agent is not None}
+        cset = get_agent_country_value_set()
+        legacy_country = bool(agent and agent.country and agent.country not in cset)
+        return {
+            "agent": agent,
+            "is_edit": agent is not None,
+            "agent_country_choices": get_agent_country_choices(),
+            "agent_country_value_set": cset,
+            "agent_country_is_legacy": legacy_country,
+            "agent_regions_by_country": get_agent_regions_by_country_json(),
+        }
 
     @app.route("/agents")
     def agents_list():
@@ -1776,6 +1818,9 @@ def register_routes(app):
             return r
         q = request.args.get("q", "").strip()
         st = request.args.get("status", "").strip()
+        country_f = (request.args.get("country") or "").strip()
+        if country_f and country_f not in get_agent_country_value_set():
+            country_f = ""
         sort = request.args.get("sort", "created_desc").strip()
         page = max(1, request.args.get("page", 1, type=int) or 1)
         per_page = min(max(10, request.args.get("per_page", 50, type=int) or 50), 200)
@@ -1832,6 +1877,8 @@ def register_routes(app):
             metrics=metrics,
             q=q,
             status_filter=st,
+            country_filter=country_f,
+            agent_country_choices=get_agent_country_choices(),
             sort=sort,
             page=page,
             per_page=per_page,
@@ -1866,14 +1913,19 @@ def register_routes(app):
             if em_err:
                 flash(em_err, "danger")
                 return render_template("agents/form.html", **_agent_form_ctx(None))
+            co = _normalize_agent_country(request.form.get("country"))
+            reg, reg_err = _normalize_agent_region(co, request.form.get("region"))
+            if reg_err:
+                flash(reg_err, "danger")
+                return render_template("agents/form.html", **_agent_form_ctx(None))
             a = Agent(
                 agent_id=next_agent_id(),
                 full_name=request.form.get("full_name", "").strip(),
                 phone=phone_norm,
                 email=em,
-                region=request.form.get("region", "").strip(),
+                region=reg,
                 territory=request.form.get("territory", "").strip(),
-                country=request.form.get("country", "").strip(),
+                country=co,
                 status=request.form.get("status") or "Active",
             )
             if not a.full_name:
@@ -1885,6 +1937,22 @@ def register_routes(app):
             flash(f"Agent registered: {a.agent_id}", "success")
             return redirect(url_for("agents_profile", id=a.id))
         return render_template("agents/form.html", **_agent_form_ctx(None))
+
+    @app.route("/api/agents/quick-create", methods=["POST"])
+    @role_required("admin", "operator")
+    def api_agents_quick_create():
+        """Minimal agent for member registration flow; full profile can be edited later under Agents."""
+        data = request.get_json(silent=True) or {}
+        name = data.get("full_name") or data.get("name") or ""
+        ag, err = _create_minimal_agent_from_name(name)
+        if err:
+            return jsonify(ok=False, error=err), 400
+        try:
+            db.session.commit()
+        except Exception as ex:
+            db.session.rollback()
+            return jsonify(ok=False, error=str(ex)), 500
+        return jsonify(ok=True, id=ag.id, agent_id=ag.agent_id, full_name=ag.full_name)
 
     @app.route("/agents/<int:id>")
     def agents_profile(id):
@@ -1945,9 +2013,14 @@ def register_routes(app):
             a.full_name = request.form.get("full_name", "").strip()
             a.phone = phone_norm
             a.email = em
-            a.region = request.form.get("region", "").strip()
+            co = _normalize_agent_country(request.form.get("country"))
+            reg, reg_err = _normalize_agent_region(co, request.form.get("region"))
+            if reg_err:
+                flash(reg_err, "danger")
+                return render_template("agents/form.html", **_agent_form_ctx(a))
+            a.region = reg
             a.territory = request.form.get("territory", "").strip()
-            a.country = request.form.get("country", "").strip()
+            a.country = co
             a.status = request.form.get("status") or "Active"
             if not a.full_name:
                 db.session.rollback()
@@ -2039,6 +2112,19 @@ def register_routes(app):
             )
         return Agent.query.filter_by(status="Active").order_by(Agent.full_name).all()
 
+    def _create_minimal_agent_from_name(name: str) -> tuple[Agent | None, str | None]:
+        """Create an Active agent with only full_name and generated agent_id (caller commits or rolls back)."""
+        fn = (name or "").strip()
+        if len(fn) < 2:
+            return None, "Agent full name must be at least 2 characters."
+        if len(fn) > 200:
+            return None, "Agent full name is too long (200 characters max)."
+        a = Agent(agent_id=next_agent_id(), full_name=fn, status="Active")
+        db.session.add(a)
+        db.session.flush()
+        log_audit("agent_created", "Agent", a.id, f"agent_id={a.agent_id} source=quick_name_only")
+        return a, None
+
     def _member_form_ctx(member: Member | None, agents: list):
         s = get_or_create_settings()
         return {
@@ -2050,6 +2136,10 @@ def register_routes(app):
             "require_agent": s.get_flag("require_agent_on_member"),
             "is_edit": member is not None,
             "default_join_date": date.today().isoformat(),
+            "allow_inline_agent_create": current_user.role in ("admin", "operator"),
+            "quick_create_agent_url": (
+                url_for("api_agents_quick_create") if current_user.role in ("admin", "operator") else None
+            ),
         }
 
     @app.route("/members/new", methods=["GET", "POST"])
@@ -2062,6 +2152,14 @@ def register_routes(app):
             aid = request.form.get("agent_id", type=int) or None
             if current_user.role == "agent" and current_user.agent_id:
                 aid = current_user.agent_id
+            if current_user.role in ("admin", "operator") and not aid:
+                inline = (request.form.get("inline_new_agent") or "").strip()
+                if inline:
+                    ag, aerr = _create_minimal_agent_from_name(inline)
+                    if aerr:
+                        flash(aerr, "danger")
+                        return render_template("members/form.html", **_member_form_ctx(None, agents))
+                    aid = ag.id
             phone_norm, phone_err = validate_phone(request.form.get("phone", "").strip())
             if phone_err:
                 flash(phone_err, "danger")
@@ -2144,7 +2242,19 @@ def register_routes(app):
             if current_user.role == "agent" and current_user.agent_id:
                 pass
             else:
-                m.agent_id = request.form.get("agent_id", type=int) or None
+                aid = request.form.get("agent_id", type=int) or None
+                if current_user.role in ("admin", "operator") and not aid:
+                    inline = (request.form.get("inline_new_agent") or "").strip()
+                    if inline:
+                        ag, aerr = _create_minimal_agent_from_name(inline)
+                        if aerr:
+                            db.session.rollback()
+                            m = members_scope().options(joinedload(Member.agent)).filter_by(id=id).first_or_404()
+                            agents = _agents_for_member_form(m)
+                            flash(aerr, "danger")
+                            return render_template("members/form.html", **_member_form_ctx(m, agents))
+                        aid = ag.id
+                m.agent_id = aid
             if not m.full_name:
                 db.session.rollback()
                 m = members_scope().options(joinedload(Member.agent)).filter_by(id=id).first_or_404()
@@ -2603,13 +2713,14 @@ def register_routes(app):
         preselect_investment_id = request.args.get("investment_id", type=int)
         settings_sn = get_or_create_settings()
 
-        def _sub_form_ctx():
+        def _sub_form_ctx(form_values: dict | None = None):
             mn = min_subscribed_amount()
             mx = max_subscribed_amount()
             sym = settings_sn.currency_symbol or "$"
             unit = effective_share_unit_price()
             min_u = effective_min_share_units()
             max_u = effective_max_share_units()
+            fv = form_values or {}
             return {
                 "share_unit_price": unit,
                 "share_unit_price_js": float(unit),
@@ -2622,6 +2733,9 @@ def register_routes(app):
                 "max_subscribed_amount_str": f"{mx:,.2f}",
                 "currency_code": settings_sn.currency_code or "USD",
                 "currency_symbol": sym,
+                "form_values": fv,
+                "edit_mode": False,
+                "form_sub": None,
             }
 
         if request.method == "POST":
@@ -2640,7 +2754,7 @@ def register_routes(app):
                     investments=investments,
                     preselect=preselect,
                     preselect_investment_id=preselect_investment_id,
-                    **_sub_form_ctx(),
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
                 )
             mem = Member.query.get(member_id)
             if not mem or (current_user.role == "agent" and current_user.agent_id and mem.agent_id != current_user.agent_id):
@@ -2651,7 +2765,7 @@ def register_routes(app):
                     investments=investments,
                     preselect=preselect,
                     preselect_investment_id=preselect_investment_id,
-                    **_sub_form_ctx(),
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
                 )
             if mem.status != "Active":
                 flash("Share subscriptions can only be created for Active members.", "danger")
@@ -2661,7 +2775,7 @@ def register_routes(app):
                     investments=investments,
                     preselect=preselect,
                     preselect_investment_id=preselect_investment_id,
-                    **_sub_form_ctx(),
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
                 )
             if investment_id and not Investment.query.get(investment_id):
                 flash("Invalid investment selected.", "danger")
@@ -2671,7 +2785,7 @@ def register_routes(app):
                     investments=investments,
                     preselect=preselect,
                     preselect_investment_id=preselect_investment_id,
-                    **_sub_form_ctx(),
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
                 )
             try:
                 sub = create_subscription(
@@ -2692,7 +2806,7 @@ def register_routes(app):
                     investments=investments,
                     preselect=preselect,
                     preselect_investment_id=preselect_investment_id,
-                    **_sub_form_ctx(),
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
                 )
             log_audit("subscription_created", "ShareSubscription", None, f"subscription_no={sub.subscription_no}")
             db.session.commit()
@@ -2708,7 +2822,177 @@ def register_routes(app):
             investments=investments,
             preselect=preselect,
             preselect_investment_id=preselect_investment_id,
-            **_sub_form_ctx(),
+            **_sub_form_ctx(
+                {
+                    "subscription_date": date.today().isoformat(),
+                    "payment_plan": "full",
+                    "eligibility_policy": "paid_proportional",
+                }
+            ),
+        )
+
+    @app.route("/subscriptions/<int:id>/edit", methods=["GET", "POST"])
+    @role_required("admin", "operator", "agent")
+    def subscriptions_edit(id):
+        q = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id).options(
+            joinedload(ShareSubscription.member).joinedload(Member.agent),
+            joinedload(ShareSubscription.investment),
+        )
+        if current_user.role == "agent" and current_user.agent_id:
+            q = q.filter(Member.agent_id == current_user.agent_id)
+        sub = q.filter(ShareSubscription.id == id).first_or_404()
+        investments = Investment.query.order_by(Investment.name).all()
+        settings_sn = get_or_create_settings()
+
+        def _sub_form_ctx(form_values: dict | None = None):
+            mn = min_subscribed_amount()
+            mx = max_subscribed_amount()
+            sym = settings_sn.currency_symbol or "$"
+            unit = effective_share_unit_price()
+            min_u = effective_min_share_units()
+            max_u = effective_max_share_units()
+            fv = form_values or {}
+            return {
+                "share_unit_price": unit,
+                "share_unit_price_js": float(unit),
+                "share_unit_price_str": f"{unit:,.2f}",
+                "min_share_units": min_u,
+                "max_share_units": max_u,
+                "min_subscribed_amount": mn,
+                "max_subscribed_amount": mx,
+                "min_subscribed_amount_str": f"{mn:,.2f}",
+                "max_subscribed_amount_str": f"{mx:,.2f}",
+                "currency_code": settings_sn.currency_code or "USD",
+                "currency_symbol": sym,
+                "form_values": fv,
+                "edit_mode": True,
+                "form_sub": sub,
+            }
+
+        if request.method == "POST":
+            share_units = request.form.get("share_units", type=int)
+            payment_plan = request.form.get("payment_plan") or "full"
+            eligibility_policy = request.form.get("eligibility_policy") or "paid_proportional"
+            subscription_date = _parse_date(request.form.get("subscription_date")) or sub.subscription_date
+            investment_id = request.form.get("investment_id", type=int) or None
+
+            if share_units is None:
+                flash("Enter a valid number of shares.", "danger")
+                return render_template(
+                    "subscriptions/form.html",
+                    members=[sub.member],
+                    investments=investments,
+                    preselect=sub.member_id,
+                    preselect_investment_id=investment_id,
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
+                )
+            if payment_plan not in {"full", "installment"}:
+                flash("Invalid payment plan.", "danger")
+                return render_template(
+                    "subscriptions/form.html",
+                    members=[sub.member],
+                    investments=investments,
+                    preselect=sub.member_id,
+                    preselect_investment_id=investment_id,
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
+                )
+            if eligibility_policy not in {"paid_proportional", "fully_paid_only"}:
+                flash("Invalid eligibility policy.", "danger")
+                return render_template(
+                    "subscriptions/form.html",
+                    members=[sub.member],
+                    investments=investments,
+                    preselect=sub.member_id,
+                    preselect_investment_id=investment_id,
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
+                )
+            if investment_id and not Investment.query.get(investment_id):
+                flash("Invalid investment selected.", "danger")
+                return render_template(
+                    "subscriptions/form.html",
+                    members=[sub.member],
+                    investments=investments,
+                    preselect=sub.member_id,
+                    preselect_investment_id=investment_id,
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
+                )
+
+            try:
+                subscribed_amount, share_unit_price, share_units_subscribed = resolve_share_subscription_amounts(
+                    share_units=share_units
+                )
+            except ValueError as e:
+                flash(str(e), "danger")
+                return render_template(
+                    "subscriptions/form.html",
+                    members=[sub.member],
+                    investments=investments,
+                    preselect=sub.member_id,
+                    preselect_investment_id=investment_id,
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
+                )
+
+            already_paid = sub.paid_total()
+            if subscribed_amount < already_paid:
+                flash(
+                    f"Subscribed amount cannot be less than paid total ({settings_sn.currency_symbol}{already_paid:,.2f}).",
+                    "danger",
+                )
+                return render_template(
+                    "subscriptions/form.html",
+                    members=[sub.member],
+                    investments=investments,
+                    preselect=sub.member_id,
+                    preselect_investment_id=investment_id,
+                    **_sub_form_ctx(request.form.to_dict(flat=True)),
+                )
+
+            old_payment_plan = sub.payment_plan or "full"
+            sub.subscribed_amount = subscribed_amount
+            sub.share_unit_price = share_unit_price
+            sub.share_units_subscribed = share_units_subscribed
+            sub.payment_plan = payment_plan
+            sub.eligibility_policy = eligibility_policy
+            sub.subscription_date = subscription_date
+            sub.investment_id = investment_id
+            sub.agent_id = sub.member.agent_id
+            recompute_subscription_status(sub.id, commit=False)
+            log_audit(
+                "subscription_updated",
+                "ShareSubscription",
+                sub.id,
+                (
+                    f"subscription_no={sub.subscription_no} payment_plan:{old_payment_plan}->{payment_plan} "
+                    f"share_units={share_units_subscribed} subscribed_amount={subscribed_amount}"
+                ),
+            )
+            db.session.commit()
+            if old_payment_plan == "full" and payment_plan == "installment":
+                flash(
+                    "Subscription updated. You can now add installment rows for this subscription.",
+                    "success",
+                )
+            else:
+                flash("Subscription updated successfully.", "success")
+            return redirect(url_for("subscriptions_profile", id=sub.id))
+
+        return render_template(
+            "subscriptions/form.html",
+            members=[sub.member],
+            investments=investments,
+            preselect=sub.member_id,
+            preselect_investment_id=sub.investment_id,
+            **_sub_form_ctx(
+                {
+                    "share_units": str(int(sub.share_units_subscribed or 0)),
+                    "subscription_date": sub.subscription_date.strftime("%Y-%m-%d")
+                    if sub.subscription_date
+                    else "",
+                    "payment_plan": sub.payment_plan or "full",
+                    "eligibility_policy": sub.eligibility_policy or "paid_proportional",
+                    "investment_id": str(sub.investment_id) if sub.investment_id else "",
+                }
+            ),
         )
 
     @app.route("/subscriptions/<int:id>")
