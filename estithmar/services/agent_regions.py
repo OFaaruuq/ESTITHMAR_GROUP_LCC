@@ -16,6 +16,7 @@ from estithmar import db
 from estithmar.models import AgentCountryRegion
 
 # Merged with API state names: common spellings and UK city-style options.
+# Keys must match the official ISO 3166 English names from ``iso3166_countries.csv`` (the agent country dropdown value).
 REGION_SEEDS: dict[str, list[str]] = {
     "Somalia": [
         "Banaadir",
@@ -26,7 +27,7 @@ REGION_SEEDS: dict[str, list[str]] = {
         "Kismayo",
         "Baidoa",
     ],
-    "United Kingdom": [
+    "United Kingdom of Great Britain and Northern Ireland": [
         "London",
         "Birmingham",
         "Manchester",
@@ -42,9 +43,32 @@ REGION_SEEDS: dict[str, list[str]] = {
         "Nottingham",
         "Leicester",
     ],
+    # US states come from the API; optional extras if the API is unavailable
+    "United States of America": [
+        "District of Columbia",
+    ],
+}
+
+# The bundled ISO names often differ from what ``countriesnow.space`` accepts; the API can 404 on full official names.
+# We still persist rows under the ISO dropdown value in ``agent_country_regions.country_name``.
+COUNTRIESSNOW_COUNTRY_ALIASES: dict[str, str] = {
+    "United States of America": "United States",
+    "United Kingdom of Great Britain and Northern Ireland": "United Kingdom",
+    # Common alternative if ever stored; API accepts these short names
+    "USA": "United States",
+    "U.S.A.": "United States",
+    "UK": "United Kingdom",
+    "U.K.": "United Kingdom",
+    "Great Britain": "United Kingdom",
 }
 
 _STATES_API = "https://countriesnow.space/api/v0.1/countries/states"
+
+
+def _api_country_name_for_request(iso_dropdown_name: str) -> str:
+    """Name to send in the request body: alias or the same string."""
+    c = (iso_dropdown_name or "").strip()
+    return COUNTRIESSNOW_COUNTRY_ALIASES.get(c, c)
 
 
 def _normalize_key(s: str) -> str:
@@ -66,10 +90,11 @@ def _dedupe_names(names: list[str]) -> list[str]:
     return out
 
 
-def _states_from_api(country_display_name: str) -> list[str]:
-    if not (country_display_name or "").strip():
+def _states_from_api(iso_country_name: str) -> list[str]:
+    if not (iso_country_name or "").strip():
         return []
-    body = json.dumps({"country": country_display_name}).encode("utf-8")
+    request_name = _api_country_name_for_request(iso_country_name)
+    body = json.dumps({"country": request_name}).encode("utf-8")
     req = urllib.request.Request(
         _STATES_API,
         data=body,
