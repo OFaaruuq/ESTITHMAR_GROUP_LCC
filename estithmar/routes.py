@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import os
 import secrets
 from urllib.parse import urlencode
@@ -46,6 +47,7 @@ from estithmar.services.notifications import (
     notify_member_welcome,
     notify_password_reset,
     notify_user_credentials,
+    run_due_report_schedules,
     send_email,
 )
 from estithmar.models import (
@@ -75,10 +77,14 @@ from estithmar.models import (
     PaymentBank,
     PaymentBankAccount,
     PaymentMobileProvider,
+    NotificationDeliveryLog,
     ProfitDistribution,
     ProfitDistributionBatch,
+    ReportSchedule,
     ShareCertificate,
     ShareSubscription,
+    SubscriptionAmendment,
+    AccountingPeriodClose,
     Project,
     get_or_create_settings,
     next_agent_id,
@@ -202,6 +208,22 @@ def _parse_decimal(s: str | None) -> Decimal | None:
         return Decimal(s.strip().replace(",", ""))
     except (InvalidOperation, ValueError):
         return None
+
+
+def _is_closed_period(txn_date: date | None) -> bool:
+    if txn_date is None:
+        return False
+    max_close = db.session.query(func.max(AccountingPeriodClose.close_date)).scalar()
+    return bool(max_close and txn_date <= max_close)
+
+
+def _next_run_for_frequency(freq: str) -> datetime:
+    now = datetime.utcnow()
+    if freq == "daily":
+        return now + timedelta(days=1)
+    if freq == "monthly":
+        return now + timedelta(days=30)
+    return now + timedelta(days=7)
 
 
 def _accounts_grouped_for_journal(accounts) -> list[tuple[str, list]]:
@@ -2875,6 +2897,7 @@ def register_routes(app):
             eligibility_policy = request.form.get("eligibility_policy") or "paid_proportional"
             subscription_date = _parse_date(request.form.get("subscription_date")) or sub.subscription_date
             investment_id = request.form.get("investment_id", type=int) or None
+            amendment_reason = (request.form.get("amendment_reason") or "").strip()[:500]
 
             if share_units is None:
                 flash("Enter a valid number of shares.", "danger")
@@ -2948,6 +2971,15 @@ def register_routes(app):
                 )
 
             old_payment_plan = sub.payment_plan or "full"
+            old_values = {
+                "subscribed_amount": str(sub.subscribed_amount or Decimal("0")),
+                "share_unit_price": str(sub.share_unit_price or Decimal("0")),
+                "share_units_subscribed": str(sub.share_units_subscribed or Decimal("0")),
+                "payment_plan": sub.payment_plan,
+                "eligibility_policy": sub.eligibility_policy,
+                "subscription_date": sub.subscription_date.isoformat() if sub.subscription_date else None,
+                "investment_id": sub.investment_id,
+            }
             sub.subscribed_amount = subscribed_amount
             sub.share_unit_price = share_unit_price
             sub.share_units_subscribed = share_units_subscribed
@@ -2956,7 +2988,25 @@ def register_routes(app):
             sub.subscription_date = subscription_date
             sub.investment_id = investment_id
             sub.agent_id = sub.member.agent_id
+            new_values = {
+                "subscribed_amount": str(subscribed_amount),
+                "share_unit_price": str(share_unit_price),
+                "share_units_subscribed": str(share_units_subscribed),
+                "payment_plan": payment_plan,
+                "eligibility_policy": eligibility_policy,
+                "subscription_date": subscription_date.isoformat() if subscription_date else None,
+                "investment_id": investment_id,
+            }
             recompute_subscription_status(sub.id, commit=False)
+            db.session.add(
+                SubscriptionAmendment(
+                    subscription_id=sub.id,
+                    changed_by_user_id=current_user.id if current_user.is_authenticated else None,
+                    reason=amendment_reason or None,
+                    old_values_json=json.dumps(old_values),
+                    new_values_json=json.dumps(new_values),
+                )
+            )
             log_audit(
                 "subscription_updated",
                 "ShareSubscription",
@@ -3010,6 +3060,12 @@ def register_routes(app):
         installments = (
             sub.installments.order_by(InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()).all()
         )
+        amendments = (
+            SubscriptionAmendment.query.filter_by(subscription_id=sub.id)
+            .order_by(SubscriptionAmendment.created_at.desc())
+            .limit(20)
+            .all()
+        )
         contribs = (
             Contribution.query.filter(Contribution.subscription_id == sub.id)
             .options(
@@ -3058,6 +3114,7 @@ def register_routes(app):
             outstanding=outstanding,
             completion_pct=completion_pct,
             today=today,
+            amendments=amendments,
         )
 
     @app.route("/subscriptions/<int:id>/investment", methods=["POST"])
@@ -3111,6 +3168,59 @@ def register_routes(app):
 
         if request.method == "POST":
             action = request.form.get("action", "").strip()
+            if action == "auto_generate":
+                start_date = _parse_date(request.form.get("start_date")) or date.today()
+                installments_count = max(1, min(36, request.form.get("installments_count", type=int) or 1))
+                freq = (request.form.get("frequency") or "monthly").strip().lower()
+                if freq not in {"monthly", "weekly"}:
+                    freq = "monthly"
+                active_rows = [
+                    x
+                    for x in sub.installments.order_by(InstallmentPlan.sequence_no.asc()).all()
+                    if x.status != "Cancelled"
+                ]
+                if active_rows:
+                    flash("Auto-generate works only when no active installment rows exist.", "warning")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+                total = sub.outstanding_balance()
+                if total <= 0:
+                    flash("No outstanding balance left to split into installments.", "warning")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+                base = (total / Decimal(str(installments_count))).quantize(Decimal("0.01"))
+                rows = []
+                running = Decimal("0")
+                for i in range(1, installments_count + 1):
+                    due_amount = base
+                    if i == installments_count:
+                        due_amount = (total - running).quantize(Decimal("0.01"))
+                    running += due_amount
+                    due_date = (
+                        start_date + relativedelta(months=i - 1)
+                        if freq == "monthly"
+                        else start_date + timedelta(days=(i - 1) * 7)
+                    )
+                    rows.append(
+                        InstallmentPlan(
+                            subscription_id=sub.id,
+                            due_date=due_date,
+                            due_amount=due_amount,
+                            paid_amount=Decimal("0"),
+                            status="Pending",
+                            sequence_no=i,
+                        )
+                    )
+                db.session.add_all(rows)
+                recompute_installment_statuses(sub.id, commit=False)
+                log_audit(
+                    "installments_auto_generated",
+                    "ShareSubscription",
+                    sub.id,
+                    f"count={installments_count} frequency={freq} total={total}",
+                )
+                db.session.commit()
+                flash("Installment schedule generated automatically.", "success")
+                return redirect(url_for("subscriptions_installments", id=sub.id))
+
             if action == "add":
                 due_date = _parse_date(request.form.get("due_date"))
                 due_amount = _parse_decimal(request.form.get("due_amount"))
@@ -3521,6 +3631,7 @@ def register_routes(app):
                     )
             method_ref = request.form.get("method_ref", "").strip() or None
             notes = request.form.get("notes", "").strip()
+            allow_duplicate = request.form.get("allow_duplicate") == "1"
             if not mid or amount is None or amount <= 0:
                 flash("Select a member and enter a valid amount.", "danger")
                 return render_template(
@@ -3541,6 +3652,17 @@ def register_routes(app):
                 )
             if mem.status != "Active":
                 flash("Contributions can only be recorded for Active members.", "danger")
+                subs = (
+                    ShareSubscription.query.filter_by(member_id=mem.id)
+                    .order_by(ShareSubscription.subscription_date.desc())
+                    .all()
+                )
+                return render_template(
+                    "contributions/form.html",
+                    **_contrib_form_ctx(members, mem.id, subscription_id or preselect_subscription, subs),
+                )
+            if _is_closed_period(d):
+                flash("Accounting period is closed for this date; payment cannot be recorded.", "danger")
                 subs = (
                     ShareSubscription.query.filter_by(member_id=mem.id)
                     .order_by(ShareSubscription.subscription_date.desc())
@@ -3594,6 +3716,32 @@ def register_routes(app):
                         "contributions/form.html",
                         **_contrib_form_ctx(members, mem.id, subscription_id, subs),
                     )
+            dup_q = Contribution.query.filter(
+                Contribution.member_id == mid,
+                Contribution.date == d,
+                Contribution.amount == amount,
+                Contribution.payment_type == ptype,
+            )
+            if method_ref:
+                dup_q = dup_q.filter(Contribution.method_ref == method_ref)
+            recent_duplicate = (
+                dup_q.filter(Contribution.reversal_of_id.is_(None)).order_by(Contribution.id.desc()).first()
+            )
+            if recent_duplicate and not allow_duplicate:
+                flash(
+                    "Possible duplicate payment detected (same member/date/amount/method). "
+                    "If this is intentional, tick 'allow duplicate' in the form and save again.",
+                    "warning",
+                )
+                subs = (
+                    ShareSubscription.query.filter_by(member_id=mem.id)
+                    .order_by(ShareSubscription.subscription_date.desc())
+                    .all()
+                )
+                return render_template(
+                    "contributions/form.html",
+                    **_contrib_form_ctx(members, mem.id, subscription_id or preselect_subscription, subs),
+                )
             c = Contribution(
                 member_id=mid,
                 agent_id=mem.agent_id,
@@ -3695,6 +3843,9 @@ def register_routes(app):
     @role_required("admin", "operator")
     def contributions_verify(id):
         c = Contribution.query.get_or_404(id)
+        if _is_closed_period(c.date):
+            flash("Accounting period is closed for this payment date; cannot verify now.", "danger")
+            return redirect(request.referrer or url_for("contributions_list"))
         c.verified = True
         c.verified_at = datetime.utcnow()
         c.verified_by_user_id = current_user.id
@@ -3714,6 +3865,9 @@ def register_routes(app):
     @role_required("admin", "operator")
     def contributions_unverify(id):
         c = Contribution.query.get_or_404(id)
+        if _is_closed_period(c.date):
+            flash("Accounting period is closed for this payment date; cannot unverify now.", "danger")
+            return redirect(request.referrer or url_for("contributions_list"))
         c.verified = False
         c.verified_at = None
         c.verified_by_user_id = None
@@ -3727,6 +3881,63 @@ def register_routes(app):
         nxt = (request.form.get("next") or "").strip()
         if nxt.startswith("/") and not nxt.startswith("//"):
             return redirect(nxt)
+        return redirect(request.referrer or url_for("contributions_list"))
+
+    @app.route("/contributions/<int:id>/reverse", methods=["POST"])
+    @role_required("admin", "operator")
+    def contributions_reverse(id):
+        c = Contribution.query.get_or_404(id)
+        if c.reversal_of_id is not None:
+            flash("This row is already a reversal entry.", "warning")
+            return redirect(request.referrer or url_for("contributions_list"))
+        existing_rev = Contribution.query.filter_by(reversal_of_id=c.id).first()
+        if existing_rev:
+            flash("This payment is already reversed.", "info")
+            return redirect(request.referrer or url_for("contributions_list"))
+        if _is_closed_period(c.date):
+            flash("Accounting period is closed for this payment date; reversal blocked.", "danger")
+            return redirect(request.referrer or url_for("contributions_list"))
+        reason = (request.form.get("reason") or "").strip()[:500]
+        if not reason:
+            flash("Reversal reason is required.", "danger")
+            return redirect(request.referrer or url_for("contributions_list"))
+        rev = Contribution(
+            member_id=c.member_id,
+            agent_id=c.agent_id,
+            subscription_id=c.subscription_id,
+            amount=(c.amount or Decimal("0")) * Decimal("-1"),
+            date=date.today(),
+            payment_type=c.payment_type,
+            payment_bank_account_id=c.payment_bank_account_id,
+            payment_mobile_provider_id=c.payment_mobile_provider_id,
+            method_ref=(f"REV-{c.method_ref}" if c.method_ref else f"REV-{c.id}")[:120],
+            receipt_no=next_receipt_no(),
+            notes=f"Reversal of contribution #{c.id}",
+            reversal_of_id=c.id,
+            reversal_reason=reason,
+            reversed_at=datetime.utcnow(),
+            reversed_by_user_id=current_user.id if current_user.is_authenticated else None,
+            verified=True,
+            verified_at=datetime.utcnow(),
+            verified_by_user_id=current_user.id if current_user.is_authenticated else None,
+        )
+        db.session.add(rev)
+        if c.subscription_id:
+            auto_allocate_payment_to_installments(c.subscription_id, rev.amount, payment_date=rev.date, commit=False)
+            recompute_subscription_status(c.subscription_id, commit=False)
+        log_audit(
+            "contribution_reversed",
+            "Contribution",
+            c.id,
+            f"reversal_id=pending amount={c.amount} reason={reason}",
+        )
+        db.session.commit()
+        try:
+            post_contribution_verified(rev.id, user_id=current_user.id if current_user.is_authenticated else None)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        flash("Payment reversed with audit trail.", "warning")
         return redirect(request.referrer or url_for("contributions_list"))
 
     # --- Projects ---
@@ -4559,7 +4770,11 @@ def register_routes(app):
                     batch_notes=batch_notes,
                     settings=_s,
                     currency_code=_s.currency_code or "USD",
+                    simulation_mode=(action == "simulate"),
                 )
+            if _is_closed_period(dist_date):
+                flash("Accounting period is closed for this distribution date.", "danger")
+                return render_template("profit/form.html", **_profit_form_ctx())
 
             raw_notes = (request.form.get("batch_notes") or "").strip()
             if raw_notes:
@@ -4856,6 +5071,45 @@ def register_routes(app):
                     else:
                         flash(f"Test email failed: {err}", "danger")
                 return redirect(url_for("settings_notifications"))
+            if action == "add_schedule":
+                name = (request.form.get("schedule_name") or "").strip()[:120]
+                report_key = (request.form.get("report_key") or "").strip()[:64]
+                frequency = (request.form.get("frequency") or "weekly").strip().lower()
+                recipients = (request.form.get("recipients") or "").strip()
+                if not name or not report_key or not recipients:
+                    flash("Schedule name, report key, and recipients are required.", "danger")
+                    return redirect(url_for("settings_notifications"))
+                if frequency not in {"daily", "weekly", "monthly"}:
+                    frequency = "weekly"
+                db.session.add(
+                    ReportSchedule(
+                        name=name,
+                        report_key=report_key,
+                        frequency=frequency,
+                        recipients=recipients,
+                        is_active=True,
+                        next_run_at=_next_run_for_frequency(frequency),
+                        created_by_user_id=current_user.id if current_user.is_authenticated else None,
+                    )
+                )
+                db.session.commit()
+                flash("Report schedule added.", "success")
+                return redirect(url_for("settings_notifications"))
+            if action == "delete_schedule":
+                sid = request.form.get("schedule_id", type=int)
+                row = db.session.get(ReportSchedule, sid) if sid else None
+                if row:
+                    db.session.delete(row)
+                    db.session.commit()
+                    flash("Report schedule removed.", "info")
+                return redirect(url_for("settings_notifications"))
+            if action == "run_due_schedules":
+                out = run_due_report_schedules()
+                flash(
+                    f"Scheduler run complete. Due={out.get('due',0)} sent={out.get('sent',0)} failed={out.get('failed',0)}",
+                    "info",
+                )
+                return redirect(url_for("settings_notifications"))
 
             ex["smtp_host"] = (request.form.get("smtp_host") or "").strip()
             pport = (request.form.get("smtp_port") or "").strip()
@@ -4898,6 +5152,10 @@ def register_routes(app):
             settings=s,
             extra=ex,
             mail_ok=mail_configured(),
+            report_schedules=ReportSchedule.query.order_by(ReportSchedule.created_at.desc()).limit(60).all(),
+            delivery_logs=NotificationDeliveryLog.query.order_by(NotificationDeliveryLog.created_at.desc())
+            .limit(80)
+            .all(),
         )
 
     @app.route("/settings/payment-methods", methods=["GET", "POST"])
@@ -5200,6 +5458,41 @@ def register_routes(app):
         s = get_or_create_settings()
         ex = s.get_extra()
         if request.method == "POST":
+            action = (request.form.get("action") or "save").strip().lower()
+            if action == "close_period":
+                close_date = _parse_date(request.form.get("close_date"))
+                notes = (request.form.get("close_notes") or "").strip()[:500]
+                if close_date is None:
+                    flash("Choose a valid close date.", "danger")
+                    return redirect(url_for("accounting_settings"))
+                exists = AccountingPeriodClose.query.filter_by(close_date=close_date).first()
+                if exists:
+                    flash("That date is already closed.", "info")
+                    return redirect(url_for("accounting_settings"))
+                db.session.add(
+                    AccountingPeriodClose(
+                        close_date=close_date,
+                        notes=notes or None,
+                        closed_by_user_id=current_user.id if current_user.is_authenticated else None,
+                    )
+                )
+                db.session.commit()
+                log_audit("accounting_period_closed", "AccountingPeriodClose", None, f"date={close_date}")
+                flash("Accounting period date closed.", "success")
+                return redirect(url_for("accounting_settings"))
+            if action == "reopen_period":
+                row_id = request.form.get("period_id", type=int)
+                row = db.session.get(AccountingPeriodClose, row_id) if row_id else None
+                if not row:
+                    flash("Closed period row not found.", "danger")
+                    return redirect(url_for("accounting_settings"))
+                cd = row.close_date
+                db.session.delete(row)
+                db.session.commit()
+                log_audit("accounting_period_reopened", "AccountingPeriodClose", row_id, f"date={cd}")
+                flash("Closed period removed (reopened).", "warning")
+                return redirect(url_for("accounting_settings"))
+
             month_raw = request.form.get("fiscal_year_start_month", type=int)
             if month_raw is not None and 1 <= month_raw <= 12:
                 ex["accounting_fiscal_year_start_month"] = month_raw
@@ -5211,6 +5504,9 @@ def register_routes(app):
             flash("Accounting settings saved.", "success")
             return redirect(url_for("accounting_settings"))
         settings = s
+        closed_periods = (
+            AccountingPeriodClose.query.order_by(AccountingPeriodClose.close_date.desc()).limit(60).all()
+        )
         return render_template(
             "accounting/settings.html",
             settings=settings,
@@ -5218,6 +5514,7 @@ def register_routes(app):
             currency_code=settings.currency_code or "USD",
             accounting_on=accounting_enabled(),
             accounting_section="settings",
+            closed_periods=closed_periods,
         )
 
     @app.route("/accounting/chart-of-accounts", methods=["GET", "POST"])

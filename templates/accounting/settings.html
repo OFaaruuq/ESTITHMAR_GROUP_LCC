@@ -68,4 +68,46 @@
         </ul>
     </div>
 </div>
+
+<div class="card border-0 shadow-sm mt-3">
+    <div class="card-header bg-white py-3"><h6 class="mb-0">Accounting period close</h6></div>
+    <div class="card-body">
+        <form method="post" class="row g-2 align-items-end mb-3">
+            <input type="hidden" name="action" value="close_period">
+            <div class="col-md-3">
+                <label class="form-label">Close date</label>
+                <input type="date" name="close_date" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Notes</label>
+                <input type="text" name="close_notes" class="form-control" maxlength="500" placeholder="Reason / period reference">
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-outline-danger w-100">Close period date</button>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Date</th><th>Notes</th><th></th></tr></thead>
+                <tbody>
+                    {% for p in closed_periods %}
+                    <tr>
+                        <td>{{ p.close_date }}</td>
+                        <td class="small text-muted">{{ p.notes or '—' }}</td>
+                        <td class="text-end">
+                            <form method="post" class="d-inline" onsubmit="return confirm('Reopen this closed date?');">
+                                <input type="hidden" name="action" value="reopen_period">
+                                <input type="hidden" name="period_id" value="{{ p.id }}">
+                                <button type="submit" class="btn btn-sm btn-outline-warning">Reopen</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="text-muted">No closed period dates.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endblock %}

@@ -157,6 +157,14 @@
                         <label class="form-label fw-medium" for="notes">Notes</label>
                         <textarea name="notes" id="notes" class="form-control" rows="2" placeholder="Internal note (optional)">{{ request.form.get('notes', '') if request.method == 'POST' else '' }}</textarea>
                     </div>
+                    <div class="form-check mb-4">
+                        <input class="form-check-input" type="checkbox" name="allow_duplicate" value="1" id="allow_dup"
+                               {{ 'checked' if request.method == 'POST' and request.form.get('allow_duplicate') == '1' else '' }}>
+                        <label class="form-check-label" for="allow_dup">
+                            Allow possible duplicate payment
+                        </label>
+                        <div class="form-text">Use only when same-day same-amount duplicate is intentional.</div>
+                    </div>
 
                     <div class="d-flex flex-wrap gap-2 pt-2 border-top">
                         <button type="submit" class="btn btn-primary btn-lg px-4">

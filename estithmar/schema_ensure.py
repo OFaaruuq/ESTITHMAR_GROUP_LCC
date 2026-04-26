@@ -107,6 +107,7 @@ def ensure_app_schema() -> None:
 
     _ensure_member_documents_table(engine, dialect, insp)
     _ensure_payment_options_schema(engine, dialect)
+    _ensure_finops_extensions_schema(engine, dialect)
 
 
 def _ensure_payment_options_schema(engine, dialect: str) -> None:
@@ -397,3 +398,284 @@ def _ensure_member_documents_table(engine, dialect: str, _insp) -> None:
         )
         db.session.execute(text("CREATE INDEX ix_member_documents_member_id ON member_documents (member_id)"))
     db.session.commit()
+
+
+def _ensure_finops_extensions_schema(engine, dialect: str) -> None:
+    """Runtime safety net for payment controls, scheduling, and accounting close tables."""
+    insp = inspect(engine)
+
+    def _has_table(name: str) -> bool:
+        try:
+            return insp.has_table(name)
+        except Exception:
+            return False
+
+    def _has_col(table: str, col: str) -> bool:
+        try:
+            return any(c.get("name") == col for c in insp.get_columns(table))
+        except Exception:
+            return False
+
+    if _has_table("contributions"):
+        if not _has_col("contributions", "reversal_of_id"):
+            if dialect == "postgresql":
+                db.session.execute(text("ALTER TABLE contributions ADD COLUMN reversal_of_id INTEGER"))
+            elif "mssql" in dialect:
+                db.session.execute(text("ALTER TABLE contributions ADD reversal_of_id INT NULL"))
+            else:
+                db.session.execute(text("ALTER TABLE contributions ADD COLUMN reversal_of_id INTEGER"))
+        if not _has_col("contributions", "reversal_reason"):
+            if dialect == "postgresql":
+                db.session.execute(text("ALTER TABLE contributions ADD COLUMN reversal_reason VARCHAR(500)"))
+            elif "mssql" in dialect:
+                db.session.execute(text("ALTER TABLE contributions ADD reversal_reason NVARCHAR(500) NULL"))
+            else:
+                db.session.execute(text("ALTER TABLE contributions ADD COLUMN reversal_reason VARCHAR(500)"))
+        if not _has_col("contributions", "reversed_at"):
+            if dialect == "postgresql":
+                db.session.execute(text("ALTER TABLE contributions ADD COLUMN reversed_at TIMESTAMP"))
+            elif "mssql" in dialect:
+                db.session.execute(text("ALTER TABLE contributions ADD reversed_at DATETIME2 NULL"))
+            else:
+                db.session.execute(text("ALTER TABLE contributions ADD COLUMN reversed_at TIMESTAMP"))
+        if not _has_col("contributions", "reversed_by_user_id"):
+            if dialect == "postgresql":
+                db.session.execute(text("ALTER TABLE contributions ADD COLUMN reversed_by_user_id INTEGER"))
+            elif "mssql" in dialect:
+                db.session.execute(text("ALTER TABLE contributions ADD reversed_by_user_id INT NULL"))
+            else:
+                db.session.execute(text("ALTER TABLE contributions ADD COLUMN reversed_by_user_id INTEGER"))
+        try:
+            db.session.execute(text("CREATE INDEX ix_contributions_reversal_of_id ON contributions (reversal_of_id)"))
+        except Exception:
+            pass
+        db.session.commit()
+
+    if not _has_table("subscription_amendments"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE subscription_amendments (
+                        id SERIAL PRIMARY KEY,
+                        subscription_id INTEGER NOT NULL REFERENCES share_subscriptions(id) ON DELETE CASCADE,
+                        changed_by_user_id INTEGER REFERENCES app_users(id),
+                        reason VARCHAR(500),
+                        old_values_json TEXT NOT NULL,
+                        new_values_json TEXT NOT NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE subscription_amendments (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        subscription_id INT NOT NULL,
+                        changed_by_user_id INT NULL,
+                        reason NVARCHAR(500) NULL,
+                        old_values_json NVARCHAR(MAX) NOT NULL,
+                        new_values_json NVARCHAR(MAX) NOT NULL,
+                        created_at DATETIME2 NOT NULL CONSTRAINT DF_sub_amd_created DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT FK_sub_amd_sub FOREIGN KEY (subscription_id) REFERENCES share_subscriptions(id) ON DELETE CASCADE,
+                        CONSTRAINT FK_sub_amd_user FOREIGN KEY (changed_by_user_id) REFERENCES app_users(id)
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE subscription_amendments (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        subscription_id INTEGER NOT NULL REFERENCES share_subscriptions(id) ON DELETE CASCADE,
+                        changed_by_user_id INTEGER REFERENCES app_users(id),
+                        reason VARCHAR(500),
+                        old_values_json TEXT NOT NULL,
+                        new_values_json TEXT NOT NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        db.session.execute(text("CREATE INDEX ix_subscription_amendments_subscription_id ON subscription_amendments (subscription_id)"))
+        db.session.commit()
+
+    if not _has_table("accounting_period_closes"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE accounting_period_closes (
+                        id SERIAL PRIMARY KEY,
+                        close_date DATE NOT NULL UNIQUE,
+                        notes VARCHAR(500),
+                        closed_by_user_id INTEGER REFERENCES app_users(id),
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE accounting_period_closes (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        close_date DATE NOT NULL UNIQUE,
+                        notes NVARCHAR(500) NULL,
+                        closed_by_user_id INT NULL,
+                        created_at DATETIME2 NOT NULL CONSTRAINT DF_apc_created DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT FK_apc_user FOREIGN KEY (closed_by_user_id) REFERENCES app_users(id)
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE accounting_period_closes (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        close_date DATE NOT NULL UNIQUE,
+                        notes VARCHAR(500),
+                        closed_by_user_id INTEGER REFERENCES app_users(id),
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        db.session.commit()
+
+    if not _has_table("report_schedules"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE report_schedules (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(120) NOT NULL,
+                        report_key VARCHAR(64) NOT NULL,
+                        frequency VARCHAR(20) NOT NULL DEFAULT 'weekly',
+                        recipients TEXT NOT NULL,
+                        is_active BOOLEAN NOT NULL DEFAULT true,
+                        next_run_at TIMESTAMP NULL,
+                        last_run_at TIMESTAMP NULL,
+                        last_status VARCHAR(30),
+                        last_error VARCHAR(500),
+                        created_by_user_id INTEGER REFERENCES app_users(id),
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE report_schedules (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        name NVARCHAR(120) NOT NULL,
+                        report_key NVARCHAR(64) NOT NULL,
+                        frequency NVARCHAR(20) NOT NULL CONSTRAINT DF_rs_freq DEFAULT 'weekly',
+                        recipients NVARCHAR(MAX) NOT NULL,
+                        is_active BIT NOT NULL CONSTRAINT DF_rs_active DEFAULT 1,
+                        next_run_at DATETIME2 NULL,
+                        last_run_at DATETIME2 NULL,
+                        last_status NVARCHAR(30) NULL,
+                        last_error NVARCHAR(500) NULL,
+                        created_by_user_id INT NULL,
+                        created_at DATETIME2 NOT NULL CONSTRAINT DF_rs_created DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT FK_rs_user FOREIGN KEY (created_by_user_id) REFERENCES app_users(id)
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE report_schedules (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        name VARCHAR(120) NOT NULL,
+                        report_key VARCHAR(64) NOT NULL,
+                        frequency VARCHAR(20) NOT NULL DEFAULT 'weekly',
+                        recipients TEXT NOT NULL,
+                        is_active INTEGER NOT NULL DEFAULT 1,
+                        next_run_at TIMESTAMP NULL,
+                        last_run_at TIMESTAMP NULL,
+                        last_status VARCHAR(30),
+                        last_error VARCHAR(500),
+                        created_by_user_id INTEGER REFERENCES app_users(id),
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        db.session.execute(text("CREATE INDEX ix_report_schedules_report_key ON report_schedules (report_key)"))
+        db.session.commit()
+
+    if not _has_table("notification_delivery_logs"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE notification_delivery_logs (
+                        id SERIAL PRIMARY KEY,
+                        channel VARCHAR(20) NOT NULL,
+                        recipient VARCHAR(200) NOT NULL,
+                        subject VARCHAR(200),
+                        message_kind VARCHAR(40),
+                        success BOOLEAN NOT NULL DEFAULT false,
+                        attempt_count INTEGER NOT NULL DEFAULT 1,
+                        error VARCHAR(500),
+                        context_json TEXT,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE notification_delivery_logs (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        channel NVARCHAR(20) NOT NULL,
+                        recipient NVARCHAR(200) NOT NULL,
+                        subject NVARCHAR(200) NULL,
+                        message_kind NVARCHAR(40) NULL,
+                        success BIT NOT NULL CONSTRAINT DF_ndl_success DEFAULT 0,
+                        attempt_count INT NOT NULL CONSTRAINT DF_ndl_attempt DEFAULT 1,
+                        error NVARCHAR(500) NULL,
+                        context_json NVARCHAR(MAX) NULL,
+                        created_at DATETIME2 NOT NULL CONSTRAINT DF_ndl_created DEFAULT SYSUTCDATETIME()
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE notification_delivery_logs (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        channel VARCHAR(20) NOT NULL,
+                        recipient VARCHAR(200) NOT NULL,
+                        subject VARCHAR(200),
+                        message_kind VARCHAR(40),
+                        success INTEGER NOT NULL DEFAULT 0,
+                        attempt_count INTEGER NOT NULL DEFAULT 1,
+                        error VARCHAR(500),
+                        context_json TEXT,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        db.session.execute(text("CREATE INDEX ix_notification_delivery_logs_recipient ON notification_delivery_logs (recipient)"))
+        db.session.commit()

@@ -77,6 +77,13 @@
                     </select>
                     <div class="form-text">When <em>investment-scoped profit</em> is enabled in Settings, link this subscription so profit from that investment is shared correctly.</div>
                 </div>
+                {% if edit_mode %}
+                <div class="col-md-12">
+                    <label class="form-label">Amendment reason (optional)</label>
+                    <textarea name="amendment_reason" class="form-control" rows="2" placeholder="Why this subscription was edited">{{ form_values.get('amendment_reason', '') }}</textarea>
+                    <div class="form-text">Saved into amendment history for audit.</div>
+                </div>
+                {% endif %}
             </div>
             <div class="mt-3">
                 <button type="submit" class="btn btn-primary">{{ 'Update subscription' if edit_mode else 'Create subscription' }}</button>

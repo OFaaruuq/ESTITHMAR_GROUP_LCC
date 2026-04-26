@@ -183,5 +183,97 @@
             </form>
         </div>
     </div>
+
+    <div class="card set-card border-0 mb-4">
+        <div class="card-body p-3 p-md-4">
+            <p class="set-section-title mb-3"><i class="ri-time-line me-1"></i> Scheduled reports</p>
+            <form method="post" class="row g-2 align-items-end mb-3">
+                <input type="hidden" name="action" value="add_schedule">
+                <div class="col-md-3">
+                    <label class="form-label small">Name</label>
+                    <input type="text" name="schedule_name" class="form-control" maxlength="120" placeholder="Weekly collection digest" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Report key</label>
+                    <select name="report_key" class="form-select" required>
+                        <option value="reports_monthly">Monthly report</option>
+                        <option value="reports_daily">Daily report</option>
+                        <option value="reports_profit_summary">Profit summary</option>
+                        <option value="reports_investment_summary">Investment summary</option>
+                        <option value="reports_members_financial">Members financial</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">Frequency</label>
+                    <select name="frequency" class="form-select">
+                        <option value="weekly">Weekly</option>
+                        <option value="daily">Daily</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">Recipients (comma-separated emails)</label>
+                    <input type="text" name="recipients" class="form-control" placeholder="ops@company.com,finance@company.com" required>
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-outline-primary w-100">Add</button>
+                </div>
+            </form>
+            <form method="post" class="mb-3">
+                <input type="hidden" name="action" value="run_due_schedules">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Run due schedules now</button>
+            </form>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Name</th><th>Key</th><th>Freq</th><th>Next run</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                        {% for r in report_schedules %}
+                        <tr>
+                            <td>{{ r.name }}</td>
+                            <td class="small font-monospace">{{ r.report_key }}</td>
+                            <td>{{ r.frequency }}</td>
+                            <td class="small">{{ r.next_run_at.strftime('%Y-%m-%d %H:%M') if r.next_run_at else '—' }}</td>
+                            <td class="small">{{ r.last_status or '—' }}</td>
+                            <td class="text-end">
+                                <form method="post" class="d-inline" onsubmit="return confirm('Delete this schedule?');">
+                                    <input type="hidden" name="action" value="delete_schedule">
+                                    <input type="hidden" name="schedule_id" value="{{ r.id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-muted">No schedules configured.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card set-card border-0 mb-5">
+        <div class="card-body p-3 p-md-4">
+            <p class="set-section-title mb-3"><i class="ri-history-line me-1"></i> Notification delivery logs</p>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>When</th><th>Channel</th><th>Recipient</th><th>Kind</th><th>Result</th><th>Error</th></tr></thead>
+                    <tbody>
+                        {% for d in delivery_logs %}
+                        <tr>
+                            <td class="small text-muted">{{ d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else '—' }}</td>
+                            <td>{{ d.channel }}</td>
+                            <td class="small">{{ d.recipient }}</td>
+                            <td class="small">{{ d.message_kind or '—' }}</td>
+                            <td>{% if d.success %}<span class="badge bg-success">ok</span>{% else %}<span class="badge bg-danger">failed</span>{% endif %}</td>
+                            <td class="small text-danger">{{ d.error or '—' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-muted">No delivery logs yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

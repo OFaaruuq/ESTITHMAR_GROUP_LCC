@@ -91,7 +91,6 @@
                 </div>
                 {% endif %}
                 <form method="post" id="pf-form">
-                    <input type="hidden" name="action" value="preview">
                     <div class="mb-3">
                         <label class="form-label fw-medium" for="pf-inv">Investment <span class="text-danger">*</span></label>
                         <select name="investment_id" id="pf-inv" class="form-select form-select-lg" required {{ 'disabled' if not investments else '' }}>
@@ -126,8 +125,11 @@
                         <textarea name="batch_notes" id="pf-notes" class="form-control" rows="2" maxlength="500" placeholder="Internal reference for this distribution run" {{ 'disabled' if not investments else '' }}></textarea>
                         <div class="form-text">Stored on the batch record (§13.2).</div>
                     </div>
-                    <button type="submit" class="btn btn-primary btn-lg px-4" {% if not investments %}disabled{% endif %}>
+                    <button type="submit" class="btn btn-primary btn-lg px-4" name="action" value="preview" {% if not investments %}disabled{% endif %}>
                         <i class="ri-eye-line me-1"></i>Preview distribution
+                    </button>
+                    <button type="submit" class="btn btn-outline-secondary btn-lg px-4 ms-2" name="action" value="simulate" {% if not investments %}disabled{% endif %}>
+                        <i class="ri-flask-line me-1"></i>Simulate only
                     </button>
                 </form>
             </div>

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import smtplib
+from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from urllib.error import HTTPError, URLError
@@ -12,7 +14,8 @@ from urllib.request import Request, urlopen
 
 from flask import current_app, has_request_context
 
-from estithmar.models import get_or_create_settings
+from estithmar import db
+from estithmar.models import NotificationDeliveryLog, ReportSchedule, get_or_create_settings
 
 
 def _truthy_env(name: str) -> bool:
@@ -119,6 +122,35 @@ def send_email(
     return True, None
 
 
+def _log_delivery(
+    *,
+    channel: str,
+    recipient: str,
+    subject: str | None,
+    message_kind: str | None,
+    success: bool,
+    attempt_count: int,
+    error: str | None,
+    context: dict | None = None,
+) -> None:
+    try:
+        db.session.add(
+            NotificationDeliveryLog(
+                channel=channel,
+                recipient=(recipient or "")[:200],
+                subject=(subject or "")[:200] if subject else None,
+                message_kind=(message_kind or "")[:40] if message_kind else None,
+                success=bool(success),
+                attempt_count=max(1, int(attempt_count)),
+                error=(error or "")[:500] if error else None,
+                context_json=json.dumps(context or {}),
+            )
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def phone_to_whatsapp_address(normalized_phone: str | None) -> str | None:
     if not normalized_phone:
         return None
@@ -173,6 +205,84 @@ def send_whatsapp_text(to_phone_normalized: str, message: str) -> tuple[bool, st
     return True, None
 
 
+def send_email_with_retry(
+    to_addr: str,
+    subject: str,
+    body_text: str,
+    *,
+    body_html: str | None = None,
+    retries: int = 2,
+    message_kind: str | None = None,
+    context: dict | None = None,
+) -> tuple[bool, str | None]:
+    attempts = max(1, int(retries) + 1)
+    last_err = None
+    for _ in range(attempts):
+        ok, err = send_email(to_addr, subject, body_text, body_html=body_html)
+        if ok:
+            _log_delivery(
+                channel="email",
+                recipient=to_addr,
+                subject=subject,
+                message_kind=message_kind,
+                success=True,
+                attempt_count=attempts,
+                error=None,
+                context=context,
+            )
+            return True, None
+        last_err = err
+    _log_delivery(
+        channel="email",
+        recipient=to_addr,
+        subject=subject,
+        message_kind=message_kind,
+        success=False,
+        attempt_count=attempts,
+        error=last_err,
+        context=context,
+    )
+    return False, last_err
+
+
+def send_whatsapp_with_retry(
+    to_phone_normalized: str,
+    message: str,
+    *,
+    retries: int = 1,
+    message_kind: str | None = None,
+    context: dict | None = None,
+) -> tuple[bool, str | None]:
+    attempts = max(1, int(retries) + 1)
+    last_err = None
+    for _ in range(attempts):
+        ok, err = send_whatsapp_text(to_phone_normalized, message)
+        if ok:
+            _log_delivery(
+                channel="whatsapp",
+                recipient=to_phone_normalized,
+                subject=None,
+                message_kind=message_kind,
+                success=True,
+                attempt_count=attempts,
+                error=None,
+                context=context,
+            )
+            return True, None
+        last_err = err
+    _log_delivery(
+        channel="whatsapp",
+        recipient=to_phone_normalized,
+        subject=None,
+        message_kind=message_kind,
+        success=False,
+        attempt_count=attempts,
+        error=last_err,
+        context=context,
+    )
+    return False, last_err
+
+
 def _enc(s: str) -> str:
     from urllib.parse import quote_plus
 
@@ -197,14 +307,89 @@ def notify_member_channel(
     """Send email and optionally WhatsApp to a member (respects settings)."""
     app = current_app
     if email_to and mail_configured():
-        ok, err = send_email(email_to.strip(), subject, body_text)
+        ok, err = send_email_with_retry(
+            email_to.strip(),
+            subject,
+            body_text,
+            retries=2,
+            message_kind="member_event",
+            context={"subject": subject},
+        )
         if not ok and app:
             app.logger.warning("Member notification email failed: %s", err)
     if send_whatsapp_too and phone and whatsapp_configured() and _whatsapp_for_member_messages():
         short = body_text.replace("\n", " ")[:1500]
-        ok, err = send_whatsapp_text(phone, short)
+        ok, err = send_whatsapp_with_retry(
+            phone,
+            short,
+            retries=1,
+            message_kind="member_event",
+            context={"subject": subject},
+        )
         if not ok and app:
             app.logger.warning("Member notification WhatsApp failed: %s", err)
+
+
+def run_due_report_schedules(now: datetime | None = None) -> dict[str, int]:
+    """Run active report schedules that are due and email a compact digest."""
+    run_at = now or datetime.utcnow()
+    due = (
+        ReportSchedule.query.filter(
+            ReportSchedule.is_active.is_(True),
+            ReportSchedule.next_run_at.isnot(None),
+            ReportSchedule.next_run_at <= run_at,
+        )
+        .order_by(ReportSchedule.next_run_at.asc())
+        .all()
+    )
+    sent = 0
+    failed = 0
+    for row in due:
+        recipients = [x.strip() for x in (row.recipients or "").split(",") if x.strip()]
+        if not recipients:
+            row.last_status = "failed"
+            row.last_error = "No recipients configured."
+            row.last_run_at = run_at
+            row.next_run_at = run_at + timedelta(days=1)
+            db.session.commit()
+            failed += 1
+            continue
+        subject = f"Estithmar scheduled report — {row.name}"
+        body = (
+            f"Scheduled report: {row.name}\n"
+            f"Report key: {row.report_key}\n"
+            f"Run time (UTC): {run_at}\n"
+            "Open Reports hub in Estithmar to review current dashboard values."
+        )
+        ok_all = True
+        err_msg = None
+        for rcpt in recipients:
+            ok, err = send_email_with_retry(
+                rcpt,
+                subject,
+                body,
+                retries=2,
+                message_kind="report_schedule",
+                context={"schedule_id": row.id, "report_key": row.report_key},
+            )
+            if not ok:
+                ok_all = False
+                err_msg = err
+        row.last_run_at = run_at
+        row.last_status = "sent" if ok_all else "failed"
+        row.last_error = (err_msg or "")[:500] if err_msg else None
+        if row.frequency == "daily":
+            row.next_run_at = run_at + timedelta(days=1)
+        elif row.frequency == "monthly":
+            row.next_run_at = run_at + timedelta(days=30)
+        else:
+            row.next_run_at = run_at + timedelta(days=7)
+        db.session.commit()
+        if ok_all:
+            sent += 1
+        else:
+            failed += 1
+    return {"due": len(due), "sent": sent, "failed": failed}
 
 
 def notify_member_welcome(

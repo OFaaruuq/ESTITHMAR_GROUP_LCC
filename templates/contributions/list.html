@@ -144,6 +144,11 @@
                         <td>{{ c.date }}</td>
                         <td class="small text-wrap" style="max-width: 14rem;"><span class="badge bg-light text-dark border text-wrap text-start fw-normal">{{ c.payment_display_label() }}</span></td>
                         <td>
+                            {% if c.reversal_of_id %}
+                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Reversal</span>
+                            {% elif c.reversal_reason %}
+                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">Reversed</span>
+                            {% endif %}
                             {% if c.verified %}
                             <span class="badge bg-success">Yes</span>
                             {% else %}
@@ -157,6 +162,12 @@
                             <form method="post" action="{{ url_for('contributions_verify', id=c.id) }}" class="d-inline"><button type="submit" class="btn btn-sm btn-outline-success">Verify</button></form>
                             {% else %}
                             <form method="post" action="{{ url_for('contributions_unverify', id=c.id) }}" class="d-inline"><button type="submit" class="btn btn-sm btn-outline-warning">Unverify</button></form>
+                            {% endif %}
+                            {% if not c.reversal_of_id %}
+                            <form method="post" action="{{ url_for('contributions_reverse', id=c.id) }}" class="d-inline"
+                                  onsubmit="var r=prompt('Reversal reason (required):'); if(!r){return false;} var i=document.createElement('input'); i.type='hidden'; i.name='reason'; i.value=r; this.appendChild(i); return true;">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Reverse</button>
+                            </form>
                             {% endif %}
                             {% endif %}
                         </td>

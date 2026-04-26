@@ -26,6 +26,7 @@
                 <strong>Formula:</strong> ownership % = member paid ÷ total paid (all participants). Member share = ownership % × profit to distribute.
                 Denominator (total paid basis): <strong>{{ settings.currency_symbol }}{{ total_eligible|money }} {{ cur }}</strong> — real contributions only.
                 {% if profit_basis_verified %}<span class="badge text-bg-info ms-1">Verified payments only</span>{% endif %}
+                {% if simulation_mode %}<span class="badge text-bg-warning text-dark ms-1">Simulation only (no posting)</span>{% endif %}
             </p>
         </div>
         <div class="col-md-4 text-md-end">
@@ -124,6 +125,7 @@
 </div>
 
 <div class="mt-4 d-flex flex-wrap gap-2 align-items-center pv-shell">
+    {% if not simulation_mode %}
     <form method="post" class="d-inline" onsubmit="return confirm('Record this profit distribution? Saved rows are permanent.');">
         <input type="hidden" name="action" value="confirm">
         <input type="hidden" name="investment_id" value="{{ investment.id }}">
@@ -131,6 +133,7 @@
         <input type="hidden" name="distribution_date" value="{{ distribution_date.isoformat() if distribution_date else '' }}">
         <button type="submit" class="btn btn-success btn-lg px-4"><i class="ri-check-line me-1"></i>Confirm and record batch</button>
     </form>
+    {% endif %}
     <a href="{{ url_for('profit_distribute') }}" class="btn btn-outline-secondary"><i class="ri-arrow-left-line me-1"></i>Back to form</a>
 </div>
 {% endblock %}

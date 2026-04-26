@@ -355,12 +355,18 @@ class Contribution(db.Model):
     method_ref = db.Column(db.String(120))
     receipt_no = db.Column(db.String(20), unique=True, index=True)
     notes = db.Column(db.Text)
+    reversal_of_id = db.Column(db.Integer, db.ForeignKey("contributions.id"), nullable=True, index=True)
+    reversal_reason = db.Column(db.String(500), nullable=True)
+    reversed_at = db.Column(db.DateTime, nullable=True)
+    reversed_by_user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=True)
     verified = db.Column(db.Boolean, nullable=False, default=False)
     verified_at = db.Column(db.DateTime, nullable=True)
     verified_by_user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     verified_by = db.relationship("AppUser", backref="verified_contributions", foreign_keys=[verified_by_user_id])
+    reversed_by = db.relationship("AppUser", backref="reversed_contributions", foreign_keys=[reversed_by_user_id])
+    reversal_of = db.relationship("Contribution", remote_side=[id], uselist=False)
     payment_bank_account = db.relationship("PaymentBankAccount", foreign_keys=[payment_bank_account_id])
     payment_mobile_provider = db.relationship("PaymentMobileProvider", foreign_keys=[payment_mobile_provider_id])
 
@@ -762,6 +768,69 @@ class AppSettings(db.Model):
 
     def get_flag(self, key: str, default: bool = False) -> bool:
         return bool(self.get_extra().get(key, default))
+
+
+class SubscriptionAmendment(db.Model):
+    __tablename__ = "subscription_amendments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    subscription_id = db.Column(
+        db.Integer, db.ForeignKey("share_subscriptions.id"), nullable=False, index=True
+    )
+    changed_by_user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=True)
+    reason = db.Column(db.String(500), nullable=True)
+    old_values_json = db.Column(db.Text, nullable=False)
+    new_values_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    subscription = db.relationship("ShareSubscription", backref="amendments")
+    changed_by = db.relationship("AppUser", foreign_keys=[changed_by_user_id])
+
+
+class AccountingPeriodClose(db.Model):
+    __tablename__ = "accounting_period_closes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    close_date = db.Column(db.Date, nullable=False, unique=True, index=True)
+    notes = db.Column(db.String(500), nullable=True)
+    closed_by_user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    closed_by = db.relationship("AppUser", foreign_keys=[closed_by_user_id])
+
+
+class ReportSchedule(db.Model):
+    __tablename__ = "report_schedules"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    report_key = db.Column(db.String(64), nullable=False, index=True)
+    frequency = db.Column(db.String(20), nullable=False, default="weekly")
+    recipients = db.Column(db.Text, nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    next_run_at = db.Column(db.DateTime, nullable=True, index=True)
+    last_run_at = db.Column(db.DateTime, nullable=True)
+    last_status = db.Column(db.String(30), nullable=True)
+    last_error = db.Column(db.String(500), nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    created_by = db.relationship("AppUser", foreign_keys=[created_by_user_id])
+
+
+class NotificationDeliveryLog(db.Model):
+    __tablename__ = "notification_delivery_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    channel = db.Column(db.String(20), nullable=False)  # email | whatsapp
+    recipient = db.Column(db.String(200), nullable=False, index=True)
+    subject = db.Column(db.String(200), nullable=True)
+    message_kind = db.Column(db.String(40), nullable=True)  # member_event | report_schedule
+    success = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    attempt_count = db.Column(db.Integer, nullable=False, default=1)
+    error = db.Column(db.String(500), nullable=True)
+    context_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
 def _member_id_seq_suffix(member_id: str | None) -> int:
