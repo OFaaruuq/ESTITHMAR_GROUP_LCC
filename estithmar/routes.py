@@ -110,12 +110,7 @@ from estithmar.services import (
     total_member_contributions_collected,
 )
 from estithmar.services.certificates import format_certificate_share_quantity
-from estithmar.country_choices import (
-    get_agent_country_choices,
-    get_agent_country_value_set,
-    get_agent_regions_by_country_json,
-    get_region_choices_for_country,
-)
+from estithmar.country_choices import get_agent_country_choices, get_agent_country_value_set, get_region_choices_for_country
 from estithmar.dashboard_geo import build_members_region_map_data
 from estithmar.services.profit_distribution import (
     build_profit_distribution_preview,
@@ -1212,6 +1207,9 @@ def register_routes(app):
         if ep in _MEMBER_PORTAL_BLOCKED_ENDPOINTS:
             flash("This action is not available for your account.", "warning")
             return redirect(url_for("dashboard"))
+        if ep in ("api_lookup_agent_regions",):
+            flash("This action is not available for your account.", "warning")
+            return redirect(url_for("dashboard"))
         if ep.startswith(("agents_", "users_", "accounting_", "export_")):
             flash("This section is not available for your account.", "warning")
             return redirect(url_for("dashboard"))
@@ -1806,7 +1804,7 @@ def register_routes(app):
         return s or None
 
     def _normalize_agent_region(country: str | None, region_raw: str | None) -> tuple[str | None, str | None]:
-        """When country is a standard ISO list value, region must match UN tiers for that country."""
+        """When country is a standard ISO list value, region must match the cached list for that country (API + DB)."""
         r = (region_raw or "").strip()[:120]
         if not r:
             return None, None
@@ -1818,7 +1816,7 @@ def register_routes(app):
             return r, None
         allowed = get_region_choices_for_country(c)
         if not allowed:
-            return None, "This country has no region tier in the registry — leave region blank."
+            return None, "No region list is available for this country — leave region blank, or try again after the list loads."
         if r in allowed:
             return r, None
         return None, "Region must be one of the values allowed for the selected country."
@@ -1832,7 +1830,7 @@ def register_routes(app):
             "agent_country_choices": get_agent_country_choices(),
             "agent_country_value_set": cset,
             "agent_country_is_legacy": legacy_country,
-            "agent_regions_by_country": get_agent_regions_by_country_json(),
+            "agent_regions_lookup_url": url_for("api_lookup_agent_regions"),
         }
 
     @app.route("/agents")
@@ -1922,6 +1920,18 @@ def register_routes(app):
             row_end=row_end,
             currency_code=settings.currency_code or "USD",
         )
+
+    @app.route("/api/lookup/agent-regions", methods=["GET"])
+    def api_lookup_agent_regions():
+        """Per-country region/city options for the agent form; calls external API on first use, then reads from the DB cache."""
+        if not current_user.is_authenticated or current_user.role in ("agent", "member"):
+            return jsonify(ok=False, error="forbidden"), 403
+        c = (request.args.get("country") or "").strip()[:120]
+        cset = get_agent_country_value_set()
+        if not c or c not in cset:
+            return jsonify(ok=False, error="unknown country"), 400
+        regions = list(get_region_choices_for_country(c))
+        return jsonify(ok=True, country=c, regions=regions)
 
     @app.route("/agents/new", methods=["GET", "POST"])
     def agents_new():

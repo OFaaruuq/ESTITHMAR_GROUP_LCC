@@ -187,6 +187,19 @@ class Agent(db.Model):
         return Decimal(str(v)) if v is not None else Decimal("0")
 
 
+class AgentCountryRegion(db.Model):
+    """Per-country region/city options for agent registration; filled from a public API once, then served from the DB."""
+
+    __tablename__ = "agent_country_regions"
+    __table_args__ = (db.UniqueConstraint("country_name", "region_name", name="uq_agent_country_regions_c_r"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    country_name = db.Column(db.String(120), nullable=False, index=True)
+    region_name = db.Column(db.String(200), nullable=False)
+    source = db.Column(db.String(20), nullable=False, default="api")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Member(db.Model):
     __tablename__ = "members"
 

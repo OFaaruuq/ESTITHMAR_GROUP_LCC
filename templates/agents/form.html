@@ -72,7 +72,7 @@
                             <option value="{{ agent.country }}" selected>{{ agent.country }} (saved — pick a standard name below to replace)</option>
                             {% endif %}
                         </select>
-                        <div class="form-text">Choose country first; region options below follow the UN geographic registry for that country.</div>
+                        <div class="form-text">Choose a country first; region options are loaded from a public list (first request fills the local cache, then the database is used).</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label" for="region">Region</label>
@@ -84,7 +84,7 @@
                         <select name="region" id="region" class="form-select">
                             <option value="">— Not set —</option>
                         </select>
-                        <div class="form-text">Only values allowed for the selected country (UN region / sub-region / intermediate).</div>
+                        <div class="form-text">Regions or major cities for that country, loaded when you select the country (Somalia, United Kingdom, etc.).</div>
                         {% endif %}
                     </div>
                     <div class="mb-0">
@@ -171,22 +171,22 @@
 })();
 {% if not agent_country_is_legacy %}
 (function () {
-  var GEO = {{ agent_regions_by_country|tojson }};
+  var baseUrl = {{ agent_regions_lookup_url|tojson }};
   var countryEl = document.getElementById('country');
   var regionEl = document.getElementById('region');
-  if (!countryEl || !regionEl || !GEO) return;
-  var initialRegion = {{ (agent.region if agent and agent.region else '')|tojson }};
+  if (!countryEl || !regionEl) return;
+  var savedRegion = {{ (agent.region if agent and agent.region else '')|tojson }};
+  var useSavedOnce = savedRegion && savedRegion.length;
 
-  function fillRegionOptions() {
-    var c = countryEl.value || '';
-    var keep = initialRegion;
-    initialRegion = '';
+  function notSet() {
     regionEl.innerHTML = '';
     var o0 = document.createElement('option');
     o0.value = '';
     o0.textContent = '— Not set —';
     regionEl.appendChild(o0);
-    var list = GEO[c] || [];
+  }
+
+  function addOptionsFromList(list, keep) {
     for (var i = 0; i < list.length; i++) {
       var r = list[i];
       var o = document.createElement('option');
@@ -197,19 +197,63 @@
     if (keep && list.indexOf(keep) === -1 && keep.length) {
       var ox = document.createElement('option');
       ox.value = keep;
-      ox.textContent = keep + ' (current — pick a registry value)';
+      ox.textContent = keep + ' (current — pick a listed value)';
       regionEl.appendChild(ox);
     }
-    if (keep) {
-      regionEl.value = keep;
+    if (keep) regionEl.value = keep;
+  }
+
+  function fillRegionOptions(clearValue) {
+    var c = countryEl.value || '';
+    var keep;
+    if (clearValue) keep = '';
+    else if (useSavedOnce) { keep = savedRegion; useSavedOnce = false; }
+    else keep = regionEl.value || '';
+    if (!c) {
+      notSet();
+      return;
     }
+    notSet();
+    var loading = document.createElement('option');
+    loading.value = '';
+    loading.textContent = '… Loading regions …';
+    loading.disabled = true;
+    regionEl.appendChild(loading);
+    regionEl.disabled = true;
+    var sep = baseUrl.indexOf('?') >= 0 ? '&' : '?';
+    var url = baseUrl + sep + 'country=' + encodeURIComponent(c);
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d }; }); })
+      .then(function (x) {
+        regionEl.disabled = false;
+        if (!x.ok || !x.d || !x.d.ok) {
+          notSet();
+          var o = document.createElement('option');
+          o.value = '';
+          o.textContent = (x.d && x.d.error) ? ('Could not load: ' + x.d.error) : 'Could not load regions';
+          o.disabled = true;
+          regionEl.appendChild(o);
+          return;
+        }
+        var list = x.d.regions || [];
+        notSet();
+        addOptionsFromList(list, keep);
+      })
+      .catch(function () {
+        regionEl.disabled = false;
+        notSet();
+        var o = document.createElement('option');
+        o.value = '';
+        o.textContent = 'Network error loading regions';
+        o.disabled = true;
+        regionEl.appendChild(o);
+      });
   }
 
   countryEl.addEventListener('change', function () {
-    regionEl.value = '';
-    fillRegionOptions();
+    fillRegionOptions(true);
   });
-  fillRegionOptions();
+  fillRegionOptions(false);
 })();
 {% endif %}
 </script>

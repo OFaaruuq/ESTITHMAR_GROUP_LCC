@@ -679,3 +679,52 @@ def _ensure_finops_extensions_schema(engine, dialect: str) -> None:
             )
         db.session.execute(text("CREATE INDEX ix_notification_delivery_logs_recipient ON notification_delivery_logs (recipient)"))
         db.session.commit()
+
+    if not _has_table("agent_country_regions"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE agent_country_regions (
+                        id SERIAL PRIMARY KEY,
+                        country_name VARCHAR(120) NOT NULL,
+                        region_name VARCHAR(200) NOT NULL,
+                        source VARCHAR(20) NOT NULL DEFAULT 'api',
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT uq_agent_country_regions_c_r UNIQUE (country_name, region_name)
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE agent_country_regions (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        country_name NVARCHAR(120) NOT NULL,
+                        region_name NVARCHAR(200) NOT NULL,
+                        source NVARCHAR(20) NOT NULL CONSTRAINT DF_acr_source DEFAULT 'api',
+                        created_at DATETIME2 NOT NULL CONSTRAINT DF_acr_created DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT uq_agent_country_regions_c_r UNIQUE (country_name, region_name)
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE agent_country_regions (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        country_name VARCHAR(120) NOT NULL,
+                        region_name VARCHAR(200) NOT NULL,
+                        source VARCHAR(20) NOT NULL DEFAULT 'api',
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT uq_agent_country_regions_c_r UNIQUE (country_name, region_name)
+                    )
+                    """
+                )
+            )
+        db.session.execute(text("CREATE INDEX ix_agent_country_regions_country_name ON agent_country_regions (country_name)"))
+        db.session.commit()
