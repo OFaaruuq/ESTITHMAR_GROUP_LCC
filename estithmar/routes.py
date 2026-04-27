@@ -196,8 +196,23 @@ _MEMBER_PORTAL_BLOCKED_ENDPOINTS = frozenset(
 
 
 def log_audit(action, entity_type=None, entity_id=None, details=None):
+    actor_user_id = None
+    actor_username = None
+    try:
+        if current_user.is_authenticated:
+            actor_user_id = getattr(current_user, "id", None)
+            actor_username = (getattr(current_user, "username", None) or "").strip()[:64] or None
+    except Exception:
+        pass
     db.session.add(
-        AuditLog(action=action, entity_type=entity_type, entity_id=entity_id, details=details)
+        AuditLog(
+            action=action,
+            actor_user_id=actor_user_id,
+            actor_username=actor_username,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            details=details,
+        )
     )
 
 
@@ -1233,6 +1248,7 @@ def register_routes(app):
             query = query.filter(
                 or_(
                     AuditLog.action.ilike(like),
+                    AuditLog.actor_username.ilike(like),
                     AuditLog.entity_type.ilike(like),
                     AuditLog.details.ilike(like),
                 )
@@ -7386,11 +7402,13 @@ def register_routes(app):
         rows = _audit_filtered_query().order_by(AuditLog.created_at.desc()).limit(10000).all()
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["created_at_utc", "action", "entity_type", "entity_id", "details"])
+        w.writerow(["created_at_utc", "actor_username", "actor_user_id", "action", "entity_type", "entity_id", "details"])
         for r in rows:
             w.writerow(
                 [
                     r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
+                    r.actor_username or "",
+                    r.actor_user_id if r.actor_user_id is not None else "",
                     r.action or "",
                     r.entity_type or "",
                     r.entity_id if r.entity_id is not None else "",

@@ -106,9 +106,36 @@ def ensure_app_schema() -> None:
     )
 
     _ensure_member_documents_table(engine, dialect, insp)
+    _ensure_audit_actor_columns(engine, dialect, insp)
     _ensure_payment_options_schema(engine, dialect)
     _ensure_finops_extensions_schema(engine, dialect)
     _ensure_rbac_schema(engine, dialect, insp)
+
+
+def _ensure_audit_actor_columns(engine, dialect: str, insp) -> None:
+    def _has_col(table: str, col: str) -> bool:
+        try:
+            return any(c.get("name") == col for c in insp.get_columns(table))
+        except Exception:
+            return False
+
+    if not _has_col("audit_logs", "actor_user_id"):
+        if dialect == "postgresql":
+            db.session.execute(text("ALTER TABLE audit_logs ADD COLUMN actor_user_id INTEGER"))
+        elif "mssql" in dialect:
+            db.session.execute(text("ALTER TABLE audit_logs ADD actor_user_id INT NULL"))
+        else:
+            db.session.execute(text("ALTER TABLE audit_logs ADD COLUMN actor_user_id INTEGER"))
+        db.session.commit()
+
+    if not _has_col("audit_logs", "actor_username"):
+        if dialect == "postgresql":
+            db.session.execute(text("ALTER TABLE audit_logs ADD COLUMN actor_username VARCHAR(64)"))
+        elif "mssql" in dialect:
+            db.session.execute(text("ALTER TABLE audit_logs ADD actor_username NVARCHAR(64) NULL"))
+        else:
+            db.session.execute(text("ALTER TABLE audit_logs ADD COLUMN actor_username VARCHAR(64)"))
+        db.session.commit()
 
 
 def _ensure_payment_options_schema(engine, dialect: str) -> None:
