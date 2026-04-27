@@ -101,6 +101,13 @@ def _mssql_odbc_query_params(host: str, *, trusted_connection: bool) -> str:
         trust = _is_loopback_sql_host(host)
     if trust:
         parts.append("TrustServerCertificate=yes")
+    # Avoid hanging forever on bad host/firewall (ODBC; overridable in .env)
+    try:
+        to = int((os.environ.get("ESTITHMAR_MSSQL_LOGIN_TIMEOUT") or "30").strip() or "30")
+    except ValueError:
+        to = 30
+    to = max(1, min(to, 300))
+    parts.append(f"LoginTimeout={to}")
     return "&".join(parts)
 
 

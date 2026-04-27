@@ -51,6 +51,8 @@ from estithmar.services.member_notify import (
     notify_member_payment,
     notify_member_profit_share,
 )
+from estithmar.services.agent_notify import notify_agent_on_member_payment, send_kpi_to_all_active_agents
+from estithmar.services.email_html import try_render_transactional
 from estithmar.services.notifications import (
     mail_configured,
     notify_member_welcome,
@@ -1479,12 +1481,15 @@ def register_routes(app):
             db.session.add(u)
             db.session.commit()
             log_audit("member_self_registered", "Member", m.id, f"member_id={m.member_id}")
-            notify_member_welcome(
-                member_name=fn,
-                member_code=m.member_id,
-                email=email,
-                phone=phone_norm,
-            )
+            try:
+                notify_member_welcome(
+                    member_name=fn,
+                    member_code=m.member_id,
+                    email=email,
+                    phone=phone_norm,
+                )
+            except Exception:
+                pass
             login_user(u)
             now = datetime.utcnow()
             u.last_login_at = now
@@ -2430,12 +2435,15 @@ def register_routes(app):
             log_audit("member_created", "Member", None, f"member_id={m.member_id}")
             db.session.commit()
             _save_optional_new_member_documents(m, request)
-            notify_member_welcome(
-                member_name=m.full_name,
-                member_code=m.member_id,
-                email=m.email,
-                phone=m.phone,
-            )
+            try:
+                notify_member_welcome(
+                    member_name=m.full_name,
+                    member_code=m.member_id,
+                    email=m.email,
+                    phone=m.phone,
+                )
+            except Exception:
+                pass
             flash(f"Registered ({m.member_kind}): {format_member_public_id(m.member_id)}", "success")
             return redirect(url_for("members_profile", id=m.id))
         return render_template("members/form.html", **_member_form_ctx(None, agents))
@@ -3997,6 +4005,10 @@ def register_routes(app):
                 notify_member_payment(c, mem)
             except Exception:
                 pass
+            try:
+                notify_agent_on_member_payment(c, mem)
+            except Exception:
+                pass
             if issued_auto:
                 flash("Share certificate issued automatically.", "success")
                 sub_reload = ShareSubscription.query.get(sub.id) if sub else None
@@ -5383,10 +5395,20 @@ def register_routes(app):
                 elif not mail_configured():
                     flash("SMTP is not fully configured (host and sender required).", "warning")
                 else:
+                    test_plain = (
+                        "This is a test message from your Estithmar notification settings.\n\n"
+                        "If you received this, SMTP is configured correctly — including the HTML version."
+                    )
+                    test_html = try_render_transactional(
+                        audience="Team",
+                        title="SMTP test",
+                        intro=test_plain,
+                    )
                     ok, err = send_email(
                         test_to,
                         "Estithmar — SMTP test",
-                        "This is a test message from your Estithmar notification settings.\n\nIf you received this, SMTP is configured correctly.",
+                        test_plain,
+                        body_html=test_html,
                     )
                     if ok:
                         flash("Test email sent.", "success")
@@ -5432,6 +5454,16 @@ def register_routes(app):
                     "info",
                 )
                 return redirect(url_for("settings_notifications"))
+            if action == "email_all_agents_kpi":
+                out = send_kpi_to_all_active_agents()
+                if out.get("aborted"):
+                    flash("Agent KPI emails are turned off in settings or SMTP is not configured.", "warning")
+                else:
+                    flash(
+                        f"Agent portfolio emails: sent {out.get('sent',0)}, no email on file: {out.get('skipped_no_email',0)}, send failures: {out.get('failed',0)}.",
+                        "info",
+                    )
+                return redirect(url_for("settings_notifications"))
 
             ex["smtp_host"] = (request.form.get("smtp_host") or "").strip()
             pport = (request.form.get("smtp_port") or "").strip()
@@ -5457,11 +5489,14 @@ def register_routes(app):
             ex["whatsapp_default_cc"] = (request.form.get("whatsapp_default_cc") or "").strip().lstrip("+")
 
             ex["notify_members_enabled"] = request.form.get("notify_members_enabled") == "1"
+            ex["notify_member_welcome"] = request.form.get("notify_member_welcome") == "1"
             ex["notify_member_payment"] = request.form.get("notify_member_payment") == "1"
             ex["notify_member_subscription"] = request.form.get("notify_member_subscription") == "1"
             ex["notify_member_profit"] = request.form.get("notify_member_profit") == "1"
             ex["notify_member_certificate"] = request.form.get("notify_member_certificate") == "1"
             ex["notify_members_whatsapp"] = request.form.get("notify_members_whatsapp") == "1"
+            ex["notify_agents_enabled"] = request.form.get("notify_agents_enabled") == "1"
+            ex["notify_agent_kpi_on_payment"] = request.form.get("notify_agent_kpi_on_payment") == "1"
 
             s.set_extra(ex)
             db.session.commit()

@@ -136,7 +136,12 @@
                 </div>
                 <p class="small text-muted ms-4 mb-3">When off, no automatic member emails are sent (SMTP may still be used for staff/password reset).</p>
                 <div class="border rounded p-3 bg-light bg-opacity-50 ms-0 ms-md-2">
-                    <p class="small fw-semibold text-muted mb-2">Send when these events occur (requires member email on file):</p>
+                    <p class="small fw-semibold text-muted mb-2">Send when these events occur (email needs a valid address on the member record, except where noted):</p>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="notify_member_welcome" value="1" id="nm_welcome"
+                               {{ 'checked' if extra.get('notify_member_welcome', True) else '' }}>
+                        <label class="form-check-label" for="nm_welcome">New member registered (welcome — staff create or self-registration)</label>
+                    </div>
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="notify_member_payment" value="1" id="nm_pay"
                                {{ 'checked' if extra.get('notify_member_payment', True) else '' }}>
@@ -166,10 +171,40 @@
             </div>
         </div>
 
+        <div class="card set-card border-0 mb-4">
+            <div class="card-body p-3 p-md-4">
+                <p class="set-section-title mb-3"><i class="ri-briefcase-line me-1"></i> Agent email (KPI &amp; activity)</p>
+                <p class="small text-muted">Agents need a valid <strong>email</strong> on the Agent profile. Emails use the same HTML design as members and include portfolio KPIs: members, total collected, subscribed amounts, outstanding, subscription status (Pending / Partially paid / Fully paid), confirmed subscriptions, installment overdue, and certificates.</p>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="notify_agents_enabled" value="1" id="ag_en"
+                           {{ 'checked' if extra.get('notify_agents_enabled', True) else '' }}>
+                    <label class="form-check-label fw-semibold" for="ag_en">Enable email updates to agents</label>
+                </div>
+                <div class="border rounded p-3 bg-light bg-opacity-50 ms-0 ms-md-2 mt-2">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" name="notify_agent_kpi_on_payment" value="1" id="ag_pay"
+                               {{ 'checked' if extra.get('notify_agent_kpi_on_payment', True) else '' }}>
+                        <label class="form-check-label" for="ag_pay">When a member payment is recorded, email the member&rsquo;s agent a payment line plus full portfolio KPIs</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="d-flex flex-wrap gap-2 align-items-center pb-5">
             <button type="submit" class="btn btn-primary btn-lg px-4"><i class="ri-save-line me-1"></i>Save notification settings</button>
         </div>
     </form>
+
+    <div class="card set-card border-0 mb-4">
+        <div class="card-body p-3 p-md-4">
+            <p class="set-section-title mb-3"><i class="ri-team-line me-1"></i> Email all agents (KPI digest)</p>
+            <p class="small text-muted mb-2">Sends a portfolio &amp; KPI email to every <strong>Active</strong> agent that has an email. Use for weekly review or on-demand updates.</p>
+            <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="email_all_agents_kpi">
+                <button type="submit" class="btn btn-outline-primary" {% if not mail_ok %}disabled title="Configure SMTP first"{% endif %}>Send portfolio email to all agents</button>
+            </form>
+        </div>
+    </div>
 
     <div class="card set-card border-0 mb-5">
         <div class="card-body p-3 p-md-4">

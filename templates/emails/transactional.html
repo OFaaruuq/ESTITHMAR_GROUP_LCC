@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>{{ title|e }}</title>
+  <!--[if mso]>
+  <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+  <![endif]-->
+  <style type="text/css">
+    a { text-decoration: none; }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:#e8eef4;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">{{ (title ~ " — " ~ org_name)|e }}</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#e8eef4;" border="0">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;" border="0">
+          <tr>
+            <td style="background:linear-gradient(135deg, #0f2d4a 0%, #1a4a6e 50%, #0c6e8e 100%);background-color:#0f2d4a;border-radius:12px 12px 0 0;overflow:hidden;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="padding:20px 24px 20px 24px;vertical-align:top;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td style="vertical-align:top;">
+                    {% if logo_src %}
+                    <img src="{{ logo_src|e }}" alt="{{ org_name|e }}" width="180" style="max-width:180px;height:auto;display:block;border:0;margin:0 0 10px 0;">
+                    {% else %}
+                    <p style="margin:0 0 4px 0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.02em;">{{ org_name|e }}</p>
+                    {% endif %}
+                    <p style="margin:0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:12px;font-weight:500;color:rgba(255,255,255,0.85);line-height:1.4;max-width:400px;">{{ org_subtitle|e }}</p>
+                        </td>
+                        <td style="vertical-align:top;text-align:right;white-space:nowrap;padding-left:8px;" align="right">
+                    <span style="display:inline-block;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#0f2d4a;background-color:#e0f2fe;padding:6px 12px;border-radius:999px;">{{ audience|e }}</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#ffffff;border:1px solid #dbe3ec;border-top:none;border-radius:0 0 12px 12px;box-shadow:0 4px 24px rgba(15,45,74,0.08);">
+              <div style="padding:28px 28px 32px 28px;">
+                <h1 style="margin:0 0 12px 0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:20px;font-weight:700;color:#0f172a;letter-spacing:-0.02em;">{{ title|e }}</h1>
+                <div style="font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#334155;">
+                  {% for line in intro.split('\n') %}
+                    {% if line.strip() %}
+                      <p style="margin:0 0 12px 0;">{{ line|e }}</p>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+                {% if detail_rows %}
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:20px 0 0 0;border-collapse:separate;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;" border="0">
+                  {% for label, value in detail_rows %}
+                  <tr>
+                    <td style="padding:12px 16px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:#64748b;background-color:#f8fafc;vertical-align:top;width:38%;{% if not loop.last %}border-bottom:1px solid #e2e8f0;{% endif %}">{{ label|e }}</td>
+                    <td style="padding:12px 16px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:500;color:#0f172a;vertical-align:top;{% if not loop.last %}border-bottom:1px solid #e2e8f0;{% endif %}">{{ value|e }}</td>
+                  </tr>
+                  {% endfor %}
+                </table>
+                {% endif %}
+                {% if cta_url and cta_label %}
+                <table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 0 0;" border="0">
+                  <tr>
+                    <td style="border-radius:8px;background:linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%);background-color:#0284c7;">
+                      <a href="{{ cta_url|e }}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;color:#ffffff !important;">{{ cta_label|e }}</a>
+                    </td>
+                  </tr>
+                </table>
+                {% endif %}
+                {% if secondary_note %}
+                <p style="margin:20px 0 0 0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#64748b;">{{ secondary_note|e }}</p>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 8px 0 8px;">
+              <p style="margin:0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:11px;line-height:1.5;color:#64748b;text-align:center;">This message was sent automatically. Please do not reply if you need support—contact your administrator.</p>
+              {% if footer_address %}
+              <p style="margin:12px 0 0 0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:10px;line-height:1.45;color:#94a3b8;text-align:center;max-width:480px;margin-left:auto;margin-right:auto;">{{ footer_address|e }}</p>
+              {% endif %}
+              <p style="margin:10px 0 0 0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:10px;color:#94a3b8;text-align:center;">© {{ org_name|e }}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
