@@ -7,6 +7,7 @@ from typing import Any
 
 import sqlalchemy as sa
 from flask_login import UserMixin
+from sqlalchemy.orm import validates
 from sqlalchemy.types import TypeDecorator
 
 from estithmar import db
@@ -27,6 +28,29 @@ class _LoginOtpDateTime(TypeDecorator):
 
             return dialect.type_descriptor(DATETIME2())
         return dialect.type_descriptor(sa.DateTime())
+
+
+class EncryptedNationalId(TypeDecorator):
+    """At-rest protection when ``ESTITHMAR_ENCRYPTION_KEY`` is set; legacy plaintext still loads."""
+
+    impl = sa.String(500)
+    cache_ok = True
+
+    def process_bind_param(self, value: Any, dialect: Any) -> str | None:
+        if value is None or value == "":
+            return None
+        from estithmar.services.pii_crypto import seal_national_id
+
+        s = value if isinstance(value, str) else str(value)
+        return seal_national_id(s)
+
+    def process_result_value(self, value: Any, dialect: Any) -> str | None:
+        if value is None or value == "":
+            return None
+        from estithmar.services.pii_crypto import open_national_id
+
+        return open_national_id(value if isinstance(value, str) else str(value))
+
 
 PROJECT_STATUSES = [
     ("Planned", "Planned"),
@@ -139,6 +163,25 @@ MEMBER_DOCUMENT_TYPES = [
     ("other", "Other document"),
 ]
 
+# KYC / AML workflow (manual / offline screening; fields for policy and evidence).
+KYC_STATUS_CHOICES = [
+    ("pending", "Pending"),
+    ("verified", "Verified"),
+    ("rejected", "Rejected"),
+    ("needs_review", "Needs review"),
+]
+AML_RISK_TIERS = [
+    ("low", "Low"),
+    ("medium", "Medium"),
+    ("high", "High"),
+]
+SANCTIONS_CHECK_STATUS = [
+    ("not_run", "Not run"),
+    ("clear", "Clear"),
+    ("potential_match", "Potential match"),
+    ("manual_review", "Manual review"),
+]
+
 
 class Agent(db.Model):
     __tablename__ = "agents"
@@ -229,7 +272,15 @@ class Member(db.Model):
     phone = db.Column(db.String(50))
     email = db.Column(db.String(120), index=True)
     address = db.Column(db.Text)
-    national_id = db.Column(db.String(64))
+    national_id = db.Column(EncryptedNationalId(), nullable=True)
+    national_id_hash = db.Column(db.String(64), nullable=True, index=True)
+    kyc_status = db.Column(db.String(32), nullable=True, default="pending")
+    kyc_verified_at = db.Column(db.DateTime, nullable=True)
+    kyc_verified_by_user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=True)
+    aml_risk_tier = db.Column(db.String(16), nullable=True, default="low")
+    pep_flag = db.Column(db.Boolean, nullable=True, default=False)
+    sanctions_check_status = db.Column(db.String(32), nullable=True, default="not_run")
+    aml_notes = db.Column(db.Text, nullable=True)
     date_of_birth = db.Column(db.Date, nullable=True)
     gender = db.Column(db.String(32), nullable=True)
     occupation_employer = db.Column(db.String(200), nullable=True)
@@ -245,6 +296,16 @@ class Member(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     total_profit_received = db.Column(db.Numeric(14, 2), nullable=True)
     last_profit_distribution_date = db.Column(db.Date, nullable=True)
+
+    @validates("national_id")
+    def _validate_national_id_for_search(self, _key, value):
+        from estithmar.services.pii_crypto import hash_national_id_for_search
+
+        if value is not None and str(value).strip():
+            self.national_id_hash = hash_national_id_for_search(str(value).strip())
+        else:
+            self.national_id_hash = None
+        return value
 
     @property
     def member_id_display(self) -> str:
@@ -278,6 +339,7 @@ class Member(db.Model):
         lazy="dynamic",
         cascade="all, delete-orphan",
     )
+    kyc_verified_by = db.relationship("AppUser", foreign_keys=[kyc_verified_by_user_id])
 
     def contribution_total(self) -> Decimal:
         return sum((c.amount for c in self.contributions), Decimal("0"))
@@ -755,6 +817,10 @@ class AuditLog(db.Model):
     entity_type = db.Column(db.String(50))
     entity_id = db.Column(db.Integer)
     details = db.Column(db.Text)
+    source_ip = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(255), nullable=True)
+    http_method = db.Column(db.String(12), nullable=True)
+    request_path = db.Column(db.String(512), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -936,10 +1002,44 @@ class UserSessionLog(db.Model):
     logout_at = db.Column(db.DateTime, nullable=True)
     ip_address = db.Column(db.String(64), nullable=True)
     user_agent = db.Column(db.String(255), nullable=True)
+    device_fingerprint = db.Column(db.String(64), nullable=True, index=True)
     was_forced_logout = db.Column(db.Boolean, nullable=False, default=False)
     ended_reason = db.Column(db.String(32), nullable=True)
 
     user = db.relationship("AppUser", foreign_keys=[user_id])
+
+
+class LoginAttempt(db.Model):
+    """Sign-in success/failure for security monitoring and brute-force heuristics."""
+
+    __tablename__ = "login_attempts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    ip_address = db.Column(db.String(64), nullable=True, index=True)
+    username_hint = db.Column(db.String(32), nullable=True)
+    success = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    app_user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=True, index=True)
+    device_fingerprint = db.Column(db.String(64), nullable=True, index=True)
+
+
+class SecurityAlert(db.Model):
+    """Fraud / anomaly flags (new device, many IPs, brute-force pattern)."""
+
+    __tablename__ = "security_alerts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    app_user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=True, index=True)
+    rule_code = db.Column(db.String(64), nullable=False, index=True)
+    severity = db.Column(db.String(16), nullable=False, default="info")
+    message = db.Column(db.String(500), nullable=True)
+    context_json = db.Column(db.Text, nullable=True)
+    ip_address = db.Column(db.String(64), nullable=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    resolved_by_user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=True)
+    user = db.relationship("AppUser", foreign_keys=[app_user_id])
+    resolved_by = db.relationship("AppUser", foreign_keys=[resolved_by_user_id])
 
 
 class NotificationDeliveryLog(db.Model):

@@ -14,6 +14,7 @@ from dateutil.relativedelta import relativedelta
 from flask import (
     Response,
     flash,
+    has_request_context,
     jsonify,
     redirect,
     render_template,
@@ -64,7 +65,9 @@ from estithmar.services.notifications import (
 from estithmar.models import (
     ELIGIBILITY_POLICIES,
     INVESTMENT_STATUSES,
+    AML_RISK_TIERS,
     InvestmentLedger,
+    KYC_STATUS_CHOICES,
     MEMBER_DOCUMENT_TYPES,
     MEMBER_GENDER_CHOICES,
     MEMBER_KINDS,
@@ -96,6 +99,8 @@ from estithmar.models import (
     ProfitDistribution,
     ProfitDistributionBatch,
     ReportSchedule,
+    SANCTIONS_CHECK_STATUS,
+    SecurityAlert,
     ShareCertificate,
     ShareSubscription,
     SubscriptionAmendment,
@@ -187,6 +192,7 @@ _MEMBER_PORTAL_BLOCKED_ENDPOINTS = frozenset(
         "profit_batch_detail",
         "audit_logs",
         "audit_export_csv",
+        "security_fraud_alerts",
         "certificates_issue",
         "certificates_revoke",
         "certificates_reinstate",
@@ -208,6 +214,18 @@ def log_audit(action, entity_type=None, entity_id=None, details=None):
             actor_username = (getattr(current_user, "username", None) or "").strip()[:64] or None
     except Exception:
         pass
+    source_ip = None
+    user_agent = None
+    http_method = None
+    request_path = None
+    if has_request_context():
+        try:
+            source_ip = _client_ip() or None
+            user_agent = _user_agent_short() or None
+            http_method = (request.method or "")[:12] or None
+            request_path = (request.path or "")[:512] or None
+        except Exception:
+            pass
     db.session.add(
         AuditLog(
             action=action,
@@ -216,6 +234,10 @@ def log_audit(action, entity_type=None, entity_id=None, details=None):
             entity_type=entity_type,
             entity_id=entity_id,
             details=details,
+            source_ip=source_ip,
+            user_agent=user_agent,
+            http_method=http_method,
+            request_path=request_path,
         )
     )
 
@@ -1084,6 +1106,8 @@ def register_routes(app):
 
     def _members_filtered_query():
         """Apply the same GET filters as the members list (for list view + Excel export)."""
+        from estithmar.services.pii_crypto import hash_national_id_for_search, is_pii_encryption_enabled
+
         q = request.args.get("q", "").strip()
         st = request.args.get("status", "").strip()
         kind_f = request.args.get("kind", "").strip()
@@ -1091,15 +1115,19 @@ def register_routes(app):
         query = members_scope()
         if q:
             like = f"%{q}%"
-            query = query.filter(
-                or_(
-                    Member.member_id.ilike(like),
-                    Member.full_name.ilike(like),
-                    Member.phone.ilike(like),
-                    Member.national_id.ilike(like),
-                    Member.email.ilike(like),
-                )
-            )
+            id_conds = [
+                Member.member_id.ilike(like),
+                Member.full_name.ilike(like),
+                Member.phone.ilike(like),
+                Member.email.ilike(like),
+            ]
+            if is_pii_encryption_enabled():
+                hn = hash_national_id_for_search(q)
+                if hn:
+                    id_conds.append(Member.national_id_hash == hn)
+            else:
+                id_conds.append(Member.national_id.ilike(like))
+            query = query.filter(or_(*id_conds))
         if st in ("Active", "Inactive"):
             query = query.filter(Member.status == st)
         if kind_f in {k for k, _ in MEMBER_KINDS}:
@@ -1367,6 +1395,9 @@ def register_routes(app):
 
     def _complete_successful_portal_login(u: AppUser, nxt: str) -> Response:
         """Set Flask-Login session, session log, and redirect after password + optional OTP OK."""
+        from estithmar.services import security_fraud as _secfraud
+        from estithmar.services.security_device import request_device_fingerprint
+
         login_user(u)
         now = datetime.utcnow()
         u2 = db.session.get(AppUser, u.id) or u
@@ -1375,14 +1406,30 @@ def register_routes(app):
         u2.last_seen_ip = _client_ip()
         u2.last_seen_user_agent = _user_agent_short()
         u2.session_version = int(getattr(u2, "session_version", 1) or 1)
+        _dfp = request_device_fingerprint(request)[:64] if has_request_context() else ""
         ses = UserSessionLog(
             user_id=u2.id,
             login_at=now,
             last_seen_at=now,
             ip_address=_client_ip(),
             user_agent=_user_agent_short(),
+            device_fingerprint=_dfp or None,
         )
         db.session.add(ses)
+        db.session.commit()
+        _secfraud.record_login_attempt(
+            ip=_client_ip(),
+            ident=u2.username,
+            success=True,
+            user_id=u2.id,
+            device_fp=_dfp,
+        )
+        _secfraud.evaluate_post_login_security(u2.id, ses)
+        _secfraud.check_multi_ip_for_user(u2.id)
+        try:
+            log_audit("auth_login_success", "AppUser", u2.id, f"username={u2.username}")
+        except Exception:
+            pass
         db.session.commit()
         session["_presence_touch_ts"] = now.timestamp()
         session["_sv"] = int(u2.session_version or 1)
@@ -1432,6 +1479,25 @@ def register_routes(app):
                         flash("We could not send the sign-in code. Try again in a few minutes or contact support.", "danger")
                     return render_template("login.html", next=(nxt or ""))
                 return _complete_successful_portal_login(u, nxt2)
+            from estithmar.services import security_fraud as _secfraud
+            from estithmar.services.security_device import request_device_fingerprint
+
+            _dfp2 = request_device_fingerprint(request)[:64] if has_request_context() else ""
+            _uid = u.id if u else None
+            _secfraud.record_login_attempt(
+                ip=_client_ip(),
+                ident=ident,
+                success=False,
+                user_id=_uid,
+                device_fp=_dfp2,
+            )
+            try:
+                log_audit("auth_login_failed", None, None, f"ident={ident!r} active={getattr(u, 'is_active', None) if u else None}")
+            except Exception:
+                pass
+            if _secfraud.count_recent_failed_logins_for_ip(_client_ip(), minutes=15) > 5:
+                _secfraud.alert_bruteforce_suspect(_client_ip())
+            db.session.commit()
             flash("Invalid email/username or password.", "danger")
         return render_template("login.html", next=request.args.get("next", ""))
 
@@ -1641,6 +1707,10 @@ def register_routes(app):
                 return render_template("auth-recoverpw.html", temp_password=temp_password)
             temp_password = secrets.token_urlsafe(6)[:10]
             u.password_hash = generate_password_hash(temp_password)
+            try:
+                log_audit("auth_password_reset_issued", "AppUser", u.id, f"username={u.username}")
+            except Exception:
+                pass
             db.session.commit()
             if u.email and mail_configured():
                 notify_password_reset(to_email=u.email, temp_password=temp_password)
@@ -1653,6 +1723,11 @@ def register_routes(app):
     @app.route("/logout")
     def logout():
         try:
+            if current_user.is_authenticated:
+                try:
+                    log_audit("auth_logout", "AppUser", current_user.id, "session_end")
+                except Exception:
+                    pass
             u = db.session.get(AppUser, current_user.id) if current_user.is_authenticated else None
             if u is not None:
                 now = datetime.utcnow()
@@ -2489,6 +2564,10 @@ def register_routes(app):
             "quick_create_agent_url": (
                 url_for("api_agents_quick_create") if current_user.role in STAFF_ROLES else None
             ),
+            "kyc_status_choices": KYC_STATUS_CHOICES,
+            "aml_risk_tiers": AML_RISK_TIERS,
+            "sanctions_check_choices": SANCTIONS_CHECK_STATUS,
+            "show_kyc_aml": current_user.role in STAFF_ROLES,
         }
 
     @app.route("/members/new", methods=["GET", "POST"])
@@ -2567,6 +2646,7 @@ def register_routes(app):
         m = members_scope().options(joinedload(Member.agent)).filter_by(id=id).first_or_404()
         agents = _agents_for_member_form(m)
         if request.method == "POST":
+            prev_kyc = (m.kyc_status or "pending")[:32]
             phone_norm, phone_err = validate_phone(request.form.get("phone", "").strip())
             if phone_err:
                 flash(phone_err, "danger")
@@ -2631,6 +2711,21 @@ def register_routes(app):
                 agents = _agents_for_member_form(m)
                 flash("Assign an agent to this member (required by system settings).", "danger")
                 return render_template("members/form.html", **_member_form_ctx(m, agents))
+            if current_user.role in STAFF_ROLES:
+                ks = (request.form.get("kyc_status") or "").strip()
+                if ks in {a for a, _ in KYC_STATUS_CHOICES}:
+                    m.kyc_status = ks
+                atier = (request.form.get("aml_risk_tier") or "").strip()
+                if atier in {a for a, _ in AML_RISK_TIERS}:
+                    m.aml_risk_tier = atier
+                m.pep_flag = request.form.get("pep_flag") == "1"
+                ss = (request.form.get("sanctions_check_status") or "").strip()
+                if ss in {a for a, _ in SANCTIONS_CHECK_STATUS}:
+                    m.sanctions_check_status = ss
+                m.aml_notes = (request.form.get("aml_notes") or "").strip() or None
+                if m.kyc_status == "verified" and prev_kyc != "verified":
+                    m.kyc_verified_at = datetime.utcnow()
+                    m.kyc_verified_by_user_id = current_user.id
             log_audit("member_updated", "Member", m.id)
             db.session.commit()
             flash("Member updated.", "success")
@@ -2641,6 +2736,17 @@ def register_routes(app):
     @page_view_permission(Permission.MEMBERS_VIEW_DETAIL, allow_member=True)
     def members_profile(id):
         m = members_scope().options(joinedload(Member.agent)).filter_by(id=id).first_or_404()
+        if not (current_user.role == "member" and current_user.member_id == m.id):
+            try:
+                log_audit(
+                    "pii_member_profile_view",
+                    "Member",
+                    m.id,
+                    f"member_code={m.member_id}",
+                )
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
         contrib_limit = 30
         contribution_count = m.contributions.count()
         contribs = (
@@ -7760,7 +7866,21 @@ def register_routes(app):
         rows = _audit_filtered_query().order_by(AuditLog.created_at.desc()).limit(10000).all()
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["created_at_utc", "actor_username", "actor_user_id", "action", "entity_type", "entity_id", "details"])
+        w.writerow(
+            [
+                "created_at_utc",
+                "actor_username",
+                "actor_user_id",
+                "action",
+                "entity_type",
+                "entity_id",
+                "details",
+                "source_ip",
+                "http_method",
+                "request_path",
+                "user_agent",
+            ]
+        )
         for r in rows:
             w.writerow(
                 [
@@ -7771,6 +7891,10 @@ def register_routes(app):
                     r.entity_type or "",
                     r.entity_id if r.entity_id is not None else "",
                     (r.details or "").replace("\r\n", " ").replace("\n", " "),
+                    r.source_ip or "",
+                    r.http_method or "",
+                    r.request_path or "",
+                    (r.user_agent or "").replace("\r\n", " "),
                 ]
             )
         return Response(
@@ -7778,6 +7902,32 @@ def register_routes(app):
             mimetype="text/csv; charset=utf-8",
             headers={"Content-Disposition": "attachment; filename=audit-log.csv"},
         )
+
+    @app.route("/security/fraud-alerts", methods=["GET", "POST"])
+    @role_required(*STAFF_ROLES)
+    @permission_required(Permission.AUDIT_VIEW)
+    def security_fraud_alerts():
+        if request.method == "POST":
+            aid = request.form.get("alert_id", type=int)
+            if aid:
+                row = db.session.get(SecurityAlert, aid)
+                if row and not row.resolved_at:
+                    row.resolved_at = datetime.utcnow()
+                    row.resolved_by_user_id = current_user.id
+                    try:
+                        log_audit("security_alert_resolved", "SecurityAlert", row.id, f"rule={row.rule_code}")
+                    except Exception:
+                        pass
+                    db.session.commit()
+                    flash("Alert marked resolved.", "success")
+            return redirect(url_for("security_fraud_alerts"))
+        rows = (
+            SecurityAlert.query.options(joinedload(SecurityAlert.user), joinedload(SecurityAlert.resolved_by))
+            .order_by(SecurityAlert.created_at.desc())
+            .limit(400)
+            .all()
+        )
+        return render_template("security/fraud_alerts.html", alerts=rows)
 
     @app.route("/transactions")
     def transactions_redirect():

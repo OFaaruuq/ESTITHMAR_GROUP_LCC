@@ -170,10 +170,14 @@
                 {% endif %}
                 {% if has_permission('audit.view') %}
                 <li>
-                    <a href="{{ url_for('audit_logs') }}" class="waves-effect">
+                    <a href="javascript:void(0);" class="has-arrow waves-effect" aria-expanded="false">
                         <i class="ri-history-line"></i>
-                        <span>Audit logs</span>
+                        <span>Audit &amp; security</span>
                     </a>
+                    <ul class="sub-menu" aria-expanded="false">
+                        <li><a href="{{ url_for('audit_logs') }}">Audit log</a></li>
+                        <li><a href="{{ url_for('security_fraud_alerts') }}">Fraud / security alerts</a></li>
+                    </ul>
                 </li>
                 {% endif %}
             </ul>

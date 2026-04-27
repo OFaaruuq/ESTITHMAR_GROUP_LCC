@@ -62,6 +62,27 @@
     </div>
 </div>
 
+{% if current_user.role in ['admin', 'operator', 'finance'] %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center">
+        <div>
+            <h6 class="mb-0"><i class="ri-shield-check-line me-1 text-primary"></i>Compliance (KYC / AML)</h6>
+            <p class="text-muted small mb-0">Screening is recorded here; use Edit to update status.</p>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-2 small">
+            <div class="col-md-4"><span class="text-muted">KYC</span> <span class="fw-medium">{{ (member.kyc_status or 'pending')|replace('_', ' ')|title }}</span></div>
+            <div class="col-md-4"><span class="text-muted">AML risk</span> <span class="fw-medium">{{ (member.aml_risk_tier or 'low')|title }}</span></div>
+            <div class="col-md-4"><span class="text-muted">Sanctions</span> <span class="fw-medium">{{ (member.sanctions_check_status or 'not_run')|replace('_', ' ')|title }}</span></div>
+            <div class="col-md-4"><span class="text-muted">PEP</span> {% if member.pep_flag %}<span class="badge text-bg-warning">Yes</span>{% else %}<span class="text-muted">No</span>{% endif %}</div>
+            <div class="col-md-8"><span class="text-muted">Verified at</span> {% if member.kyc_verified_at %}<span class="font-monospace">{{ member.kyc_verified_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>{% else %}<span class="text-muted">—</span>{% endif %}</div>
+            <div class="col-12 mt-1"><span class="text-muted">Notes</span> <span class="text-body">{{ member.aml_notes or '—' }}</span></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-4 col-xl-2">
         <div class="card border-0 shadow-sm h-100">

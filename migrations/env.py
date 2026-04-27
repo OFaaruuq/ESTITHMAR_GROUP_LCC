@@ -97,10 +97,15 @@ def run_migrations_online():
     connectable = get_engine()
 
     with connectable.connect() as connection:
+        kw = dict(conf_args)
+        # SQL Server: suppress DATETIME2 vs generic DateTime churn (breaks ALTER under default constraints).
+        if getattr(connection.dialect, "name", None) == "mssql":
+            kw.setdefault("compare_type", False)
+
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),
-            **conf_args
+            **kw
         )
 
         with context.begin_transaction():

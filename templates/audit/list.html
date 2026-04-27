@@ -258,6 +258,9 @@
                         <th class="text-muted small" scope="col">#</th>
                         <th style="min-width: 11rem;" scope="col">Time (UTC)</th>
                         <th style="min-width: 11rem;" scope="col">User Name</th>
+                        <th style="min-width: 9rem;" scope="col">Source IP</th>
+                        <th style="min-width: 5rem;" scope="col">Method</th>
+                        <th style="min-width: 8rem;" scope="col">Path</th>
                         <th style="min-width: 12rem;" scope="col">Action</th>
                         <th style="min-width: 10rem;" scope="col">Entity</th>
                         <th scope="col">Details</th>
@@ -277,6 +280,9 @@
                             <span class="fw-semibold">{{ actor_name(log) }}</span>
                             {% if log.actor_user_id %}<span class="text-muted">#{{ log.actor_user_id }}</span>{% endif %}
                         </td>
+                        <td class="small font-monospace text-muted">{{ log.source_ip or '—' }}</td>
+                        <td class="small font-monospace text-muted">{{ log.http_method or '—' }}</td>
+                        <td class="small text-muted text-truncate" style="max-width: 10rem;" title="{{ log.request_path or '' }}">{{ log.request_path or '—' }}</td>
                         <td>{{ action_badge(log.action) }}</td>
                         <td class="small">{{ entity_record_link(log) }}</td>
                         <td class="small text-muted al-details"><code class="small user-select-all d-block bg-light rounded px-2 py-1" style="white-space: pre-wrap;">{{ log.details or '—' }}</code></td>
@@ -289,7 +295,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="7" class="text-muted p-4 text-center">No audit entries match these filters.</td></tr>
+                    <tr><td colspan="10" class="text-muted p-4 text-center">No audit entries match these filters.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

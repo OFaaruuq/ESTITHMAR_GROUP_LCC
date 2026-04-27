@@ -142,6 +142,7 @@
                         <th>Logout (UTC)</th>
                         <th>End reason</th>
                         <th>IP</th>
+                        <th>Device fp</th>
                         <th>User agent</th>
                     </tr>
                 </thead>
@@ -160,10 +161,11 @@
                             {% endif %}
                         </td>
                         <td class="small font-monospace">{{ s.ip_address or '—' }}</td>
+                        <td class="small font-monospace text-muted" title="{{ s.device_fingerprint or '' }}">{% if s.device_fingerprint %}{{ s.device_fingerprint[:10] }}…{% else %}—{% endif %}</td>
                         <td class="small text-muted" style="max-width: 24rem; white-space: pre-wrap;">{{ s.user_agent or '—' }}</td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="7" class="text-center text-muted p-4">No session history entries yet.</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted p-4">No session history entries yet.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

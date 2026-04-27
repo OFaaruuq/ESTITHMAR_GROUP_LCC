@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Security &amp; fraud alerts{% endblock %}
+{% block page_heading %}Security &amp; fraud alerts{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Fraud / anomaly alerts</li>
+    </ol>
+</nav>
+
+<div class="alert alert-info border-0 small mb-3">
+    <strong>Basic rules:</strong> new device fingerprint, multiple IPs in 24h, many failed sign-ins from one IP.
+    For production, combine with WAF, CAPTCHA, and external ID verification.
+</div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <a href="{{ url_for('audit_logs') }}" class="btn btn-outline-primary btn-sm">Audit log</a>
+    <a href="{{ url_for('users_online') }}" class="btn btn-outline-secondary btn-sm">Online users</a>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Time (UTC)</th>
+                        <th>Severity</th>
+                        <th>Rule</th>
+                        <th>User</th>
+                        <th>IP</th>
+                        <th>Message</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in alerts %}
+                    <tr class="{{ 'opacity-50' if a.resolved_at else '' }}">
+                        <td class="small font-monospace text-nowrap">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') if a.created_at else '—' }}</td>
+                        <td><span class="badge text-bg-{{ 'danger' if a.severity == 'high' else ('warning' if a.severity == 'warning' else 'secondary') }}">{{ a.severity or 'info' }}</span></td>
+                        <td class="small font-monospace">{{ a.rule_code or '—' }}</td>
+                        <td class="small">{% if a.user %}{{ a.user.username }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        <td class="small font-monospace">{{ a.ip_address or '—' }}</td>
+                        <td class="small">{{ a.message or '—' }}</td>
+                        <td class="text-end">
+                            {% if not a.resolved_at %}
+                            <form method="post" class="d-inline">
+                                <input type="hidden" name="alert_id" value="{{ a.id }}">
+                                <button type="submit" class="btn btn-sm btn-outline-success">Resolve</button>
+                            </form>
+                            {% else %}
+                            <span class="small text-muted">Resolved</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted p-4">No security alerts yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

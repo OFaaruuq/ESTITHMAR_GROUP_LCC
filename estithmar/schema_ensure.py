@@ -152,6 +152,7 @@ def ensure_app_schema() -> None:
 
     _ensure_member_documents_table(engine, dialect, insp)
     _ensure_audit_actor_columns(engine, dialect, insp)
+    _ensure_security_compliance_schema(engine, dialect, insp)
     _ensure_user_session_log_schema(engine, dialect)
     _ensure_login_otp_challenges_schema(engine, dialect, insp)
     _ensure_payment_options_schema(engine, dialect)
@@ -351,6 +352,297 @@ def _ensure_audit_actor_columns(engine, dialect: str, insp) -> None:
             db.session.execute(text("ALTER TABLE audit_logs ADD actor_username NVARCHAR(64) NULL"))
         else:
             db.session.execute(text("ALTER TABLE audit_logs ADD COLUMN actor_username VARCHAR(64)"))
+        db.session.commit()
+
+
+def _ensure_security_compliance_schema(engine, dialect: str, insp) -> None:
+    """Audit log IP/UA/path, session device fingerprint, KYC/AML columns, login attempts, security alerts."""
+
+    def _has_col(table: str, col: str) -> bool:
+        try:
+            return any(c.get("name") == col for c in insp.get_columns(table))
+        except Exception:
+            return False
+
+    def _has_table(name: str) -> bool:
+        try:
+            return insp.has_table(name)
+        except Exception:
+            return False
+
+    def _add(t: str, col: str, pg: str, mssql: str, fb: str) -> None:
+        nonlocal insp
+        insp = inspect(engine)
+        if _has_col(t, col):
+            return
+        if dialect == "postgresql":
+            db.session.execute(text(pg))
+        elif "mssql" in dialect:
+            db.session.execute(text(mssql))
+        else:
+            db.session.execute(text(fb))
+        db.session.commit()
+
+    _add(
+        "audit_logs",
+        "source_ip",
+        "ALTER TABLE audit_logs ADD COLUMN source_ip VARCHAR(64)",
+        "ALTER TABLE audit_logs ADD source_ip NVARCHAR(64) NULL",
+        "ALTER TABLE audit_logs ADD COLUMN source_ip VARCHAR(64)",
+    )
+    _add(
+        "audit_logs",
+        "user_agent",
+        "ALTER TABLE audit_logs ADD COLUMN user_agent VARCHAR(255)",
+        "ALTER TABLE audit_logs ADD user_agent NVARCHAR(255) NULL",
+        "ALTER TABLE audit_logs ADD COLUMN user_agent VARCHAR(255)",
+    )
+    _add(
+        "audit_logs",
+        "http_method",
+        "ALTER TABLE audit_logs ADD COLUMN http_method VARCHAR(12)",
+        "ALTER TABLE audit_logs ADD http_method NVARCHAR(12) NULL",
+        "ALTER TABLE audit_logs ADD COLUMN http_method VARCHAR(12)",
+    )
+    _add(
+        "audit_logs",
+        "request_path",
+        "ALTER TABLE audit_logs ADD COLUMN request_path VARCHAR(512)",
+        "ALTER TABLE audit_logs ADD request_path NVARCHAR(512) NULL",
+        "ALTER TABLE audit_logs ADD COLUMN request_path VARCHAR(512)",
+    )
+    if _has_table("user_session_logs") and not _has_col("user_session_logs", "device_fingerprint"):
+        if dialect == "postgresql":
+            db.session.execute(text("ALTER TABLE user_session_logs ADD COLUMN device_fingerprint VARCHAR(64)"))
+        elif "mssql" in dialect:
+            db.session.execute(text("ALTER TABLE user_session_logs ADD device_fingerprint NVARCHAR(64) NULL"))
+        else:
+            db.session.execute(text("ALTER TABLE user_session_logs ADD COLUMN device_fingerprint VARCHAR(64)"))
+        db.session.commit()
+        try:
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_user_session_logs_device ON user_session_logs (device_fingerprint)"))
+        except Exception:
+            pass
+        try:
+            if "mssql" in dialect:
+                db.session.execute(
+                    text(
+                        "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_usl_device' AND object_id = OBJECT_ID('user_session_logs')) "
+                        "CREATE NONCLUSTERED INDEX [ix_usl_device] ON [dbo].[user_session_logs] ([device_fingerprint])"
+                    )
+                )
+        except Exception:
+            pass
+        db.session.commit()
+
+    _add(
+        "members",
+        "national_id_hash",
+        "ALTER TABLE members ADD COLUMN national_id_hash VARCHAR(64)",
+        "ALTER TABLE members ADD national_id_hash NVARCHAR(64) NULL",
+        "ALTER TABLE members ADD COLUMN national_id_hash VARCHAR(64)",
+    )
+    _add(
+        "members",
+        "kyc_status",
+        "ALTER TABLE members ADD COLUMN kyc_status VARCHAR(32) DEFAULT 'pending'",
+        "ALTER TABLE members ADD kyc_status NVARCHAR(32) NULL CONSTRAINT DF_mem_kyc DEFAULT 'pending'",
+        "ALTER TABLE members ADD COLUMN kyc_status VARCHAR(32) DEFAULT 'pending'",
+    )
+    _add(
+        "members",
+        "kyc_verified_at",
+        "ALTER TABLE members ADD COLUMN kyc_verified_at TIMESTAMP",
+        "ALTER TABLE members ADD kyc_verified_at DATETIME2 NULL",
+        "ALTER TABLE members ADD COLUMN kyc_verified_at TIMESTAMP",
+    )
+    _add(
+        "members",
+        "kyc_verified_by_user_id",
+        "ALTER TABLE members ADD COLUMN kyc_verified_by_user_id INTEGER REFERENCES app_users(id)",
+        "ALTER TABLE members ADD kyc_verified_by_user_id INT NULL",
+        "ALTER TABLE members ADD COLUMN kyc_verified_by_user_id INTEGER REFERENCES app_users(id)",
+    )
+    if dialect != "postgresql" and _has_col("members", "kyc_verified_by_user_id") and "mssql" in dialect:
+        try:
+            db.session.execute(
+                text(
+                    "IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_members_kyc_user') "
+                    "ALTER TABLE members ADD CONSTRAINT FK_members_kyc_user FOREIGN KEY (kyc_verified_by_user_id) REFERENCES app_users(id)"
+                )
+            )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+    _add(
+        "members",
+        "aml_risk_tier",
+        "ALTER TABLE members ADD COLUMN aml_risk_tier VARCHAR(16) DEFAULT 'low'",
+        "ALTER TABLE members ADD aml_risk_tier NVARCHAR(16) NULL CONSTRAINT DF_mem_aml DEFAULT 'low'",
+        "ALTER TABLE members ADD COLUMN aml_risk_tier VARCHAR(16) DEFAULT 'low'",
+    )
+    _add(
+        "members",
+        "pep_flag",
+        "ALTER TABLE members ADD COLUMN pep_flag BOOLEAN DEFAULT false",
+        "ALTER TABLE members ADD pep_flag BIT NULL CONSTRAINT DF_mem_pep DEFAULT 0",
+        "ALTER TABLE members ADD COLUMN pep_flag INTEGER DEFAULT 0",
+    )
+    _add(
+        "members",
+        "sanctions_check_status",
+        "ALTER TABLE members ADD COLUMN sanctions_check_status VARCHAR(32) DEFAULT 'not_run'",
+        "ALTER TABLE members ADD sanctions_check_status NVARCHAR(32) NULL CONSTRAINT DF_mem_san DEFAULT 'not_run'",
+        "ALTER TABLE members ADD COLUMN sanctions_check_status VARCHAR(32) DEFAULT 'not_run'",
+    )
+    _add(
+        "members",
+        "aml_notes",
+        "ALTER TABLE members ADD COLUMN aml_notes TEXT",
+        "ALTER TABLE members ADD aml_notes NVARCHAR(MAX) NULL",
+        "ALTER TABLE members ADD COLUMN aml_notes TEXT",
+    )
+    if _has_col("members", "national_id") and (dialect == "postgresql" or "mssql" in dialect):
+        try:
+            if dialect == "postgresql":
+                db.session.execute(text("ALTER TABLE members ALTER COLUMN national_id TYPE VARCHAR(500)"))
+            elif "mssql" in dialect:
+                db.session.execute(text("ALTER TABLE members ALTER COLUMN national_id NVARCHAR(500) NULL"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    if not _has_table("login_attempts"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE login_attempts (
+                        id SERIAL PRIMARY KEY,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        ip_address VARCHAR(64),
+                        username_hint VARCHAR(32),
+                        success BOOLEAN NOT NULL DEFAULT false,
+                        app_user_id INTEGER REFERENCES app_users(id),
+                        device_fingerprint VARCHAR(64)
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE login_attempts (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        created_at DATETIME2 NOT NULL CONSTRAINT DF_login_att_created DEFAULT SYSUTCDATETIME(),
+                        ip_address NVARCHAR(64) NULL,
+                        username_hint NVARCHAR(32) NULL,
+                        success BIT NOT NULL CONSTRAINT DF_login_att_ok DEFAULT 0,
+                        app_user_id INT NULL,
+                        device_fingerprint NVARCHAR(64) NULL,
+                        CONSTRAINT FK_login_att_user FOREIGN KEY (app_user_id) REFERENCES app_users(id)
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE login_attempts (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        ip_address VARCHAR(64),
+                        username_hint VARCHAR(32),
+                        success INTEGER NOT NULL DEFAULT 0,
+                        app_user_id INTEGER REFERENCES app_users(id),
+                        device_fingerprint VARCHAR(64)
+                    )
+                    """
+                )
+            )
+        db.session.commit()
+        for stmt in (
+            "CREATE INDEX IF NOT EXISTS ix_login_attempts_created ON login_attempts (created_at);",
+            "CREATE INDEX IF NOT EXISTS ix_login_attempts_ip ON login_attempts (ip_address);",
+        ):
+            try:
+                db.session.execute(text(stmt))
+            except Exception:
+                pass
+        db.session.commit()
+
+    if not _has_table("security_alerts"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE security_alerts (
+                        id SERIAL PRIMARY KEY,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        app_user_id INTEGER REFERENCES app_users(id),
+                        rule_code VARCHAR(64) NOT NULL,
+                        severity VARCHAR(16) NOT NULL DEFAULT 'info',
+                        message VARCHAR(500),
+                        context_json TEXT,
+                        ip_address VARCHAR(64),
+                        resolved_at TIMESTAMP,
+                        resolved_by_user_id INTEGER REFERENCES app_users(id)
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE security_alerts (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        created_at DATETIME2 NOT NULL CONSTRAINT DF_sec_al_created DEFAULT SYSUTCDATETIME(),
+                        app_user_id INT NULL,
+                        rule_code NVARCHAR(64) NOT NULL,
+                        severity NVARCHAR(16) NOT NULL CONSTRAINT DF_sec_al_sev DEFAULT 'info',
+                        message NVARCHAR(500) NULL,
+                        context_json NVARCHAR(MAX) NULL,
+                        ip_address NVARCHAR(64) NULL,
+                        resolved_at DATETIME2 NULL,
+                        resolved_by_user_id INT NULL,
+                        CONSTRAINT FK_sec_al_user FOREIGN KEY (app_user_id) REFERENCES app_users(id),
+                        CONSTRAINT FK_sec_al_resolver FOREIGN KEY (resolved_by_user_id) REFERENCES app_users(id)
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE security_alerts (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        app_user_id INTEGER REFERENCES app_users(id),
+                        rule_code VARCHAR(64) NOT NULL,
+                        severity VARCHAR(16) NOT NULL DEFAULT 'info',
+                        message VARCHAR(500),
+                        context_json TEXT,
+                        ip_address VARCHAR(64),
+                        resolved_at TIMESTAMP,
+                        resolved_by_user_id INTEGER REFERENCES app_users(id)
+                    )
+                    """
+                )
+            )
+        db.session.commit()
+        for stmt in (
+            "CREATE INDEX IF NOT EXISTS ix_security_alerts_created ON security_alerts (created_at);",
+            "CREATE INDEX IF NOT EXISTS ix_security_alerts_rule ON security_alerts (rule_code);",
+            "CREATE INDEX IF NOT EXISTS ix_security_alerts_user ON security_alerts (app_user_id);",
+        ):
+            try:
+                db.session.execute(text(stmt))
+            except Exception:
+                pass
         db.session.commit()
 
 
