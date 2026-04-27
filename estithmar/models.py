@@ -5,9 +5,28 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+import sqlalchemy as sa
 from flask_login import UserMixin
+from sqlalchemy.types import TypeDecorator
 
 from estithmar import db
+
+
+class _LoginOtpDateTime(TypeDecorator):
+    """
+    SQL Server: DATETIME2 (matches ensure_app_schema / production DBs).
+    Other DBs: plain DateTime — prevents spurious ``DATETIME2`` → ``DateTime`` Alembic alters.
+    """
+
+    impl = sa.DateTime
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect: Any) -> Any:
+        if dialect.name == "mssql":
+            from sqlalchemy.dialects.mssql import DATETIME2
+
+            return dialect.type_descriptor(DATETIME2())
+        return dialect.type_descriptor(sa.DateTime())
 
 PROJECT_STATUSES = [
     ("Planned", "Planned"),
@@ -884,6 +903,27 @@ class ReportSchedule(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     created_by = db.relationship("AppUser", foreign_keys=[created_by_user_id])
+
+
+class LoginOtpChallenge(db.Model):
+    """One-time passcode for password login (or post-registration) — email-based."""
+
+    __tablename__ = "login_otp_challenges"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=False, index=True)
+    nonce = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    code_hash = db.Column(db.String(256), nullable=False)
+    expires_at = db.Column(_LoginOtpDateTime, nullable=False, index=True)
+    consumed_at = db.Column(_LoginOtpDateTime, nullable=True, index=True)
+    created_at = db.Column(
+        _LoginOtpDateTime, default=datetime.utcnow, nullable=False
+    )
+    client_ip = db.Column(db.String(64), nullable=True)
+    next_path = db.Column(db.String(300), nullable=True)
+    attempt_count = db.Column(db.Integer, nullable=False, default=0)
+
+    user = db.relationship("AppUser", foreign_keys=[user_id])
 
 
 class UserSessionLog(db.Model):

@@ -153,6 +153,7 @@ def ensure_app_schema() -> None:
     _ensure_member_documents_table(engine, dialect, insp)
     _ensure_audit_actor_columns(engine, dialect, insp)
     _ensure_user_session_log_schema(engine, dialect)
+    _ensure_login_otp_challenges_schema(engine, dialect, insp)
     _ensure_payment_options_schema(engine, dialect)
     _ensure_finops_extensions_schema(engine, dialect)
     _ensure_rbac_schema(engine, dialect, insp)
@@ -228,6 +229,102 @@ def _ensure_user_session_log_schema(engine, dialect: str) -> None:
     db.session.execute(text("CREATE INDEX ix_user_session_logs_user_id ON user_session_logs (user_id)"))
     db.session.execute(text("CREATE INDEX ix_user_session_logs_login_at ON user_session_logs (login_at)"))
     db.session.execute(text("CREATE INDEX ix_user_session_logs_last_seen_at ON user_session_logs (last_seen_at)"))
+    db.session.commit()
+
+
+def _ensure_login_otp_challenges_schema(engine, dialect: str, insp) -> None:
+    def _has_table(name: str) -> bool:
+        try:
+            return insp.has_table(name)
+        except Exception:
+            return False
+
+    if _has_table("login_otp_challenges"):
+        return
+
+    if dialect == "postgresql":
+        db.session.execute(
+            text(
+                """
+                CREATE TABLE login_otp_challenges (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES app_users(id),
+                    nonce VARCHAR(64) NOT NULL UNIQUE,
+                    code_hash VARCHAR(256) NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    consumed_at TIMESTAMP NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    client_ip VARCHAR(64) NULL,
+                    next_path VARCHAR(300) NULL,
+                    attempt_count INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+        )
+    elif "mssql" in dialect:
+        db.session.execute(
+            text(
+                """
+                CREATE TABLE login_otp_challenges (
+                    id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    nonce NVARCHAR(64) NOT NULL,
+                    code_hash NVARCHAR(256) NOT NULL,
+                    expires_at DATETIME2 NOT NULL,
+                    consumed_at DATETIME2 NULL,
+                    created_at DATETIME2 NOT NULL CONSTRAINT DF_lotc_created DEFAULT SYSUTCDATETIME(),
+                    client_ip NVARCHAR(64) NULL,
+                    next_path NVARCHAR(300) NULL,
+                    attempt_count INT NOT NULL CONSTRAINT DF_lotc_attempts DEFAULT 0,
+                    CONSTRAINT FK_lotc_user FOREIGN KEY (user_id) REFERENCES app_users(id)
+                )
+                """
+            )
+        )
+    else:
+        db.session.execute(
+            text(
+                """
+                CREATE TABLE login_otp_challenges (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL REFERENCES app_users(id),
+                    nonce VARCHAR(64) NOT NULL UNIQUE,
+                    code_hash VARCHAR(256) NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    consumed_at TIMESTAMP NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    client_ip VARCHAR(64) NULL,
+                    next_path VARCHAR(300) NULL,
+                    attempt_count INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+        )
+    if "mssql" in dialect:
+        for stmt in (
+            "CREATE NONCLUSTERED INDEX [ix_login_otp_challenges_user_id] "
+            "ON [dbo].[login_otp_challenges] ([user_id])",
+            "CREATE NONCLUSTERED INDEX [ix_login_otp_challenges_expires_at] "
+            "ON [dbo].[login_otp_challenges] ([expires_at])",
+            "CREATE NONCLUSTERED INDEX [ix_login_otp_challenges_consumed_at] "
+            "ON [dbo].[login_otp_challenges] ([consumed_at])",
+            "CREATE UNIQUE NONCLUSTERED INDEX [ix_login_otp_challenges_nonce] "
+            "ON [dbo].[login_otp_challenges] ([nonce])",
+        ):
+            try:
+                db.session.execute(text(stmt))
+            except Exception:
+                pass
+    else:
+        for stmt in (
+            "CREATE INDEX IF NOT EXISTS ix_login_otp_challenges_user_id ON login_otp_challenges (user_id);",
+            "CREATE INDEX IF NOT EXISTS ix_login_otp_challenges_expires_at ON login_otp_challenges (expires_at);",
+            "CREATE INDEX IF NOT EXISTS ix_login_otp_challenges_consumed_at ON login_otp_challenges (consumed_at);",
+        ):
+            try:
+                db.session.execute(text(stmt))
+            except Exception:
+                pass
     db.session.commit()
 
 

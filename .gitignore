@@ -31,7 +31,8 @@ static/assets/documents/
 # Flask runtime
 instance/
 .flaskenv.local
-migrations/
+migrations/versions/**
+!migrations/versions/9003a3ff088a_.py
 
 # Env / secrets
 .env

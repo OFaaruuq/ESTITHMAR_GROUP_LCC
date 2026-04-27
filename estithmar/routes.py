@@ -83,6 +83,7 @@ from estithmar.models import (
     InstallmentPlan,
     Investment,
     InvestmentProfitLog,
+    LoginOtpChallenge,
     Member,
     MemberDocument,
     PaymentBank,
@@ -1280,9 +1281,16 @@ def register_routes(app):
 
     @app.before_request
     def _require_login():
+        if request.endpoint == "login":
+            from estithmar.services import login_otp as _g_otp
+
+            if not current_user.is_authenticated and request.method == "GET" and _g_otp.has_pending_verification():
+                return redirect(url_for("login_verify"))
+            return
         if request.endpoint in (
             None,
-            "login",
+            "login_verify",
+            "login_abort_otp",
             "static",
             "admin_api_notifications_unread_count",
             "auth_recoverpw",
@@ -1290,6 +1298,10 @@ def register_routes(app):
         ):
             return
         if not current_user.is_authenticated:
+            from estithmar.services import login_otp as _nauth_otp
+
+            if _nauth_otp.has_pending_verification():
+                return redirect(url_for("login_verify"))
             return redirect(url_for("login", next=request.path))
 
     @app.before_request
@@ -1353,6 +1365,33 @@ def register_routes(app):
         except Exception:
             db.session.rollback()
 
+    def _complete_successful_portal_login(u: AppUser, nxt: str) -> Response:
+        """Set Flask-Login session, session log, and redirect after password + optional OTP OK."""
+        login_user(u)
+        now = datetime.utcnow()
+        u2 = db.session.get(AppUser, u.id) or u
+        u2.last_login_at = now
+        u2.last_seen_at = now
+        u2.last_seen_ip = _client_ip()
+        u2.last_seen_user_agent = _user_agent_short()
+        u2.session_version = int(getattr(u2, "session_version", 1) or 1)
+        ses = UserSessionLog(
+            user_id=u2.id,
+            login_at=now,
+            last_seen_at=now,
+            ip_address=_client_ip(),
+            user_agent=_user_agent_short(),
+        )
+        db.session.add(ses)
+        db.session.commit()
+        session["_presence_touch_ts"] = now.timestamp()
+        session["_sv"] = int(u2.session_version or 1)
+        session["_usid"] = int(ses.id)
+        nxt = (nxt or "").strip()
+        if nxt.startswith("/"):
+            return redirect(nxt)
+        return redirect(url_for("dashboard"))
+
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if current_user.is_authenticated:
@@ -1367,30 +1406,101 @@ def register_routes(app):
                 if not u and "@" in ident:
                     u = AppUser.query.filter(func.lower(AppUser.email) == ident.lower()).first()
             if u and u.is_active and check_password_hash(u.password_hash, password):
-                login_user(u)
-                now = datetime.utcnow()
-                u.last_login_at = now
-                u.last_seen_at = now
-                u.last_seen_ip = _client_ip()
-                u.last_seen_user_agent = _user_agent_short()
-                u.session_version = int(getattr(u, "session_version", 1) or 1)
-                ses = UserSessionLog(
-                    user_id=u.id,
-                    login_at=now,
-                    last_seen_at=now,
-                    ip_address=_client_ip(),
-                    user_agent=_user_agent_short(),
-                )
-                db.session.add(ses)
-                db.session.commit()
-                session["_presence_touch_ts"] = now.timestamp()
-                session["_sv"] = int(u.session_version or 1)
-                session["_usid"] = int(ses.id)
-                if nxt.startswith("/"):
-                    return redirect(nxt)
-                return redirect(url_for("dashboard"))
+                nxt2 = nxt if (nxt or "").strip().startswith("/") else ""
+                from estithmar.services import login_otp as _lotp
+
+                if _lotp.is_otp_required():
+                    ok, err = _lotp.start_challenge_for_user(
+                        u,
+                        nxt2,
+                        client_ip=_client_ip(),
+                    )
+                    if ok:
+                        flash("We sent a 6-digit sign-in code to your email. Enter it below to continue.", "info")
+                        return redirect(url_for("login_verify"))
+                    if err == "no_email":
+                        flash(
+                            "Two-step sign-in is on, but this user has no email on file. An administrator must add a valid email to the account (Users).",
+                            "danger",
+                        )
+                    elif err == "no_smtp":
+                        flash(
+                            "The sign-in code could not be sent: SMTP (email) is not configured. Ask an admin to set up Settings → Email & notifications.",
+                            "danger",
+                        )
+                    elif err == "send_failed":
+                        flash("We could not send the sign-in code. Try again in a few minutes or contact support.", "danger")
+                    return render_template("login.html", next=(nxt or ""))
+                return _complete_successful_portal_login(u, nxt2)
             flash("Invalid email/username or password.", "danger")
         return render_template("login.html", next=request.args.get("next", ""))
+
+    @app.route("/login/verify", methods=["GET", "POST"])
+    def login_verify():
+        from estithmar.services import login_otp as _lotp
+
+        if current_user.is_authenticated:
+            return redirect(url_for("dashboard"))
+        if not _lotp.has_pending_verification():
+            flash("Start sign-in on the main login page.", "warning")
+            return redirect(url_for("login"))
+        u_probe = None
+        nonce = session.get(_lotp.SESSION_NONCE_KEY)
+        if nonce:
+            r = (
+                db.session.query(LoginOtpChallenge, AppUser)
+                .join(AppUser, LoginOtpChallenge.user_id == AppUser.id)
+                .filter(LoginOtpChallenge.nonce == nonce, LoginOtpChallenge.consumed_at.is_(None))
+                .first()
+            )
+            if r:
+                u_probe = r[1]
+        if request.method == "POST":
+            if (request.form.get("action") or "").strip().lower() == "resend":
+                if not _lotp.can_resend_now():
+                    flash("Please wait a moment before requesting a new code.", "warning")
+                else:
+                    ok, err = _lotp.resend_from_session(_client_ip())
+                    if ok:
+                        _lotp.mark_resend_cooldown(45)
+                        flash("A new sign-in code was sent to your email.", "info")
+                    elif err in ("no_smtp", "send_failed"):
+                        flash("Could not resend the code. Try again or contact support.", "danger")
+                    else:
+                        flash("Could not resend the sign-in code. Return to the login page.", "warning")
+                return redirect(url_for("login_verify"))
+            raw = (request.form.get("otp") or "").strip()
+            u_ok, nxt_path, v_err = _lotp.verify_submitted_code(raw)
+            if u_ok is not None and v_err is None:
+                return _complete_successful_portal_login(u_ok, nxt_path)
+            v_err = v_err or "invalid"
+            if v_err in ("expired", "not_found", "session"):
+                flash("That sign-in request expired. Sign in again from the login page.", "warning")
+                return redirect(url_for("login"))
+            if v_err == "locked":
+                flash("Too many failed attempts. Sign in again from the login page.", "danger")
+                return redirect(url_for("login"))
+            if v_err == "user":
+                flash("That account is inactive or not found.", "danger")
+                return redirect(url_for("login"))
+            flash("The code is incorrect. Check the email and try again.", "danger")
+            return redirect(url_for("login_verify"))
+        masked = ""
+        if u_probe and (u_probe.email or "").strip():
+            em = (u_probe.email or "").strip()
+            if "@" in em:
+                a, b = em.split("@", 1)
+                a2 = (a[0] if a else "•") + "•••" if a else "•"
+                masked = f"{a2}@{b}"
+        return render_template("login_verify.html", masked_email=masked or "your account email")
+
+    @app.route("/login/abort-otp", methods=["GET", "POST"])
+    def login_abort_otp():
+        from estithmar.services import login_otp as _lotp
+
+        _lotp.clear_session()
+        flash("Sign-in was cancelled. You can start again from the login page.", "info")
+        return redirect(url_for("login"))
 
     def _unique_username_from_email(email: str) -> str:
         base = email.lower().strip()[:64]
@@ -1490,26 +1600,29 @@ def register_routes(app):
                 )
             except Exception:
                 pass
-            login_user(u)
-            now = datetime.utcnow()
-            u.last_login_at = now
-            u.last_seen_at = now
-            u.last_seen_ip = _client_ip()
-            u.last_seen_user_agent = _user_agent_short()
-            ses = UserSessionLog(
-                user_id=u.id,
-                login_at=now,
-                last_seen_at=now,
-                ip_address=_client_ip(),
-                user_agent=_user_agent_short(),
-            )
-            db.session.add(ses)
-            db.session.commit()
-            session["_presence_touch_ts"] = now.timestamp()
-            session["_sv"] = int(u.session_version or 1)
-            session["_usid"] = int(ses.id)
+            u = db.session.get(AppUser, u.id) or u
+            from estithmar.services import login_otp as _reg_otp
+
+            if _reg_otp.is_otp_required():
+                ok, oerr = _reg_otp.start_challenge_for_user(
+                    u, "/dashboard", client_ip=_client_ip()
+                )
+                if ok:
+                    flash("Account created. We emailed you a 6-digit sign-in code — use it on the next screen to open your member portal.", "info")
+                    return redirect(url_for("login_verify"))
+                if oerr == "no_email":
+                    flash("Your account is ready, but email-based sign-in codes require an address on the user account. Contact the office so an email can be added, then use sign-in again.", "warning")
+                elif oerr == "no_smtp":
+                    flash(
+                        "Account created, but the server is not set up to send sign-in codes (SMTP). An administrator must configure email under Settings before you can sign in with verification.",
+                        "danger",
+                    )
+                elif oerr == "send_failed":
+                    flash("We could not send the sign-in email. Please try again from the login page in a few minutes, or ask an admin to check SMTP settings.", "warning")
+                return redirect(url_for("login"))
+            r = _complete_successful_portal_login(u, "/dashboard")
             flash("Welcome — your member portal is ready.", "success")
-            return redirect(url_for("dashboard"))
+            return r
         return render_template("register.html")
 
     @app.route("/auth-recoverpw.html", methods=["GET", "POST"])
@@ -5497,6 +5610,7 @@ def register_routes(app):
             ex["notify_members_whatsapp"] = request.form.get("notify_members_whatsapp") == "1"
             ex["notify_agents_enabled"] = request.form.get("notify_agents_enabled") == "1"
             ex["notify_agent_kpi_on_payment"] = request.form.get("notify_agent_kpi_on_payment") == "1"
+            ex["require_login_otp"] = request.form.get("require_login_otp") == "1"
 
             s.set_extra(ex)
             db.session.commit()

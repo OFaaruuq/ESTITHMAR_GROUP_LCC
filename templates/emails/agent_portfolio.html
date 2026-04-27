@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="x-apple-disable-message-reformatting">
+  <title>{{ title|e }}</title>
+  <style type="text/css">
+    a { text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+  <!--[if mso]>
+  <style type="text/css">
+    table, td { border-collapse: collapse; mso-line-height-rule: exactly; }
+  </style>
+  <![endif]-->
+</head>
+<body style="margin:0;padding:0;background-color:#0a0f14;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">{{ org_name|e }} · {{ title|e }} for {{ agent_name|e }} — your latest team portfolio figures.</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:linear-gradient(180deg, #0a0f14 0%, #1a2332 40%, #e2e8f0 40%, #e2e8f0 100%);">
+    <tr>
+      <td align="center" style="padding:32px 14px 44px 14px;">
+        <table role="presentation" width="100%" style="max-width:640px;margin:0 auto;" cellspacing="0" cellpadding="0" border="0">
+
+          <tr>
+            <td style="background:linear-gradient(128deg, #0b1520 0%, #0f3d54 45%, #0a6b7d 100%);border-radius:16px 16px 0 0;overflow:hidden;padding:0;box-shadow:0 4px 24px rgba(0,0,0,0.25);">
+              <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="padding:24px 26px 20px 26px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td style="vertical-align:top;">
+                          {% if logo_src %}
+                          <img src="{{ logo_src|e }}" alt="{{ org_name|e }}" width="160" style="max-width:160px;height:auto;display:block;border:0;margin:0 0 10px 0;">
+                          {% else %}
+                          <p style="margin:0 0 6px 0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;color:#f8fafc;letter-spacing:-0.03em;">{{ org_name|e }}</p>
+                          {% endif %}
+                          <p style="margin:0;font-size:12px;font-weight:500;color:rgba(248,250,252,0.82);line-height:1.5;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:360px;">{{ org_subtitle|e }}</p>
+                        </td>
+                        <td style="text-align:right;vertical-align:top;white-space:nowrap;padding-left:12px;">
+                          <span style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:0.11em;text-transform:uppercase;color:#042f2e;background:linear-gradient(180deg, #5eead4 0%, #2dd4bf 100%);padding:9px 16px;border-radius:999px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;box-shadow:0 2px 8px rgba(45,212,191,0.35);">Portfolio &amp; KPIs</span>
+                        </td>
+                      </tr>
+                    </table>
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:18px;">
+                      <tr>
+                        <td style="padding:14px 16px;background:rgba(0,0,0,0.2);border-radius:10px;border:1px solid rgba(255,255,255,0.1);">
+                          <p style="margin:0;font-size:12px;font-weight:600;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+                            <span style="color:#e0f2fe;">{{ agent_name|e }}</span>
+                            <span style="color:#2dd4bf;">&nbsp;·&nbsp;</span>
+                            <span style="color:#94a3b8;font-size:11px;letter-spacing:0.04em;">{{ agent_code|e }}</span>
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="background:#ffffff;border:1px solid #cbd5e1;border-top:0;border-radius:0 0 16px 16px;box-shadow:0 12px 40px rgba(15,23,42,0.1);overflow:hidden;">
+              <table width="100%" cellspacing="0" cellpadding="0" border="0" style="line-height:0;">
+                <tr>
+                  <td style="height:4px;font-size:0;background:linear-gradient(90deg, #0d9488 0%, #0ea5e9 50%, #0d9488 100%);">&nbsp;</td>
+                </tr>
+              </table>
+              <div style="padding:0 0 4px 0;">
+
+                {% if payment_alert %}
+                <div style="margin:0 0 0 0;">
+                  <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(95deg, #ecfdf5 0%, #d1fae5 55%, #ecfeff 100%);border-bottom:1px solid #6ee7b7;" border="0">
+                    <tr>
+                      <td style="width:4px;background:#059669;font-size:0;">&nbsp;</td>
+                      <td style="padding:18px 20px 18px 16px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+                        <p style="margin:0 0 6px 0;font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#047857;">New payment</p>
+                        <p style="margin:0;font-size:16px;font-weight:700;color:#0f172a;line-height:1.45;">{{ (payment_alert.get('line') or '')|e }}</p>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                {% endif %}
+
+                <div style="padding:26px 24px 8px 24px;">
+                  <table cellspacing="0" cellpadding="0" border="0" style="margin-bottom:14px;">
+                    <tr>
+                      <td style="padding-right:10px;vertical-align:middle;">
+                        <span style="display:block;width:4px;height:28px;background:linear-gradient(180deg, #0d9488, #0ea5e9);border-radius:2px;">&nbsp;</span>
+                      </td>
+                      <td style="vertical-align:middle;">
+                        <p style="margin:0 0 2px 0;font-size:10px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#94a3b8;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Analytics</p>
+                        <h1 style="margin:0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:800;color:#0f172a;letter-spacing:-0.03em;">{{ title|e }}</h1>
+                      </td>
+                    </tr>
+                  </table>
+                  <div style="font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#334155;border-left:3px solid #14b8a6;border-radius:0 0 0 4px;padding:4px 0 4px 16px;background:linear-gradient(90deg, rgba(20,184,166,0.06) 0%, #ffffff 100%);">
+                    {% for line in intro.split('\n') %}
+                      {% if line.strip() %}
+                        <p style="margin:0 0 10px 0;">{{ line|e }}</p>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <div style="padding:4px 24px 0 24px;">
+                  <table width="100%" cellspacing="0" cellpadding="0" style="margin:4px 0 14px 0;" border="0">
+                    <tr>
+                      <td style="height:1px;background:#e2e8f0;font-size:0;line-height:0;">&nbsp;</td>
+                    </tr>
+                  </table>
+                  <p style="margin:0 0 14px 0;font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#475569;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Key figures</p>
+                </div>
+
+                <div style="padding:0 20px 4px 20px;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                    <tr>
+                      <td width="33.33%" style="width:33.33%;padding:0 5px 10px 0;vertical-align:top;">
+                        <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,0.06);" border="0">
+                          <tr>
+                            <td style="width:5px;background:#0ea5e9;line-height:0;font-size:0;">&nbsp;</td>
+                            <td style="padding:14px 12px 16px 12px;">
+                              <p style="margin:0 0 4px 0;font-size:9px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#0369a1;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Subscribed</p>
+                              <p style="margin:0;font-size:18px;font-weight:800;letter-spacing:-0.02em;color:#0c4a6e;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.2;">{{ subscribed|e }}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                      <td width="33.33%" style="width:33.33%;padding:0 3px 10px 3px;vertical-align:top;">
+                        <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);border:1px solid #bbf7d0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(22,101,52,0.08);" border="0">
+                          <tr>
+                            <td style="width:5px;background:#22c55e;line-height:0;font-size:0;">&nbsp;</td>
+                            <td style="padding:14px 12px 16px 12px;">
+                              <p style="margin:0 0 4px 0;font-size:9px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#166534;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Collected (net)</p>
+                              <p style="margin:0;font-size:18px;font-weight:800;letter-spacing:-0.02em;color:#14532d;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.2;">{{ collected|e }}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                      <td width="33.33%" style="width:33.33%;padding:0 0 10px 5px;vertical-align:top;">
+                        <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);border:1px solid #fde68a;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(161,98,7,0.08);" border="0">
+                          <tr>
+                            <td style="width:5px;background:#f59e0b;line-height:0;font-size:0;">&nbsp;</td>
+                            <td style="padding:14px 12px 16px 12px;">
+                              <p style="margin:0 0 4px 0;font-size:9px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#a16207;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Outstanding</p>
+                              <p style="margin:0;font-size:18px;font-weight:800;letter-spacing:-0.02em;color:#78350f;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.2;">{{ outstanding|e }}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                    <tr>
+                      <td width="50%" style="width:50%;padding:0 5px 0 0;vertical-align:top;">
+                        <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(15,23,42,0.06);" border="0">
+                          <tr>
+                            <td style="width:5px;background:#8b5cf6;line-height:0;font-size:0;">&nbsp;</td>
+                            <td style="padding:14px 12px 16px 12px;">
+                              <p style="margin:0 0 4px 0;font-size:9px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Fully paid value</p>
+                              <p style="margin:0;font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.2;">{{ fully_paid_value|e }}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                      <td width="50%" style="width:50%;padding:0 0 0 5px;vertical-align:top;">
+                        <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%);border:1px solid #fed7aa;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(194,65,12,0.08);" border="0">
+                          <tr>
+                            <td style="width:5px;background:#ea580c;line-height:0;font-size:0;">&nbsp;</td>
+                            <td style="padding:14px 12px 16px 12px;">
+                              <p style="margin:0 0 4px 0;font-size:9px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#c2410c;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Installments (open + overdue)</p>
+                              <p style="margin:0;font-size:18px;font-weight:800;letter-spacing:-0.02em;color:#7c2d12;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.2;">{{ install_open|e }}{% if (install_overdue|default(0) | int) > 0 %}<br><span style="font-size:12px;font-weight:600;color:#9a3412;">{{ install_overdue|e }} overdue</span>{% endif %}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+
+                <div style="padding:8px 24px 0 24px;">
+                  <table width="100%" cellspacing="0" cellpadding="0" style="margin:8px 0 16px 0;" border="0">
+                    <tr>
+                      <td style="height:1px;background:#e2e8f0;font-size:0;line-height:0;">&nbsp;</td>
+                    </tr>
+                  </table>
+                  <p style="margin:0 0 3px 0;font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#475569;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Subscription pipeline</p>
+                  <p style="margin:0 0 14px 0;font-size:13px;font-weight:500;color:#64748b;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Proportion of subscriptions by status for your team.</p>
+                  {% if bar_has_data %}
+                  <table width="100%" cellspacing="0" cellpadding="0" style="border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:inset 0 1px 2px rgba(255,255,255,0.8), 0 2px 6px rgba(15,23,42,0.05);" border="0">
+                    <tr>
+                      <td style="height:22px;font-size:0;line-height:0;width:{{ bar_w1 }}%;min-width:4px;background:#c2410c;">&nbsp;</td>
+                      <td style="height:22px;font-size:0;line-height:0;width:{{ bar_w2 }}%;min-width:4px;background:#1d4ed8;">&nbsp;</td>
+                      <td style="height:22px;font-size:0;line-height:0;width:{{ bar_w3 }}%;min-width:4px;background:#0f766e;">&nbsp;</td>
+                    </tr>
+                  </table>
+                  <p style="margin:10px 0 0 0;font-size:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#94a3b8;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Amber: Pending &nbsp;·&nbsp; Blue: Partial &nbsp;·&nbsp; Teal: Fully paid</p>
+                  {% else %}
+                  <p style="margin:0 0 10px 0;padding:14px 16px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;font-size:14px;color:#64748b;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">No open subscriptions in this view.</p>
+                  {% endif %}
+
+                  <table width="100%" cellspacing="0" cellpadding="0" style="margin:18px 0 0 0;border-collapse:collapse;" border="0">
+                    <tr>
+                      <td width="50%" style="width:50%;padding:0 4px 8px 0;vertical-align:top;">
+                        <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #fffbeb, #fff7ed);border:1px solid #fde68a;border-radius:10px;box-shadow:0 1px 4px rgba(180,83,9,0.08);" border="0">
+                          <tr>
+                            <td style="width:32px;padding:12px 0 12px 12px;vertical-align:middle;">
+                              <table cellspacing="0" cellpadding="0" border="0"><tr><td style="width:10px;height:10px;background:#c2410c;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+                            </td>
+                            <td style="padding:12px 12px 12px 0;vertical-align:middle;font-size:13px;font-weight:700;color:#78350f;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Pending <span style="color:#0f172a;font-size:16px;">{{ sc_pending|e }}</span></td>
+                          </tr>
+                        </table>
+                      </td>
+                      <td width="50%" style="width:50%;padding:0 0 8px 4px;vertical-align:top;">
+                        <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #eff6ff, #e0f2fe);border:1px solid #7dd3fc;border-radius:10px;box-shadow:0 1px 4px rgba(30,64,175,0.1);" border="0">
+                          <tr>
+                            <td style="width:32px;padding:12px 0 12px 12px;vertical-align:middle;">
+                              <table cellspacing="0" cellpadding="0" border="0"><tr><td style="width:10px;height:10px;background:#1d4ed8;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+                            </td>
+                            <td style="padding:12px 12px 12px 0;vertical-align:middle;font-size:13px;font-weight:700;color:#1e3a8a;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Partially paid <span style="color:#0f172a;font-size:16px;">{{ sc_partial|e }}</span></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td width="50%" style="width:50%;padding:0 4px 0 0;vertical-align:top;">
+                        <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #ecfdf5, #d1fae5);border:1px solid #6ee7b7;border-radius:10px;box-shadow:0 1px 4px rgba(5,95,60,0.1);" border="0">
+                          <tr>
+                            <td style="width:32px;padding:12px 0 12px 12px;vertical-align:middle;">
+                              <table cellspacing="0" cellpadding="0" border="0"><tr><td style="width:10px;height:10px;background:#0f766e;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+                            </td>
+                            <td style="padding:12px 12px 12px 0;vertical-align:middle;font-size:13px;font-weight:700;color:#065f46;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Fully paid <span style="color:#0f172a;font-size:16px;">{{ sc_fully|e }}</span></td>
+                          </tr>
+                        </table>
+                      </td>
+                      <td width="50%" style="width:50%;padding:0 0 0 4px;vertical-align:top;">
+                        <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #f1f5f9, #e2e8f0);border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 1px 4px rgba(51,65,85,0.1);" border="0">
+                          <tr>
+                            <td style="width:32px;padding:12px 0 12px 12px;vertical-align:middle;">
+                              <table cellspacing="0" cellpadding="0" border="0"><tr><td style="width:10px;height:10px;background:#64748b;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+                            </td>
+                            <td style="padding:12px 12px 12px 0;vertical-align:middle;font-size:13px;font-weight:700;color:#475569;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Cancelled <span style="color:#0f172a;font-size:16px;">{{ sc_cancelled|e }}</span></td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+
+                <div style="padding:0 24px 0 24px;">
+                <table width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0 12px 0;" border="0">
+                  <tr>
+                    <td style="height:1px;background:#e2e8f0;font-size:0;line-height:0;">&nbsp;</td>
+                  </tr>
+                </table>
+                <p style="margin:0 0 14px 0;font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#475569;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Snapshot</p>
+                <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;" border="0">
+                  <tr>
+                    <td width="50%" style="width:50%;padding:0 4px 8px 0;vertical-align:top;">
+                      <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #f8fafc, #ffffff);border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 5px rgba(15,23,42,0.06);" border="0">
+                        <tr>
+                          <td style="padding:14px 16px;">
+                            <p style="margin:0 0 3px 0;font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#94a3b8;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Active / total members</p>
+                            <p style="margin:0;font-size:17px;font-weight:800;color:#0f172a;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;letter-spacing:-0.02em;">{{ members_active|e }} <span style="color:#cbd5e1;font-weight:500;">/</span> {{ members_total|e }}</p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td width="50%" style="width:50%;padding:0 0 8px 4px;vertical-align:top;">
+                      <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #ffffff, #f8fafc);border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 5px rgba(15,23,42,0.06);" border="0">
+                        <tr>
+                          <td style="padding:14px 16px;">
+                            <p style="margin:0 0 3px 0;font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#94a3b8;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Payment receipts (count)</p>
+                            <p style="margin:0;font-size:17px;font-weight:800;color:#0f172a;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;letter-spacing:-0.02em;">{{ receipts_count|e }}</p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td width="50%" style="width:50%;padding:0 4px 0 0;vertical-align:top;">
+                      <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #f8fafc, #ffffff);border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 5px rgba(15,23,42,0.06);" border="0">
+                        <tr>
+                          <td style="padding:14px 16px;">
+                            <p style="margin:0 0 3px 0;font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#94a3b8;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Confirmed (issue-ready)</p>
+                            <p style="margin:0;font-size:17px;font-weight:800;color:#0f172a;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;letter-spacing:-0.02em;">{{ confirmed|e }}</p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td width="50%" style="width:50%;padding:0 0 0 4px;vertical-align:top;">
+                      <table width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg, #fffbeb, #ffffff);border:1px solid #fde68a;border-radius:10px;box-shadow:0 1px 5px rgba(15,23,42,0.05);" border="0">
+                        <tr>
+                          <td style="padding:14px 16px;">
+                            <p style="margin:0 0 3px 0;font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#94a3b8;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Certificates issued / pending</p>
+                            <p style="margin:0;font-size:17px;font-weight:800;color:#0f172a;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;letter-spacing:-0.02em;">{{ certs_issued|e }} <span style="color:#cbd5e1;">/</span> <span style="color:#b45309;">{{ certs_pending|e }} pending</span></p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+                </div>
+
+                {% if cta_url and cta_label %}
+                <div style="padding:24px 24px 8px 24px;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                    <tr>
+                      <td align="center">
+                        <table cellspacing="0" cellpadding="0" border="0" style="box-shadow:0 6px 20px rgba(15,118,110,0.4);">
+                          <tr>
+                            <td style="border-radius:12px;background:linear-gradient(180deg, #0d9488 0%, #0f766e 100%);">
+                              <a href="{{ cta_url|e }}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff !important;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;letter-spacing:0.01em;">{{ cta_label|e }}</a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                {% endif %}
+
+                <p style="margin:20px 24px 24px 24px;padding:14px 16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;font-size:12px;color:#64748b;line-height:1.6;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">Figures are generated on send from the Estithmar platform. <strong style="color:#475569;">Net collection</strong> includes posted receipts and any reversal lines in the system.</p>
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 8px 12px 8px;">
+              <p style="margin:0;font-size:12px;color:#64748b;text-align:center;line-height:1.55;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">This message was sent automatically. For support, contact your administrator.</p>
+              {% if footer_address %}
+              <p style="margin:8px 0 0 0;font-size:11px;color:#94a3b8;text-align:center;line-height:1.45;max-width:400px;margin-left:auto;margin-right:auto;">{{ footer_address|e }}</p>
+              {% endif %}
+              <p style="margin:10px 0 0 0;font-size:11px;color:#94a3b8;text-align:center;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">© {{ org_name|e }}</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

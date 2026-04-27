@@ -6,9 +6,13 @@ import os
 import re
 from urllib.parse import urlparse
 
+import logging
+
 from flask import current_app, has_request_context, render_template, request, url_for
 
 from estithmar.models import get_or_create_settings
+
+_log = logging.getLogger(__name__)
 
 # HTML reference must match the Content-ID set in :func:`estithmar.services.notifications.send_email`
 ESTITHMAR_EMAIL_LOGO_CID = "estithmar-logo"
@@ -158,6 +162,7 @@ def try_render_transactional(**kwargs) -> str | None:
     try:
         return render_transactional_email(**kwargs)
     except Exception:
+        _log.exception("Failed to render transactional email template")
         return None
 
 

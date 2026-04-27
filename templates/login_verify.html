@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Sign-in code | Estithmar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='assets/images/favicon.ico') }}">
+    <script src="{{ url_for('static', filename='assets/js/layout.js') }}"></script>
+    <link href="{{ url_for('static', filename='assets/css/bootstrap.min.css') }}" rel="stylesheet" type="text/css" />
+    <link href="{{ url_for('static', filename='assets/css/icons.min.css') }}" rel="stylesheet" type="text/css" />
+    <link href="{{ url_for('static', filename='assets/css/app.min.css') }}" rel="stylesheet" type="text/css" />
+</head>
+<body>
+    <div class="auth-maintenance d-flex align-items-center min-vh-100">
+        <div class="bg-overlay bg-light"></div>
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-md-10">
+                    <div class="auth-full-page-content d-flex min-vh-100 py-sm-5 py-4">
+                        <div class="w-100">
+                            <div class="d-flex flex-column h-100 py-0 py-xl-3">
+                                <div class="text-center mb-4">
+                                    <a href="{{ url_for('login') }}">
+                                        <img src="{{ brand_logo_dark_lg }}" alt="" height="22" class="auth-logo logo-dark mx-auto">
+                                        <img src="{{ brand_logo_light_lg }}" alt="" height="22" class="auth-logo logo-light mx-auto">
+                                    </a>
+                                    <p class="text-muted mt-2">Two-step sign-in</p>
+                                </div>
+                                <div class="card my-auto overflow-hidden">
+                                    <div class="row g-0">
+                                        <div class="col-lg-6">
+                                            <div class="bg-overlay bg-primary"></div>
+                                            <div class="h-100 bg-auth align-items-end"></div>
+                                        </div>
+                                        <div class="col-lg-6">
+                                            <div class="p-lg-5 p-4">
+                                                <div class="text-center mt-1">
+                                                    <h4 class="font-size-18">Enter sign-in code</h4>
+                                                    <p class="text-muted">We sent a 6-digit code to <span class="fw-medium text-body">{{ masked_email }}</span></p>
+                                                </div>
+                                                {% with messages = get_flashed_messages(with_categories=true) %}
+                                                    {% if messages %}
+                                                        {% for category, message in messages %}
+                                                            <div class="alert alert-{{ category }} mt-3">{{ message }}</div>
+                                                        {% endfor %}
+                                                    {% endif %}
+                                                {% endwith %}
+                                                <form method="post" action="{{ url_for('login_verify') }}" class="mt-3">
+                                                    <div class="mb-3">
+                                                        <label for="otp-input" class="form-label">6-digit code</label>
+                                                        <input type="text" name="otp" id="otp-input" class="form-control form-control-lg text-center font-monospace letter-spacing-1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="8" placeholder="000000" required>
+                                                    </div>
+                                                    <div class="d-grid">
+                                                        <button class="btn btn-primary" type="submit">Verify &amp; continue</button>
+                                                    </div>
+                                                </form>
+                                                <form method="post" action="{{ url_for('login_verify') }}" class="mt-2">
+                                                    <input type="hidden" name="action" value="resend">
+                                                    <div class="d-grid">
+                                                        <button class="btn btn-link btn-sm" type="submit">Resend code</button>
+                                                    </div>
+                                                </form>
+                                                <p class="text-center mt-3 mb-0 small">
+                                                    <a href="{{ url_for('login_abort_otp') }}" class="text-muted">Cancel and return to login</a>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-5 text-center">
+                                    <p class="mb-0 text-muted small">&copy; Estithmar</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='assets/libs/jquery/jquery.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='assets/libs/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+    <script>
+    (function(){
+        var i = document.getElementById('otp-input');
+        if (i) { i.focus(); i.addEventListener('input', function(){ this.value = this.value.replace(/[^0-9]/g,'').slice(0,6); }); }
+    })();
+    </script>
+</body>
+</html>

@@ -8,6 +8,7 @@ from flask import current_app, url_for
 
 from estithmar import db
 from estithmar.models import Agent, Contribution, Member, get_or_create_settings
+from estithmar.services.agent_email_html import try_render_agent_portfolio_html
 from estithmar.services.agent_kpi import compute_agent_kpis
 from estithmar.services.email_html import try_render_transactional
 from estithmar.services.notifications import mail_configured, send_email_with_retry
@@ -134,6 +135,10 @@ def send_agent_portfolio_email(
         return False
     k = compute_agent_kpis(agent.id)
     if not k:
+        if current_app:
+            current_app.logger.warning(
+                "Agent portfolio email skipped: empty KPI (agent_id=%s)", agent.id
+            )
         return False
     sym, cur = k["currency_symbol"], k["currency_code"]
     lead = (extra_lead or "").strip() or "Your latest portfolio numbers are below."
@@ -144,14 +149,30 @@ def send_agent_portfolio_email(
         dash = url_for("dashboard", _external=True)
     except Exception:
         pass
-    html = try_render_transactional(
-        audience="Agent",
+    intro = f"Hello {agent.full_name},\n\n{lead}"
+    html = try_render_agent_portfolio_html(
+        k,
+        agent,
         title="Portfolio & KPIs",
-        intro=(f"Hello {agent.full_name},\n\n{lead}"),
-        detail_rows=_kpi_rows(k),
+        intro=intro,
         cta_url=dash,
         cta_label="Open dashboard" if dash else None,
+        payment_alert=None,
     )
+    if not html:
+        html = try_render_transactional(
+            audience="Agent",
+            title="Portfolio & KPIs",
+            intro=intro,
+            detail_rows=_kpi_rows(k),
+            cta_url=dash,
+            cta_label="Open dashboard" if dash else None,
+        )
+    if not html and current_app:
+        current_app.logger.warning(
+            "Agent portfolio email: no HTML part after fallbacks (plain text only), agent_id=%s",
+            agent.id,
+        )
     ok, err = send_email_with_retry(
         to,
         subj,
@@ -188,28 +209,48 @@ def notify_agent_on_member_payment(contribution: Contribution, member: Member) -
     sym = settings.currency_symbol or "$"
     cur = settings.currency_code or "USD"
     amt = contribution.amount or Decimal("0")
-    lead = (
-        f"New payment recorded: {member.full_name or member.member_id_display} — "
-        f"{_fmt(sym, cur, amt)} (Receipt: {contribution.receipt_no or contribution.id}, date {contribution.date}).\n\n"
-        f"Current portfolio snapshot:"
+    mname = member.full_name or member.member_id_display
+    pay_line = (
+        f"{mname} · {_fmt(sym, cur, amt)} · "
+        f"Receipt {contribution.receipt_no or contribution.id} · {contribution.date}"
     )
+    long_lead = "Totals below are current as of this message (the highlight shows the new payment). Your portfolio includes all assigned members."
     subj = f"Payment: {sym}{amt:,.2f} {cur} — {a.agent_id}"
     plain = _plain_body(
-        a, k, f"New member payment (receipt {contribution.receipt_no or contribution.id})", lead
+        a,
+        k,
+        f"New member payment (receipt {contribution.receipt_no or contribution.id})",
+        f"{pay_line}\n\n{long_lead}",
     )
     dash = None
     try:
         dash = url_for("dashboard", _external=True)
     except Exception:
         pass
-    html = try_render_transactional(
-        audience="Agent",
+    intro2 = f"Hello {a.full_name},\n\n{long_lead}"
+    html = try_render_agent_portfolio_html(
+        k,
+        a,
         title="Member payment & portfolio",
-        intro=f"Hello {a.full_name},\n\n{lead}",
-        detail_rows=_kpi_rows(k),
+        intro=intro2,
         cta_url=dash,
         cta_label="Open dashboard" if dash else None,
+        payment_alert={"line": pay_line},
     )
+    if not html:
+        html = try_render_transactional(
+            audience="Agent",
+            title="Member payment & portfolio",
+            intro=intro2,
+            detail_rows=_kpi_rows(k),
+            cta_url=dash,
+            cta_label="Open dashboard" if dash else None,
+        )
+    if not html and current_app:
+        current_app.logger.warning(
+            "Agent payment email: no HTML part after fallbacks (plain text only), agent_id=%s",
+            a.id,
+        )
     try:
         ok, err = send_email_with_retry(
             to,

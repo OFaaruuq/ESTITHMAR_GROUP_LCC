@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 
 from estithmar import db
 from estithmar.models import (
@@ -19,6 +21,8 @@ from estithmar.models import (
     get_or_create_settings,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def compute_agent_kpis(agent_id: int) -> dict:
     """
@@ -28,7 +32,14 @@ def compute_agent_kpis(agent_id: int) -> dict:
     a = db.session.get(Agent, agent_id)
     if not a:
         return {}
+    try:
+        return _compute_agent_kpis_for_agent(a, agent_id)
+    except Exception:
+        logger.exception("compute_agent_kpis failed (agent_id=%s)", agent_id)
+        return {}
 
+
+def _compute_agent_kpis_for_agent(a: Agent, agent_id: int) -> dict:
     settings = get_or_create_settings()
     sym = settings.currency_symbol or "$"
     cur = settings.currency_code or "USD"
@@ -66,7 +77,8 @@ def compute_agent_kpis(agent_id: int) -> dict:
     subs: list[ShareSubscription] = []
     if mids:
         subs = (
-            ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id)
+            ShareSubscription.query.options(joinedload(ShareSubscription.certificate))
+            .join(Member, ShareSubscription.member_id == Member.id)
             .filter(Member.agent_id == agent_id)
             .all()
         )
