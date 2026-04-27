@@ -16,7 +16,7 @@
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
                 <h6 class="text-muted text-uppercase small">Status</h6>
-                <p class="mb-0">Automated posting is <strong>{% if accounting_on %}enabled{% else %}disabled{% endif %}</strong>. {% if current_user.role == 'admin' %}Change in <a href="{{ url_for('accounting_settings') }}">Account settings</a> or <a href="{{ url_for('settings_page') }}">Organization settings</a>.{% elif current_user.role == 'operator' %}Adjust fiscal options in <a href="{{ url_for('accounting_settings') }}">Account settings</a>; currency and policies in <a href="{{ url_for('settings_page') }}">Organization settings</a>.{% else %}See <a href="{{ url_for('accounting_settings') }}">Account settings</a>.{% endif %}</p>
+                <p class="mb-0">Automated posting is <strong>{% if accounting_on %}enabled{% else %}disabled{% endif %}</strong>. {% if current_user.role == 'admin' %}Change in <a href="{{ url_for('accounting_settings') }}">Account settings</a> or <a href="{{ url_for('settings_page') }}">Organization settings</a>.{% elif current_user.role in ('operator', 'finance') %}Adjust fiscal options in <a href="{{ url_for('accounting_settings') }}">Account settings</a>; currency and policies in <a href="{{ url_for('settings_page') }}">Organization settings</a>.{% else %}See <a href="{{ url_for('accounting_settings') }}">Account settings</a>.{% endif %}</p>
             </div>
         </div>
     </div>

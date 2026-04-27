@@ -49,7 +49,7 @@
                             {% for inv, amt in by_investment_rows %}
                             <tr>
                                 <td>
-                                    {% if current_user.role in ('admin', 'operator') %}
+                                    {% if current_user.role in ('admin', 'operator', 'finance') %}
                                     <a href="{{ url_for('investments_edit', id=inv.id) }}">{{ inv.name }}</a>
                                     {% else %}
                                     <a href="{{ url_for('investments_profile', id=inv.id) }}">{{ inv.name }}</a>

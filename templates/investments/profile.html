@@ -202,7 +202,7 @@
 </div>
 {% endif %}
 
-{% if current_user.role in ('admin', 'operator') %}
+{% if current_user.role in ('admin', 'operator', 'finance') %}
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h5 class="card-title mb-0"><i class="ri-book-2-line me-2 text-primary"></i>Financial snapshots (ledger)</h5>
@@ -350,7 +350,7 @@
 <div class="card mb-3">
     <div class="card-header py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <h5 class="card-title mb-0"><i class="ri-share-forward-line me-2 text-success"></i>Profit distribution batches</h5>
-        {% if current_user.role in ('admin', 'operator') %}
+        {% if current_user.role in ('admin', 'operator', 'finance') %}
         <a href="{{ url_for('profit_history') }}" class="btn btn-sm btn-outline-secondary">Full history</a>
         {% endif %}
     </div>
@@ -374,7 +374,7 @@
                         <td class="text-end text-nowrap small">{{ settings.currency_symbol }}{{ b.total_profit_input|money }}</td>
                         <td class="text-end text-nowrap small text-success">{{ settings.currency_symbol }}{{ b.total_profit_distributed|money }}</td>
                         <td class="text-end text-nowrap">
-                            {% if current_user.role in ('admin', 'operator') %}
+                            {% if current_user.role in ('admin', 'operator', 'finance') %}
                             <a href="{{ url_for('profit_batch_detail', batch_id=b.id) }}" class="btn btn-sm btn-outline-primary py-0">Details</a>
                             {% else %}
                             <span class="text-muted small">—</span>
@@ -429,7 +429,7 @@
 
 <div class="d-flex flex-wrap gap-2 align-items-center">
     <a href="{{ url_for('investments_list') }}" class="btn btn-soft-secondary btn-sm"><i class="ri-arrow-left-line me-1"></i>All investments</a>
-    {% if can_delete and current_user.role == 'admin' %}
+    {% if can_delete and has_permission('investments.delete') %}
     <form method="post" action="{{ url_for('investments_delete', id=investment.id) }}" class="d-inline ms-auto" onsubmit="return confirm('Delete this investment? This cannot be undone.');">
         <button type="submit" class="btn btn-outline-danger btn-sm">Delete investment</button>
     </form>

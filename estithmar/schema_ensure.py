@@ -108,6 +108,7 @@ def ensure_app_schema() -> None:
     _ensure_member_documents_table(engine, dialect, insp)
     _ensure_payment_options_schema(engine, dialect)
     _ensure_finops_extensions_schema(engine, dialect)
+    _ensure_rbac_schema(engine, dialect, insp)
 
 
 def _ensure_payment_options_schema(engine, dialect: str) -> None:
@@ -728,3 +729,190 @@ def _ensure_finops_extensions_schema(engine, dialect: str) -> None:
             )
         db.session.execute(text("CREATE INDEX ix_agent_country_regions_country_name ON agent_country_regions (country_name)"))
         db.session.commit()
+
+
+def _ensure_rbac_schema(engine, dialect: str, insp) -> None:
+    """Permission catalog, role defaults, per-user grants, and ``is_superuser`` for full override."""
+
+    def _has_table(name: str) -> bool:
+        try:
+            return insp.has_table(name)
+        except Exception:
+            return False
+
+    def _has_col(table: str, col: str) -> bool:
+        try:
+            return any(c.get("name") == col for c in insp.get_columns(table))
+        except Exception:
+            return False
+
+    if _has_table("app_users") and not _has_col("app_users", "is_superuser"):
+        if dialect == "postgresql":
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN is_superuser BOOLEAN NOT NULL DEFAULT false"))
+        elif "mssql" in dialect:
+            db.session.execute(text("ALTER TABLE app_users ADD is_superuser BIT NOT NULL CONSTRAINT DF_app_users_su DEFAULT 0"))
+        else:
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN is_superuser INTEGER NOT NULL DEFAULT 0"))
+        db.session.commit()
+        try:
+            db.session.execute(text("UPDATE app_users SET is_superuser = 1 WHERE role = 'admin' OR role = 'administrator'"))
+        except Exception:
+            db.session.execute(
+                text("UPDATE app_users SET is_superuser = 1 WHERE role = 'admin'")
+            )  # sqlite
+        try:
+            db.session.execute(
+                text("UPDATE app_users SET is_superuser = 1 WHERE LOWER(role) = 'admin'")
+            )
+        except Exception:
+            pass
+        db.session.commit()
+        insp = inspect(engine)
+
+    if not _has_table("permission_definitions"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE permission_definitions (
+                        id SERIAL PRIMARY KEY,
+                        key VARCHAR(100) NOT NULL UNIQUE,
+                        label VARCHAR(200) NOT NULL,
+                        description TEXT,
+                        sort_order INTEGER NOT NULL DEFAULT 0,
+                        is_active BOOLEAN NOT NULL DEFAULT true,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE permission_definitions (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        key NVARCHAR(100) NOT NULL UNIQUE,
+                        label NVARCHAR(200) NOT NULL,
+                        description NVARCHAR(MAX) NULL,
+                        sort_order INT NOT NULL CONSTRAINT DF_pd_sort DEFAULT 0,
+                        is_active BIT NOT NULL CONSTRAINT DF_pd_active DEFAULT 1,
+                        created_at DATETIME2 NOT NULL CONSTRAINT DF_pd_created DEFAULT SYSUTCDATETIME()
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE permission_definitions (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        key VARCHAR(100) NOT NULL UNIQUE,
+                        label VARCHAR(200) NOT NULL,
+                        description TEXT,
+                        sort_order INTEGER NOT NULL DEFAULT 0,
+                        is_active INTEGER NOT NULL DEFAULT 1,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        db.session.execute(text("CREATE INDEX ix_pd_key ON permission_definitions (key)"))
+        db.session.commit()
+
+    if not _has_table("role_default_permissions"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE role_default_permissions (
+                        id SERIAL PRIMARY KEY,
+                        role VARCHAR(32) NOT NULL,
+                        permission_id INTEGER NOT NULL REFERENCES permission_definitions(id) ON DELETE CASCADE,
+                        CONSTRAINT uq_rdp_role_perm UNIQUE (role, permission_id)
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE role_default_permissions (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        role NVARCHAR(32) NOT NULL,
+                        permission_id INT NOT NULL,
+                        CONSTRAINT uq_rdp_role_perm UNIQUE (role, permission_id),
+                        CONSTRAINT FK_rdp_pd FOREIGN KEY (permission_id) REFERENCES permission_definitions(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE role_default_permissions (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        role VARCHAR(32) NOT NULL,
+                        permission_id INTEGER NOT NULL REFERENCES permission_definitions(id) ON DELETE CASCADE,
+                        CONSTRAINT uq_rdp_role_perm UNIQUE (role, permission_id)
+                    )
+                    """
+                )
+            )
+        db.session.execute(text("CREATE INDEX ix_rdp_role ON role_default_permissions (role)"))
+        db.session.commit()
+
+    if not _has_table("user_granted_permissions"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE user_granted_permissions (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+                        permission_id INTEGER NOT NULL REFERENCES permission_definitions(id) ON DELETE CASCADE,
+                        CONSTRAINT uq_ugp_user_perm UNIQUE (user_id, permission_id)
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE user_granted_permissions (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        user_id INT NOT NULL,
+                        permission_id INT NOT NULL,
+                        CONSTRAINT uq_ugp_user_perm UNIQUE (user_id, permission_id),
+                        CONSTRAINT FK_ugp_user FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE,
+                        CONSTRAINT FK_ugp_pd FOREIGN KEY (permission_id) REFERENCES permission_definitions(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE user_granted_permissions (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+                        permission_id INTEGER NOT NULL REFERENCES permission_definitions(id) ON DELETE CASCADE,
+                        CONSTRAINT uq_ugp_user_perm UNIQUE (user_id, permission_id)
+                    )
+                    """
+                )
+            )
+        db.session.execute(text("CREATE INDEX ix_ugp_user_id ON user_granted_permissions (user_id)"))
+        db.session.commit()
+
+    from estithmar.rbac import ensure_rbac_seed
+
+    try:
+        ensure_rbac_seed()
+    except Exception:
+        db.session.rollback()

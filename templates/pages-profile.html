@@ -61,6 +61,8 @@
                 <span class="badge rounded-pill text-bg-danger">Administrator</span>
                 {% elif user.role == 'operator' %}
                 <span class="badge rounded-pill text-bg-primary">Operator</span>
+                {% elif user.role == 'finance' %}
+                <span class="badge rounded-pill text-bg-info">Finance</span>
                 {% elif user.role == 'agent' %}
                 <span class="badge rounded-pill text-bg-secondary">Agent user</span>
                 {% endif %}
@@ -166,7 +168,7 @@
                     <a href="{{ url_for('investments_list') }}" class="btn btn-sm btn-light border text-start"><i class="ri-line-chart-line me-2 text-primary"></i>Investments</a>
                     <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-light border text-start"><i class="ri-file-chart-line me-2 text-primary"></i>Reports</a>
                     {% endif %}
-                    {% if current_user.role in ('admin', 'operator') %}
+                    {% if current_user.role in ('admin', 'operator', 'finance') %}
                     <a href="{{ url_for('settings_page') }}" class="btn btn-sm btn-light border text-start"><i class="ri-settings-3-line me-2 text-primary"></i>System settings</a>
                     {% endif %}
                     {% if current_user.role == 'admin' %}

@@ -69,6 +69,14 @@
     <div class="col-6 col-md-4 col-lg-2">
         <div class="card border-0 shadow-sm h-100 um-kpi">
             <div class="card-body py-3">
+                <p class="text-muted small mb-1">Finance</p>
+                <p class="fs-4 fw-semibold mb-0 text-info">{{ counts.finance }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 um-kpi">
+            <div class="card-body py-3">
                 <p class="text-muted small mb-1">Agents</p>
                 <p class="fs-4 fw-semibold mb-0">{{ counts.agent_role }}</p>
             </div>
@@ -126,6 +134,8 @@
                             <span class="badge text-bg-danger">{{ role_labels.get(u.role, u.role) }}</span>
                             {% elif u.role == 'operator' %}
                             <span class="badge text-bg-primary">{{ role_labels.get(u.role, u.role) }}</span>
+                            {% elif u.role == 'finance' %}
+                            <span class="badge text-bg-info">{{ role_labels.get(u.role, u.role) }}</span>
                             {% elif u.role == 'agent' %}
                             <span class="badge text-bg-secondary">{{ role_labels.get(u.role, u.role) }}</span>
                             {% else %}

@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Database backup{% endblock %}
+{% block page_heading %}Database backup{% endblock %}
+{% block extra_css %}
+<style>
+.set-shell { max-width: 1120px; margin-left: auto; margin-right: auto; }
+.set-card { border-radius: 0.5rem; border: 1px solid rgba(0,0,0,.08); box-shadow: 0 0.15rem 0.75rem rgba(0,0,0,.05); }
+.set-section-title { font-size: 0.7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--bs-secondary); font-weight: 600; }
+.set-nav-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.set-nav-rail { background: rgba(0,0,0,.04); border: 1px solid rgba(0,0,0,.06); border-radius: 0.5rem; padding: 0.3rem 0.4rem; }
+.set-nav { flex-wrap: nowrap; gap: 0.35rem; }
+.set-nav .nav-link { border-radius: 0.35rem; font-size: 0.8125rem; white-space: nowrap; color: inherit; border: 1px solid transparent; padding: 0.42rem 0.85rem; }
+.set-nav .nav-link:hover { background: rgba(255,255,255,.7); border-color: rgba(0,0,0,.05); }
+.set-nav .nav-link.active { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06); color: #0d6efd; font-weight: 600; border-color: rgba(0,0,0,.08); }
+</style>
+{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3 set-shell">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('settings_page') }}">Settings</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Database backup</li>
+    </ol>
+</nav>
+
+<div class="set-shell mb-3 set-nav-wrap">
+    <div class="set-nav-rail d-inline-block w-100">
+        <ul class="nav set-nav d-flex flex-nowrap">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_page') }}"><i class="ri-settings-3-line me-1"></i>General</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_notifications') }}"><i class="ri-mail-send-line me-1"></i>Email &amp; WhatsApp</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_payment_methods') }}"><i class="ri-bank-card-line me-1"></i>Payment methods</a></li>
+            <li class="nav-item"><a class="nav-link active" href="{{ url_for('settings_database_backup') }}" aria-current="page"><i class="ri-database-2-line me-1"></i>Database backup</a></li>
+            {% if current_user.role in ('admin', 'operator', 'finance') %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('accounting_settings') }}"><i class="ri-book-2-line me-1"></i>Fiscal &amp; GL</a></li>
+            {% endif %}
+        </ul>
+    </div>
+</div>
+
+<div class="set-shell">
+    <div class="alert alert-secondary border-0 mb-4" role="status">
+        <p class="mb-2 small"><strong>Connection</strong> (preview): <code class="small">{{ db_uri_preview }}</code></p>
+        <p class="mb-0 small text-muted">Backups are written under the application server at <code>{{ data_root }}</code>. You can use a <strong>subfolder</strong> (one name, no slashes) to organize files.</p>
+    </div>
+
+    {% if not is_mssql and not is_postgres %}
+    <div class="alert alert-warning border-0 mb-4" role="alert">
+        <strong>Not available</strong> for this environment’s database driver (<code>{{ dialect or '—' }}</code>).
+        Use Microsoft SQL Server or PostgreSQL to enable in-app backup.
+    </div>
+    {% else %}
+    {% if is_mssql %}
+    <div class="alert alert-info border-0 mb-3" role="status">
+        <p class="mb-1 small"><strong>SQL Server</strong> writes the <code>.bak</code> on the <em>server that hosts the database</em>. The path below must be valid on that server and the SQL Server service account must be allowed to write there. If the database runs on a different host than this app, configure a path (or share) that the database engine can reach—often a UNC or a local disk on the SQL host.</p>
+    </div>
+    {% elif is_postgres %}
+    <div class="alert alert-info border-0 mb-3" role="status">
+        <p class="mb-0 small"><strong>PostgreSQL</strong> uses the <code>pg_dump</code> client, which must be installed on this application server and available on <code>PATH</code>. Large databases may take several minutes.</p>
+    </div>
+    {% endif %}
+
+    <form method="post" class="card set-card border-0 mb-4">
+        <div class="card-body p-3 p-md-4">
+            <p class="set-section-title mb-3"><i class="ri-save-3-line me-1"></i> New backup</p>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="subfolder">Subfolder (optional)</label>
+                    <input type="text" class="form-control" id="subfolder" name="subfolder" value="{{ subfolder }}"
+                           placeholder="e.g. manual or 2025-04" maxlength="120" autocomplete="off">
+                    <div class="form-text">Single folder name only; created under the data backup root.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="file_name">File name</label>
+                    <input type="text" class="form-control font-monospace" id="file_name" name="file_name" value="" maxlength="200" autocomplete="off"
+                           placeholder="{% if is_mssql %}{{ suggest_bak }}{% else %}{{ suggest_sql }}{% endif %}">
+                    <div class="form-text">Leave blank to auto-name. Use <code>.bak</code> (MSSQL) or <code>.sql</code> / <code>.dump</code> (PostgreSQL).</div>
+                </div>
+            </div>
+            {% if is_mssql %}
+            <div class="form-check mt-3">
+                <input class="form-check-input" type="checkbox" name="mssql_copy_only" value="1" id="mssql_copy_only">
+                <label class="form-check-label" for="mssql_copy_only">Copy-only backup (does not affect the main backup chain)</label>
+            </div>
+            {% elif is_postgres %}
+            <div class="mt-3">
+                <span class="small text-secondary d-block mb-1">Dump format</span>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="pg_format" value="plain" id="pg_plain" checked>
+                    <label class="form-check-label" for="pg_plain">Plain SQL (<code>.sql</code>)</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="pg_format" value="custom" id="pg_custom">
+                    <label class="form-check-label" for="pg_custom">Custom (<code>.dump</code>)</label>
+                </div>
+            </div>
+            {% endif %}
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="ri-download-cloud-2-line me-1"></i>Run backup</button>
+            </div>
+        </div>
+    </form>
+    {% endif %}
+
+    <div class="card set-card border-0">
+        <div class="card-body p-3 p-md-4">
+            <p class="set-section-title mb-2"><i class="ri-folder-2-line me-1"></i> Recent files in this folder</p>
+            <p class="small text-muted mb-2"><code class="small">{{ list_dir }}</code>
+                {% if subfolder and subfolder != subfolder_default %}
+                <a class="small ms-2" href="{{ url_for('settings_database_backup', sub=subfolder_default or '') }}">View default</a>
+                {% endif %}
+            </p>
+            {% if not recent %}
+            <p class="text-muted small mb-0">No files in this folder yet.</p>
+            {% else %}
+            <div class="table-responsive">
+                <table class="table table-sm table-borderless small mb-0">
+                    <thead>
+                        <tr class="text-secondary"><th>Name</th><th class="text-end">Size</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for r in recent %}
+                        <tr>
+                            <td class="font-monospace">{{ r.name }}</td>
+                            <td class="text-end">{% if r.size > 1000000 %}{{ '%.1f'|format(r.size / 1000000) }} MB{% elif r.size > 1000 %}{{ '%.1f'|format(r.size / 1000) }} KB{% else %}{{ r.size }} B{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

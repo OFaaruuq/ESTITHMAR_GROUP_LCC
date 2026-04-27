@@ -246,7 +246,7 @@
             {% if subscription %}
             <a href="{{ url_for('subscriptions_profile', id=subscription.id) }}" class="btn btn-soft-primary btn-sm">Subscription</a>
             {% endif %}
-            {% if current_user.is_authenticated and current_user.role in ('admin', 'operator') %}
+            {% if can_verify_payments() %}
                 {% if not c.verified %}
                 <form method="post" action="{{ url_for('contributions_verify', id=c.id) }}" class="d-inline mb-0">
                     <input type="hidden" name="next" value="{{ url_for('contributions_receipt', id=c.id) }}">
@@ -259,7 +259,7 @@
                 </form>
                 {% endif %}
             {% endif %}
-            {% if current_user.is_authenticated and current_user.role == 'admin' %}
+            {% if has_permission('contributions.delete') %}
             <form method="post" action="{{ url_for('contributions_delete', id=c.id) }}" class="d-inline mb-0" onsubmit="return confirm('Permanently delete this receipt? This cannot be undone. Use only for incorrect entries.');">
                 <input type="hidden" name="next" value="{{ url_for('contributions_list') }}">
                 <button type="submit" class="btn btn-outline-danger btn-sm"><i class="ri-delete-bin-line me-1"></i>Delete receipt</button>
@@ -348,7 +348,7 @@
                     {% if c.verified and c.verified_at %}
                     <span class="small text-muted">Confirmed {{ c.verified_at.strftime('%d %b %Y, %H:%M') }} UTC{% if c.verified_by %} · {{ c.verified_by.username }}{% endif %}</span>
                     {% elif not c.verified %}
-                    <span class="small text-muted">An administrator can mark this receipt as verified when the bank or cash entry is confirmed.</span>
+                    <span class="small text-muted">A user with the <strong>Finance</strong> (or <strong>Admin</strong>) role can mark this receipt as verified when the bank or cash entry is confirmed.</span>
                     {% endif %}
                 </div>
             </div>

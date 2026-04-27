@@ -32,7 +32,16 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from estithmar import db
-from estithmar.auth import admin_required, role_required
+from estithmar.auth import any_permission_required, page_view_permission, permission_required, role_required
+from estithmar.permissions import Permission, STAFF_OR_AGENT, STAFF_ROLES, user_has_permission
+from estithmar.rbac import (
+    effective_permission_keys_for_user,
+    get_assignable_role_keys_for_editor,
+    is_valid_permission_key,
+    permission_in_use,
+    set_assignable_user_roles,
+    sync_user_grants,
+)
 from estithmar.config import PROJECT_ROOT, resolve_static_folder
 from estithmar.validators import validate_phone
 from estithmar.services.membership_form_pdf import build_membership_form_pdf
@@ -77,6 +86,8 @@ from estithmar.models import (
     PaymentBank,
     PaymentBankAccount,
     PaymentMobileProvider,
+    PermissionDefinition,
+    RoleDefaultPermission,
     NotificationDeliveryLog,
     ProfitDistribution,
     ProfitDistributionBatch,
@@ -156,6 +167,7 @@ _MEMBER_PORTAL_BLOCKED_ENDPOINTS = frozenset(
         "settings_page",
         "settings_notifications",
         "settings_payment_methods",
+        "settings_database_backup",
         "members_new",
         "members_edit",
         "subscriptions_new",
@@ -685,6 +697,8 @@ def _audit_href(log: AuditLog) -> str:
             return url_for("profit_batch_detail", batch_id=eid)
         if log.action == "settings_notifications_updated":
             return url_for("settings_notifications")
+        if log.action == "database_backup_created":
+            return url_for("settings_database_backup")
         if et == "AppSettings":
             return url_for("settings_page")
         if et == "InstallmentPlan" and eid:
@@ -736,6 +750,7 @@ def _audit_notification_item(log: AuditLog) -> dict | None:
         "settings_branding_updated": "Branding / logos updated",
         "settings_updated": "System settings updated",
         "settings_notifications_updated": "Notification settings updated",
+        "database_backup_created": "Database backup file created",
         "profit_distributed": "Profit distribution recorded",
         "investment_created": "Investment created",
         "investment_updated": "Investment updated",
@@ -921,11 +936,52 @@ def _dashboard_top_members_by_volume(member_ids, limit: int = 5):
 
 
 def register_routes(app):
+    @app.context_processor
+    def _permissions_context():
+        from flask_login import current_user as _cu
+        from estithmar.permissions import user_has_permission as _has
+        from estithmar.permissions import Permission as _Perm
+
+        def can_verify_payments() -> bool:
+            return _cu.is_authenticated and _has(_cu, _Perm.PAYMENTS_VERIFY)
+
+        def has_permission(key: str) -> bool:
+            if not _cu.is_authenticated:
+                return False
+            return _has(_cu, key)
+
+        def nav_can(perm: str) -> bool:
+            """For menus: use DB permission for staff; member portal is scoped in views (not all keys are granted in DB)."""
+            if not _cu.is_authenticated:
+                return False
+            if _has(_cu, perm):
+                return True
+            if getattr(_cu, "role", None) == "member":
+                return True
+            return False
+
+        return {
+            "can_verify_payments": can_verify_payments,
+            "has_permission": has_permission,
+            "nav_can": nav_can,
+        }
+
     def _allowed_profile_image(filename: str) -> bool:
         if "." not in filename:
             return False
         ext = filename.rsplit(".", 1)[1].lower()
         return ext in {"png", "jpg", "jpeg", "gif", "webp"}
+
+    def _user_role_error(role: str) -> str | None:
+        r = (role or "").strip()
+        allowed_keys = {k for k, _ in USER_ROLES}
+        if r not in allowed_keys:
+            return "Invalid role."
+        if getattr(current_user, "is_superuser", False):
+            return None
+        if r not in get_assignable_role_keys_for_editor(current_user):
+            return "Your account is not allowed to assign this role. Use Permissions → Assignable roles or ask a superuser."
+        return None
 
     def _remove_brand_file(relative_path: str | None) -> None:
         if not relative_path:
@@ -1373,6 +1429,7 @@ def register_routes(app):
         return redirect(url_for("login"))
 
     @app.route("/pages-profile.html", methods=["GET", "POST"])
+    @page_view_permission(Permission.CORE_PROFILE, allow_member=True)
     def pages_profile():
         u = AppUser.query.options(joinedload(AppUser.agent), joinedload(AppUser.member)).get_or_404(
             current_user.id
@@ -1460,11 +1517,16 @@ def register_routes(app):
         """JSON for header notification badge polling (matches theme / IDE expectations)."""
         if not current_user.is_authenticated:
             return jsonify(count=0)
+        if current_user.role != "member" and not user_has_permission(
+            current_user, Permission.SYSTEM_API_NOTIFICATIONS_UNREAD
+        ):
+            return jsonify(count=0)
         mids = _dashboard_scoped_member_ids()
         hn = build_header_notifications(mids)
         return jsonify(count=hn["count"])
 
     @app.route("/dashboard")
+    @page_view_permission(Permission.CORE_DASHBOARD, allow_member=True)
     def dashboard():
         app_settings = get_or_create_settings()
         total_agents = Agent.query.count()
@@ -1834,6 +1896,7 @@ def register_routes(app):
         }
 
     @app.route("/agents")
+    @page_view_permission(Permission.AGENTS_VIEW, allow_member=False)
     def agents_list():
         r = forbid_agent()
         if r:
@@ -1924,7 +1987,9 @@ def register_routes(app):
     @app.route("/api/lookup/agent-regions", methods=["GET"])
     def api_lookup_agent_regions():
         """Per-country region/city options for the agent form; calls external API on first use, then reads from the DB cache."""
-        if not current_user.is_authenticated or current_user.role in ("agent", "member"):
+        if not current_user.is_authenticated:
+            return jsonify(ok=False, error="forbidden"), 403
+        if not user_has_permission(current_user, Permission.API_LOOKUP_AGENT_REGIONS):
             return jsonify(ok=False, error="forbidden"), 403
         c = (request.args.get("country") or "").strip()[:120]
         cset = get_agent_country_value_set()
@@ -1934,6 +1999,7 @@ def register_routes(app):
         return jsonify(ok=True, country=c, regions=regions)
 
     @app.route("/agents/new", methods=["GET", "POST"])
+    @page_view_permission(Permission.AGENTS_CREATE, allow_member=False)
     def agents_new():
         r = forbid_agent()
         if r:
@@ -1973,7 +2039,7 @@ def register_routes(app):
         return render_template("agents/form.html", **_agent_form_ctx(None))
 
     @app.route("/api/agents/quick-create", methods=["POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
     def api_agents_quick_create():
         """Minimal agent for member registration flow; full profile can be edited later under Agents."""
         data = request.get_json(silent=True) or {}
@@ -1989,6 +2055,7 @@ def register_routes(app):
         return jsonify(ok=True, id=ag.id, agent_id=ag.agent_id, full_name=ag.full_name)
 
     @app.route("/agents/<int:id>")
+    @page_view_permission(Permission.AGENTS_VIEW_DETAIL, allow_member=False)
     def agents_profile(id):
         r = forbid_agent()
         if r:
@@ -2029,6 +2096,7 @@ def register_routes(app):
         )
 
     @app.route("/agents/<int:id>/edit", methods=["GET", "POST"])
+    @page_view_permission(Permission.AGENTS_EDIT, allow_member=False)
     def agents_edit(id):
         r = forbid_agent()
         if r:
@@ -2077,6 +2145,7 @@ def register_routes(app):
 
     # --- Members ---
     @app.route("/members")
+    @page_view_permission(Permission.MEMBERS_VIEW, allow_member=True)
     def members_list():
         q = request.args.get("q", "").strip()
         st = request.args.get("status", "").strip()
@@ -2170,13 +2239,14 @@ def register_routes(app):
             "require_agent": s.get_flag("require_agent_on_member"),
             "is_edit": member is not None,
             "default_join_date": date.today().isoformat(),
-            "allow_inline_agent_create": current_user.role in ("admin", "operator"),
+            "allow_inline_agent_create": current_user.role in STAFF_ROLES,
             "quick_create_agent_url": (
-                url_for("api_agents_quick_create") if current_user.role in ("admin", "operator") else None
+                url_for("api_agents_quick_create") if current_user.role in STAFF_ROLES else None
             ),
         }
 
     @app.route("/members/new", methods=["GET", "POST"])
+    @page_view_permission(Permission.MEMBERS_CREATE, allow_member=False)
     def members_new():
         agents = _agents_for_member_form(None)
         if current_user.role == "agent" and not current_user.agent_id:
@@ -2186,7 +2256,7 @@ def register_routes(app):
             aid = request.form.get("agent_id", type=int) or None
             if current_user.role == "agent" and current_user.agent_id:
                 aid = current_user.agent_id
-            if current_user.role in ("admin", "operator") and not aid:
+            if current_user.role in STAFF_ROLES and not aid:
                 inline = (request.form.get("inline_new_agent") or "").strip()
                 if inline:
                     ag, aerr = _create_minimal_agent_from_name(inline)
@@ -2243,6 +2313,7 @@ def register_routes(app):
         return render_template("members/form.html", **_member_form_ctx(None, agents))
 
     @app.route("/members/<int:id>/edit", methods=["GET", "POST"])
+    @page_view_permission(Permission.MEMBERS_EDIT, allow_member=False)
     def members_edit(id):
         m = members_scope().options(joinedload(Member.agent)).filter_by(id=id).first_or_404()
         agents = _agents_for_member_form(m)
@@ -2277,7 +2348,7 @@ def register_routes(app):
                 pass
             else:
                 aid = request.form.get("agent_id", type=int) or None
-                if current_user.role in ("admin", "operator") and not aid:
+                if current_user.role in STAFF_ROLES and not aid:
                     inline = (request.form.get("inline_new_agent") or "").strip()
                     if inline:
                         ag, aerr = _create_minimal_agent_from_name(inline)
@@ -2318,6 +2389,7 @@ def register_routes(app):
         return render_template("members/form.html", **_member_form_ctx(m, agents))
 
     @app.route("/members/<int:id>")
+    @page_view_permission(Permission.MEMBERS_VIEW_DETAIL, allow_member=True)
     def members_profile(id):
         m = members_scope().options(joinedload(Member.agent)).filter_by(id=id).first_or_404()
         contrib_limit = 30
@@ -2366,10 +2438,10 @@ def register_routes(app):
             .order_by(MemberDocument.uploaded_at.desc(), MemberDocument.id.desc())
             .all()
         )
-        allow_doc_upload = current_user.role in ("admin", "operator", "agent") or (
+        allow_doc_upload = current_user.role in STAFF_OR_AGENT or (
             current_user.role == "member" and current_user.member_id == m.id
         )
-        allow_doc_delete = current_user.role in ("admin", "operator", "agent")
+        allow_doc_delete = current_user.role in STAFF_OR_AGENT
         return render_template(
             "members/profile.html",
             member=m,
@@ -2408,9 +2480,10 @@ def register_routes(app):
         )
 
     @app.route("/members/<int:id>/membership-form")
+    @page_view_permission(Permission.MEMBERS_MEMBERSHIP_FORM, allow_member=False)
     def members_membership_form_print(id):
         """Printable membership application (HTML preview) or PDF download — staff only."""
-        if current_user.role not in ("admin", "operator", "agent"):
+        if current_user.role not in STAFF_OR_AGENT:
             flash("Only staff can open the membership form for printing.", "warning")
             return redirect(url_for("dashboard"))
         m = members_scope().options(joinedload(Member.agent)).filter_by(id=id).first_or_404()
@@ -2419,18 +2492,20 @@ def register_routes(app):
         return render_template("members/membership_form_print.html", member=m)
 
     @app.route("/members/<int:id>/membership-form.pdf")
+    @page_view_permission(Permission.MEMBERS_MEMBERSHIP_FORM_PDF, allow_member=False)
     def members_membership_form_pdf(id):
         """Membership PDF download (same file as ``membership-form?download=1``)."""
-        if current_user.role not in ("admin", "operator", "agent"):
+        if current_user.role not in STAFF_OR_AGENT:
             flash("Only staff can download the membership form.", "warning")
             return redirect(url_for("dashboard"))
         m = members_scope().options(joinedload(Member.agent)).filter_by(id=id).first_or_404()
         return _membership_form_pdf_response(m)
 
     @app.route("/members/<int:member_id>/documents", methods=["POST"])
+    @page_view_permission(Permission.MEMBERS_DOCUMENTS_UPLOAD, allow_member=True)
     def members_document_upload(member_id):
         m = members_scope().filter_by(id=member_id).first_or_404()
-        allowed = current_user.role in ("admin", "operator", "agent") or (
+        allowed = current_user.role in STAFF_OR_AGENT or (
             current_user.role == "member" and current_user.member_id == m.id
         )
         if not allowed:
@@ -2466,6 +2541,7 @@ def register_routes(app):
         return redirect(url_for("members_profile", id=member_id))
 
     @app.route("/members/<int:member_id>/documents/<int:doc_id>/download")
+    @page_view_permission(Permission.MEMBERS_DOCUMENTS_DOWNLOAD, allow_member=True)
     def members_document_download(member_id, doc_id):
         members_scope().filter_by(id=member_id).first_or_404()
         doc = MemberDocument.query.filter_by(id=doc_id, member_id=member_id).first_or_404()
@@ -2481,8 +2557,9 @@ def register_routes(app):
         )
 
     @app.route("/members/<int:member_id>/documents/<int:doc_id>/delete", methods=["POST"])
+    @page_view_permission(Permission.MEMBERS_DOCUMENTS_DELETE, allow_member=False)
     def members_document_delete(member_id, doc_id):
-        if current_user.role not in ("admin", "operator", "agent"):
+        if current_user.role not in STAFF_OR_AGENT:
             flash("Only staff can remove stored documents.", "warning")
             return redirect(url_for("members_profile", id=member_id))
         m = members_scope().filter_by(id=member_id).first_or_404()
@@ -2501,6 +2578,7 @@ def register_routes(app):
 
     # --- Share subscriptions ---
     @app.route("/subscriptions")
+    @page_view_permission(Permission.SUBSCRIPTIONS_VIEW, allow_member=True)
     def subscriptions_list():
         member_id = request.args.get("member_id", type=int)
         filter_agent_id = request.args.get("agent_id", type=int)
@@ -2740,6 +2818,7 @@ def register_routes(app):
         )
 
     @app.route("/subscriptions/new", methods=["GET", "POST"])
+    @page_view_permission(Permission.SUBSCRIPTIONS_CREATE, allow_member=False)
     def subscriptions_new():
         members = members_scope().filter_by(status="Active").order_by(Member.full_name).all()
         investments = Investment.query.order_by(Investment.name).all()
@@ -2866,6 +2945,7 @@ def register_routes(app):
         )
 
     @app.route("/subscriptions/<int:id>/edit", methods=["GET", "POST"])
+    @page_view_permission(Permission.SUBSCRIPTIONS_EDIT, allow_member=False)
     @role_required("admin", "operator", "agent")
     def subscriptions_edit(id):
         q = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id).options(
@@ -3058,6 +3138,7 @@ def register_routes(app):
         )
 
     @app.route("/subscriptions/<int:id>")
+    @page_view_permission(Permission.SUBSCRIPTIONS_VIEW_DETAIL, allow_member=True)
     def subscriptions_profile(id):
         q = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id).options(
             joinedload(ShareSubscription.member).joinedload(Member.agent),
@@ -3152,7 +3233,7 @@ def register_routes(app):
         return redirect(url_for("subscriptions_profile", id=sub.id))
 
     @app.route("/subscriptions/<int:id>/cancel", methods=["POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
     def subscriptions_cancel(id):
         q = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id)
         sub = q.filter(ShareSubscription.id == id).first_or_404()
@@ -3170,6 +3251,7 @@ def register_routes(app):
         return redirect(url_for("subscriptions_profile", id=sub.id))
 
     @app.route("/subscriptions/<int:id>/installments", methods=["GET", "POST"])
+    @page_view_permission(Permission.SUBSCRIPTIONS_INSTALLMENTS, allow_member=True)
     def subscriptions_installments(id):
         q = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id)
         if current_user.role == "agent" and current_user.agent_id:
@@ -3315,6 +3397,7 @@ def register_routes(app):
 
     # --- Certificates ---
     @app.route("/certificates")
+    @page_view_permission(Permission.CERTIFICATES_VIEW, allow_member=True)
     def certificates_list():
         query = (
             ShareCertificate.query.join(Member, ShareCertificate.member_id == Member.id)
@@ -3380,6 +3463,7 @@ def register_routes(app):
             return redirect(url_for("subscriptions_profile", id=subscription_id))
 
     @app.route("/certificates/<int:id>/print")
+    @page_view_permission(Permission.CERTIFICATES_PRINT, allow_member=True)
     def certificates_print(id):
         query = ShareCertificate.query.join(Member, ShareCertificate.member_id == Member.id).options(
             joinedload(ShareCertificate.member),
@@ -3402,6 +3486,7 @@ def register_routes(app):
         )
 
     @app.route("/certificates/<int:id>/pdf")
+    @page_view_permission(Permission.CERTIFICATES_PDF, allow_member=True)
     def certificates_pdf(id):
         """Generate certificate as PDF download (same visibility rules as print view)."""
         query = (
@@ -3440,7 +3525,7 @@ def register_routes(app):
         )
 
     @app.route("/certificates/<int:id>/revoke", methods=["POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
     def certificates_revoke(id):
         cert = ShareCertificate.query.get_or_404(id)
         reason = (request.form.get("reason", "") or "").strip()[:500]
@@ -3460,7 +3545,7 @@ def register_routes(app):
         return redirect(url_for("certificates_list"))
 
     @app.route("/certificates/<int:id>/reinstate", methods=["POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
     def certificates_reinstate(id):
         cert = ShareCertificate.query.get_or_404(id)
         if cert.status != "Revoked":
@@ -3475,6 +3560,7 @@ def register_routes(app):
 
     # --- Contributions ---
     @app.route("/contributions")
+    @page_view_permission(Permission.CONTRIBUTIONS_VIEW, allow_member=True)
     def contributions_list():
         member_id = request.args.get("member_id", type=int)
         agent_id = request.args.get("agent_id", type=int)
@@ -3556,6 +3642,7 @@ def register_routes(app):
         )
 
     @app.route("/contributions/new", methods=["GET", "POST"])
+    @page_view_permission(Permission.CONTRIBUTIONS_CREATE, allow_member=False)
     def contributions_new():
         app_settings = get_or_create_settings()
         cur_lbl = app_settings.currency_code or "USD"
@@ -3813,6 +3900,7 @@ def register_routes(app):
         )
 
     @app.route("/contributions/<int:id>/receipt")
+    @page_view_permission(Permission.CONTRIBUTIONS_RECEIPT, allow_member=True)
     def contributions_receipt(id):
         c = (
             Contribution.query.options(
@@ -3852,7 +3940,7 @@ def register_routes(app):
         )
 
     @app.route("/contributions/<int:id>/verify", methods=["POST"])
-    @role_required("admin", "operator")
+    @permission_required(Permission.PAYMENTS_VERIFY)
     def contributions_verify(id):
         c = Contribution.query.get_or_404(id)
         if _is_closed_period(c.date):
@@ -3874,7 +3962,7 @@ def register_routes(app):
         return redirect(request.referrer or url_for("contributions_list"))
 
     @app.route("/contributions/<int:id>/unverify", methods=["POST"])
-    @role_required("admin", "operator")
+    @any_permission_required(Permission.PAYMENTS_VERIFY, Permission.CONTRIBUTIONS_UNVERIFY)
     def contributions_unverify(id):
         c = Contribution.query.get_or_404(id)
         if _is_closed_period(c.date):
@@ -3896,7 +3984,8 @@ def register_routes(app):
         return redirect(request.referrer or url_for("contributions_list"))
 
     @app.route("/contributions/<int:id>/reverse", methods=["POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.CONTRIBUTIONS_REVERSE)
     def contributions_reverse(id):
         c = Contribution.query.get_or_404(id)
         if c.reversal_of_id is not None:
@@ -3960,10 +4049,11 @@ def register_routes(app):
         return redirect(request.referrer or url_for("contributions_list"))
 
     @app.route("/contributions/<int:id>/delete", methods=["POST"])
-    @admin_required
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.CONTRIBUTIONS_DELETE)
     def contributions_delete(id):
         """
-        Permanently remove a contribution (receipt) row. Admin only.
+        Permanently remove a contribution (receipt) row. Requires ``contributions.delete`` (separate from role).
         Blocked if a reversal entry exists for this payment (delete the reversal first).
         """
         c = Contribution.query.get_or_404(id)
@@ -4023,6 +4113,7 @@ def register_routes(app):
 
     # --- Projects ---
     @app.route("/projects")
+    @page_view_permission(Permission.PROJECTS_VIEW, allow_member=True)
     def projects_list():
         page = max(1, request.args.get("page", 1, type=int) or 1)
         per_page = min(max(10, request.args.get("per_page", 50, type=int) or 50), 200)
@@ -4102,7 +4193,8 @@ def register_routes(app):
         )
 
     @app.route("/projects/new", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @page_view_permission(Permission.PROJECTS_CREATE, allow_member=False)
+    @role_required("admin", "operator", "finance")
     def projects_new():
         settings = get_or_create_settings()
         form_ctx = {
@@ -4135,6 +4227,7 @@ def register_routes(app):
         return render_template("projects/form.html", **form_ctx)
 
     @app.route("/projects/<int:id>")
+    @page_view_permission(Permission.PROJECTS_VIEW_DETAIL, allow_member=True)
     def projects_profile(id):
         p = Project.query.get_or_404(id)
         invs = p.investments.order_by(Investment.start_date.desc(), Investment.id.desc()).all()
@@ -4201,7 +4294,8 @@ def register_routes(app):
         )
 
     @app.route("/projects/<int:id>/edit", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @page_view_permission(Permission.PROJECTS_EDIT, allow_member=False)
+    @role_required("admin", "operator", "finance")
     def projects_edit(id):
         p = Project.query.get_or_404(id)
         settings = get_or_create_settings()
@@ -4234,6 +4328,7 @@ def register_routes(app):
 
     # --- Investments ---
     @app.route("/investments")
+    @page_view_permission(Permission.INVESTMENTS_VIEW, allow_member=True)
     def investments_list():
         page = max(1, request.args.get("page", 1, type=int) or 1)
         per_page = min(max(10, request.args.get("per_page", 50, type=int) or 50), 200)
@@ -4346,7 +4441,8 @@ def register_routes(app):
         )
 
     @app.route("/investments/new", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @page_view_permission(Permission.INVESTMENTS_CREATE, allow_member=False)
+    @role_required("admin", "operator", "finance")
     def investments_new():
         projects = Project.query.order_by(Project.name).all()
         preselect_project_id = request.args.get("project_id", type=int)
@@ -4460,7 +4556,8 @@ def register_routes(app):
         return render_template("investments/form.html", **ctx)
 
     @app.route("/investments/<int:id>/edit", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @page_view_permission(Permission.INVESTMENTS_EDIT, allow_member=False)
+    @role_required("admin", "operator", "finance")
     def investments_edit(id):
         inv = Investment.query.options(joinedload(Investment.project)).get_or_404(id)
         projects = Project.query.order_by(Project.name).all()
@@ -4597,6 +4694,7 @@ def register_routes(app):
         return render_template("investments/form.html", **ctx)
 
     @app.route("/investments/<int:id>")
+    @page_view_permission(Permission.INVESTMENTS_VIEW_DETAIL, allow_member=True)
     def investments_profile(id):
         inv = (
             Investment.query.options(joinedload(Investment.project))
@@ -4691,7 +4789,7 @@ def register_routes(app):
         )
 
     @app.route("/investments/<int:id>/ledger-snapshot", methods=["POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
     def investments_ledger_snapshot(id):
         inv = Investment.query.get_or_404(id)
         dist = inv.profit_distributed_to_members()
@@ -4712,7 +4810,8 @@ def register_routes(app):
         return redirect(url_for("investments_profile", id=id))
 
     @app.route("/investments/<int:id>/delete", methods=["POST"])
-    @admin_required
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.INVESTMENTS_DELETE)
     def investments_delete(id):
         inv = Investment.query.get_or_404(id)
         dist_total = inv.profit_distributed_to_members()
@@ -4745,8 +4844,11 @@ def register_routes(app):
         return [i for i in invs if i.profit_undistributed_balance() > Decimal("0")]
 
     @app.route("/profit", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
     def profit_distribute():
+        if not user_has_permission(current_user, Permission.PROFIT_VIEW):
+            flash("You do not have permission to open the profit workbench.", "warning")
+            return redirect(url_for("dashboard"))
         def _profit_form_ctx():
             settings = get_or_create_settings()
             invs = _open_investments_for_profit()
@@ -4797,6 +4899,11 @@ def register_routes(app):
 
         if request.method == "POST":
             action = (request.form.get("action") or "preview").strip().lower()
+            if action == "confirm" and not user_has_permission(
+                current_user, Permission.PROFIT_DISTRIBUTE
+            ):
+                flash("You do not have permission to post profit distribution batches.", "danger")
+                return render_template("profit/form.html", **_profit_form_ctx())
             inv_id = request.form.get("investment_id", type=int)
             profit_amt = _parse_decimal(request.form.get("profit_amount"))
             dist_date = _parse_date(request.form.get("distribution_date")) or date.today()
@@ -4952,7 +5059,8 @@ def register_routes(app):
         return render_template("profit/form.html", **_profit_form_ctx())
 
     @app.route("/profit/batch/<int:batch_id>")
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.PROFIT_VIEW)
     def profit_batch_detail(batch_id):
         batch = (
             ProfitDistributionBatch.query.options(joinedload(ProfitDistributionBatch.investment))
@@ -4981,6 +5089,7 @@ def register_routes(app):
         )
 
     @app.route("/profit/history")
+    @page_view_permission(Permission.PROFIT_HISTORY, allow_member=True)
     def profit_history():
         rows = (
             profit_rows_scope()
@@ -5009,6 +5118,7 @@ def register_routes(app):
         )
 
     @app.route("/profit/statement/<int:member_id>")
+    @page_view_permission(Permission.PROFIT_STATEMENT, allow_member=True)
     def profit_statement(member_id):
         m = members_scope().filter_by(id=member_id).first_or_404()
         rows = m.profit_rows.order_by(ProfitDistribution.distribution_date.desc()).all()
@@ -5016,7 +5126,8 @@ def register_routes(app):
 
     # --- Settings ---
     @app.route("/settings", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.SETTINGS_VIEW)
     def settings_page():
         s = get_or_create_settings()
         if request.method == "POST":
@@ -5124,12 +5235,14 @@ def register_routes(app):
 
     @app.route("/setting")
     @app.route("/setting/")
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.SETTINGS_VIEW)
     def settings_page_alias():
         return redirect(url_for("settings_page"))
 
     @app.route("/settings/notifications", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.SETTINGS_NOTIFICATIONS)
     def settings_notifications():
         s = get_or_create_settings()
         ex = s.get_extra()
@@ -5240,7 +5353,8 @@ def register_routes(app):
         )
 
     @app.route("/settings/payment-methods", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.SETTINGS_PAYMENT_METHODS)
     def settings_payment_methods():
         if request.method == "POST":
             act = (request.form.get("action") or "").strip()
@@ -5328,6 +5442,86 @@ def register_routes(app):
             "settings/payment_methods.html", banks_with_accounts=banks_with_accounts, mobiles=mobiles
         )
 
+    @app.route("/settings/database-backup", methods=["GET", "POST"])
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.SETTINGS_DATABASE_BACKUP)
+    def settings_database_backup():
+        from estithmar.config import get_database_uri
+        from estithmar.services import database_backup as bu
+        from flask import current_app
+
+        uri = (current_app.config.get("SQLALCHEMY_DATABASE_URI") or "").strip() or get_database_uri()
+        dialect = (bu.get_engine_dialect_name(current_app) or "").lower()
+        ulow = str(uri).lower()
+        is_mssql = dialect == "mssql" or "mssql" in ulow
+        is_postgres = dialect in ("postgresql",) or "postgre" in ulow or "psycopg" in ulow
+        s = get_or_create_settings()
+        ex = s.get_extra() or {}
+        default_sub = (ex.get("database_backup_subfolder") or "").strip()[:120]
+
+        if request.method == "POST":
+            sub = (request.form.get("subfolder") or default_sub or "").strip()[:120]
+            file_name = (request.form.get("file_name") or "").strip()
+            mssql_copy_only = request.form.get("mssql_copy_only") == "1"
+            pg_custom = request.form.get("pg_format") == "custom"
+            if not file_name:
+                if is_mssql:
+                    file_name = bu.suggested_mssql_bak_name()
+                else:
+                    file_name = bu.suggested_pg_dump_name(custom=pg_custom)
+            try:
+                backup_dir = bu.resolve_backup_subdir(sub)
+                out_path = bu.resolve_backup_file_path(backup_dir, file_name)
+            except (ValueError, OSError) as e:
+                flash(str(e) or "Invalid backup path.", "danger")
+                return redirect(url_for("settings_database_backup"))
+            try:
+                if is_mssql:
+                    msg = bu.run_mssql_full_backup(out_path, copy_only=mssql_copy_only)
+                elif is_postgres:
+                    msg = bu.run_postgres_custom_backup(out_path, use_custom=pg_custom, uri=uri)
+                else:
+                    raise RuntimeError(
+                        "This database type is not supported for in-app backup (use Microsoft SQL Server or PostgreSQL)."
+                    )
+            except Exception as e:
+                flash((str(e) or "Backup failed")[:2000], "danger")
+                return redirect(url_for("settings_database_backup"))
+            ex = s.get_extra() or {}
+            ex["database_backup_subfolder"] = sub
+            s.set_extra(ex)
+            db.session.commit()
+            log_audit("database_backup_created", "AppSettings", s.id, (msg or out_path)[:2000])
+            flash("Database backup completed.", "success")
+            return redirect(url_for("settings_database_backup"))
+
+        # GET: show form and list
+        sub_in = (request.args.get("sub") or default_sub or "").strip()[:120]
+        try:
+            list_dir = bu.resolve_backup_subdir(sub_in)
+        except ValueError:
+            sub_in = ""
+            list_dir = bu.resolve_backup_subdir("")
+        recent = bu.list_backup_dir(list_dir, limit=40)
+        suggest_bak = bu.suggested_mssql_bak_name()
+        suggest_sql = bu.suggested_pg_dump_name(False)
+        suggest_dump = bu.suggested_pg_dump_name(True)
+        return render_template(
+            "settings/database_backup.html",
+            dialect=dialect,
+            is_mssql=is_mssql,
+            is_postgres=is_postgres,
+            db_uri_preview=(uri[:80] + "…" if len(uri) > 80 else uri),
+            subfolder=sub_in,
+            subfolder_default=default_sub,
+            data_root=bu.default_data_backup_root(),
+            list_dir=list_dir,
+            recent=recent,
+            suggest_bak=suggest_bak,
+            suggest_sql=suggest_sql,
+            suggest_dump=suggest_dump,
+        )
+
     def _contribution_payment_form_choices():
         """Active bank accounts (with bank name) and mobile providers for the contribution form."""
         acct_rows = (
@@ -5352,9 +5546,10 @@ def register_routes(app):
         )
         return bank_accounts, mobile_list
 
-    # --- Users (admin) ---
+    # --- Users (back-office: grant via ``users.*``; role matrix controls who can assign roles) ---
     @app.route("/users")
-    @admin_required
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.USERS_VIEW)
     def users_list():
         users = (
             AppUser.query.options(joinedload(AppUser.agent), joinedload(AppUser.member))
@@ -5368,6 +5563,7 @@ def register_routes(app):
             "inactive": sum(1 for u in users if not u.is_active),
             "admin": sum(1 for u in users if u.role == "admin"),
             "operator": sum(1 for u in users if u.role == "operator"),
+            "finance": sum(1 for u in users if u.role == "finance"),
             "agent_role": sum(1 for u in users if u.role == "agent"),
             "member_role": sum(1 for u in users if u.role == "member"),
         }
@@ -5381,18 +5577,49 @@ def register_routes(app):
         )
 
     @app.route("/users/new", methods=["GET", "POST"])
-    @admin_required
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.USERS_CREATE)
     def users_new():
         agents = Agent.query.order_by(Agent.full_name).all()
         members_choices = Member.query.order_by(Member.full_name.asc(), Member.id.asc()).all()
 
+        def _perm_ctx(pu: AppUser | None):
+            if getattr(current_user, "is_superuser", False):
+                rchoices = list(USER_ROLES)
+            else:
+                al = get_assignable_role_keys_for_editor(current_user)
+                rchoices = [(k, lab) for k, lab in USER_ROLES if k in al]
+            pl = (
+                PermissionDefinition.query.filter_by(is_active=True)
+                .order_by(PermissionDefinition.sort_order, PermissionDefinition.key)
+                .all()
+            )
+            g = []
+            if pu and pu.id:
+                g = [x.permission_id for x in pu.extra_permissions.all()]
+            eff: list[str] = []
+            if pu and pu.id and getattr(pu, "is_superuser", False):
+                eff = ["(all active permissions — superuser)"]
+            elif pu and pu.id:
+                eff = list(effective_permission_keys_for_user(pu))
+            return {
+                "role_choices": rchoices,
+                "all_permissions": pl,
+                "granted_ids": g,
+                "show_superuser": bool(getattr(current_user, "is_superuser", False)),
+                "effective_keys": eff,
+            }
+
         def _form(**kwargs):
+            pu = kwargs.get("user")
+            ctx = _perm_ctx(pu)
             return render_template(
                 "users/form.html",
                 agents=agents,
                 members=members_choices,
                 roles=USER_ROLES,
                 role_labels=dict(USER_ROLES),
+                **ctx,
                 **kwargs,
             )
 
@@ -5400,8 +5627,12 @@ def register_routes(app):
             username = request.form.get("username", "").strip()
             pwd = request.form.get("password", "")
             role = request.form.get("role") or "operator"
-            if role not in ("admin", "operator", "agent", "member"):
+            if role not in ("admin", "operator", "finance", "agent", "member"):
                 role = "operator"
+            re_r = _user_role_error(role)
+            if re_r:
+                flash(re_r, "danger")
+                return _form(user=None)
             aid = request.form.get("agent_id", type=int) or None
             membid = request.form.get("member_id", type=int) or None
             if role != "agent":
@@ -5427,6 +5658,10 @@ def register_routes(app):
             if role == "member" and AppUser.query.filter_by(member_id=membid).first():
                 flash("That member already has a login account.", "danger")
                 return _form(user=None)
+            gids = [int(x) for x in request.form.getlist("grant_perm_id") if str(x).isdigit()]
+            is_su = bool(
+                getattr(current_user, "is_superuser", False) and (request.form.get("is_superuser") == "1")
+            )
             u = AppUser(
                 username=username,
                 email=email[:120],
@@ -5436,9 +5671,15 @@ def register_routes(app):
                 agent_id=aid,
                 member_id=membid,
                 is_active=True,
+                is_superuser=is_su,
             )
             db.session.add(u)
             db.session.commit()
+            try:
+                sync_user_grants(u, gids)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             notify_user_credentials(
                 to_email=email,
                 username=username,
@@ -5450,19 +5691,52 @@ def register_routes(app):
         return _form(user=None)
 
     @app.route("/users/<int:id>/edit", methods=["GET", "POST"])
-    @admin_required
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.USERS_EDIT)
     def users_edit(id):
         u = AppUser.query.options(joinedload(AppUser.agent), joinedload(AppUser.member)).get_or_404(id)
         agents = Agent.query.order_by(Agent.full_name).all()
         members_choices = Member.query.order_by(Member.full_name.asc(), Member.id.asc()).all()
 
+        def _perm_ctx(pu: AppUser | None):
+            if getattr(current_user, "is_superuser", False):
+                rchoices = list(USER_ROLES)
+            else:
+                al = get_assignable_role_keys_for_editor(current_user)
+                if pu and pu.role and pu.role not in al and pu.role in {k for k, _ in USER_ROLES}:
+                    al = list({*al, pu.role})
+                rchoices = [(k, lab) for k, lab in USER_ROLES if k in al]
+            pl = (
+                PermissionDefinition.query.filter_by(is_active=True)
+                .order_by(PermissionDefinition.sort_order, PermissionDefinition.key)
+                .all()
+            )
+            g = []
+            if pu and pu.id:
+                g = [x.permission_id for x in pu.extra_permissions.all()]
+            eff: list[str] = []
+            if pu and pu.id and getattr(pu, "is_superuser", False):
+                eff = ["(all active permissions — superuser)"]
+            elif pu and pu.id:
+                eff = list(effective_permission_keys_for_user(pu))
+            return {
+                "role_choices": rchoices,
+                "all_permissions": pl,
+                "granted_ids": g,
+                "show_superuser": bool(getattr(current_user, "is_superuser", False)),
+                "effective_keys": eff,
+            }
+
         def _form(**kwargs):
+            pu = kwargs.get("user")
+            ctx = _perm_ctx(pu)
             return render_template(
                 "users/form.html",
                 agents=agents,
                 members=members_choices,
                 roles=USER_ROLES,
                 role_labels=dict(USER_ROLES),
+                **ctx,
                 **kwargs,
             )
 
@@ -5480,9 +5754,16 @@ def register_routes(app):
                 return _form(user=u)
             u.email = email[:120]
             role = request.form.get("role") or "operator"
-            if role not in ("admin", "operator", "agent", "member"):
+            if role not in ("admin", "operator", "finance", "agent", "member"):
                 role = "operator"
+            if role != u.role:
+                re_r = _user_role_error(role)
+                if re_r:
+                    flash(re_r, "danger")
+                    return _form(user=u)
             u.role = role
+            if getattr(current_user, "is_superuser", False):
+                u.is_superuser = request.form.get("is_superuser") == "1"
             aid = request.form.get("agent_id", type=int) or None
             membid = request.form.get("member_id", type=int) or None
             u.agent_id = aid if role == "agent" else None
@@ -5499,14 +5780,116 @@ def register_routes(app):
             if pwd:
                 u.password_hash = generate_password_hash(pwd)
             u.is_active = request.form.get("is_active") == "1"
+            gids = [int(x) for x in request.form.getlist("grant_perm_id") if str(x).isdigit()]
+            try:
+                sync_user_grants(u, gids)
+            except Exception:
+                db.session.rollback()
             db.session.commit()
             flash("User updated.", "success")
             return redirect(url_for("users_list"))
         return _form(user=u)
 
+    @app.route("/users/permissions", methods=["GET", "POST"])
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.USERS_PERMISSIONS)
+    def users_permissions_hub():
+        """Admin: manage permission catalog, per-role defaults, and which roles are assignable by non-superuser admins."""
+        if request.method == "POST":
+            act = (request.form.get("action") or "").strip()
+            if act == "create_perm":
+                key = (request.form.get("perm_key") or "").strip()
+                label = (request.form.get("perm_label") or "").strip()
+                desc = (request.form.get("perm_desc") or "").strip()
+                if not is_valid_permission_key(key):
+                    flash(
+                        "Invalid permission key. Use 2–80 characters: letters, numbers, dot, underscore, hyphen; "
+                        "must start with a letter.",
+                        "danger",
+                    )
+                elif not label:
+                    flash("Label is required.", "danger")
+                elif PermissionDefinition.query.filter_by(key=key).first():
+                    flash("That key already exists.", "danger")
+                else:
+                    db.session.add(
+                        PermissionDefinition(
+                            key=key,
+                            label=label[:200],
+                            description=desc or None,
+                            sort_order=100,
+                            is_active=True,
+                        )
+                    )
+                    db.session.commit()
+                    log_audit("permission_created", "PermissionDefinition", None, key)
+                    flash("Permission created. Assign it in the Role matrix tab, then to users as needed.", "success")
+            elif act == "delete_perm":
+                pid = request.form.get("perm_id", type=int)
+                p = db.session.get(PermissionDefinition, pid) if pid else None
+                if p and permission_in_use(p.id):
+                    flash("Remove this permission from role defaults and per-user grants first.", "danger")
+                elif p:
+                    k = p.key
+                    log_audit("permission_deleted", "PermissionDefinition", p.id, k)
+                    db.session.delete(p)
+                    db.session.commit()
+                    flash("Permission removed.", "info")
+            elif act == "save_matrix":
+                for rk, _ in USER_ROLES:
+                    for pd in PermissionDefinition.query.filter_by(is_active=True).all():
+                        field = f"rdp_{rk}_{pd.id}"
+                        want = request.form.get(field) == "1"
+                        ex = (
+                            db.session.query(RoleDefaultPermission)
+                            .filter_by(role=rk, permission_id=pd.id)
+                            .first()
+                        )
+                        if want and ex is None:
+                            db.session.add(RoleDefaultPermission(role=rk, permission_id=pd.id))
+                        if not want and ex is not None:
+                            db.session.delete(ex)
+                db.session.commit()
+                log_audit("role_defaults_updated", "AppSettings", None, "role_permission_matrix")
+                flash("Role default permissions saved.", "success")
+            elif act == "save_assignable":
+                keys = [k for k, _ in USER_ROLES if k != "admin" and request.form.get(f"ar_{k}") == "1"]
+                if not keys:
+                    flash("Select at least one assignable role (e.g. operator) or use a superuser to assign admins.", "warning")
+                else:
+                    set_assignable_user_roles(keys)
+                    log_audit("assignable_roles_updated", "AppSettings", None, ",".join(keys))
+                    flash("Assignable roles saved. Superusers can still assign the Admin role.", "success")
+            t = (request.form.get("tab") or "catalog")[:20]
+            return redirect(url_for("users_permissions_hub", tab=t))
+        tab = (request.args.get("tab") or "catalog")[:20]
+        perms = (
+            PermissionDefinition.query.order_by(PermissionDefinition.sort_order, PermissionDefinition.key)
+            .all()
+        )
+        rdp_tuples = (
+            db.session.query(RoleDefaultPermission.role, RoleDefaultPermission.permission_id)
+            .select_from(RoleDefaultPermission)
+            .all()
+        )
+        rdp_set = set(rdp_tuples)
+        s = get_or_create_settings()
+        assignable = s.get_extra().get("assignable_user_roles")
+        if not isinstance(assignable, list):
+            assignable = ["operator", "finance", "agent", "member"]
+        return render_template(
+            "users/permissions.html",
+            tab=tab,
+            all_permissions=perms,
+            user_roles=USER_ROLES,
+            rdp_set=rdp_set,
+            assignable_roles=assignable,
+        )
+
     # --- Accounting (general ledger) ---
     @app.route("/accounting")
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_VIEW)
     def accounting_hub():
         r = forbid_agent()
         if r:
@@ -5531,7 +5914,8 @@ def register_routes(app):
         )
 
     @app.route("/accounting/settings", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_SETTINGS)
     def accounting_settings():
         r = forbid_agent()
         if r:
@@ -5599,7 +5983,8 @@ def register_routes(app):
         )
 
     @app.route("/accounting/chart-of-accounts", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_CHART)
     def accounting_chart():
         r = forbid_agent()
         if r:
@@ -5664,7 +6049,8 @@ def register_routes(app):
         )
 
     @app.route("/accounting/ledger")
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_LEDGER)
     def accounting_ledger():
         r = forbid_agent()
         if r:
@@ -5708,7 +6094,8 @@ def register_routes(app):
         )
 
     @app.route("/accounting/journal")
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_JOURNAL)
     def accounting_journal():
         r = forbid_agent()
         if r:
@@ -5737,7 +6124,8 @@ def register_routes(app):
         )
 
     @app.route("/accounting/journal/<int:entry_id>")
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_JOURNAL)
     def accounting_journal_detail(entry_id):
         r = forbid_agent()
         if r:
@@ -5764,7 +6152,8 @@ def register_routes(app):
         )
 
     @app.route("/accounting/journal/<int:entry_id>/void", methods=["POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_JOURNAL_VOID)
     def accounting_journal_void(entry_id):
         r = forbid_agent()
         if r:
@@ -5784,7 +6173,8 @@ def register_routes(app):
         return redirect(url_for("accounting_journal_detail", entry_id=entry_id))
 
     @app.route("/accounting/trial-balance")
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_TRIAL_BALANCE)
     def accounting_trial_balance():
         r = forbid_agent()
         if r:
@@ -5806,7 +6196,8 @@ def register_routes(app):
         )
 
     @app.route("/accounting/trial-balance/export.csv")
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_TRIAL_BALANCE_EXPORT)
     def accounting_export_trial_balance():
         r = forbid_agent()
         if r:
@@ -5843,7 +6234,8 @@ def register_routes(app):
         )
 
     @app.route("/accounting/journal/export.csv")
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_JOURNAL_EXPORT)
     def accounting_export_journal():
         r = forbid_agent()
         if r:
@@ -5878,7 +6270,8 @@ def register_routes(app):
         )
 
     @app.route("/accounting/manual", methods=["GET", "POST"])
-    @role_required("admin", "operator")
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.ACCOUNTING_MANUAL_ENTRY)
     def accounting_manual_entry():
         r = forbid_agent()
         if r:
@@ -5963,12 +6356,16 @@ def register_routes(app):
             return redirect(url_for("accounting_journal_detail", entry_id=je.id))
         return _manual_render(default_entry_date=date.today().isoformat())
 
-    # --- Reports hub ---
+    # --- Reports hub (also guards ``/reports/...`` list in member portal) ---
     @app.route("/reports")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_hub():
         return render_template("reports/index.html")
 
     @app.route("/reports/monthly")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_monthly():
         y = request.args.get("year", type=int) or datetime.utcnow().year
         m = request.args.get("month", type=int) or datetime.utcnow().month
@@ -6003,6 +6400,8 @@ def register_routes(app):
         )
 
     @app.route("/reports/member/<int:member_id>")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_member_contrib(member_id):
         m = members_scope().filter_by(id=member_id).first_or_404()
         rows = (
@@ -6016,6 +6415,8 @@ def register_routes(app):
         return render_template("reports/member_contrib.html", member=m, rows=rows)
 
     @app.route("/reports/agents")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_agents():
         r = forbid_agent()
         if r:
@@ -6049,6 +6450,8 @@ def register_routes(app):
         )
 
     @app.route("/reports/agents/geography")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_agents_geography():
         """Roll up agents by country and region — collections & member counts (§4.3)."""
         r = forbid_agent()
@@ -6115,6 +6518,8 @@ def register_routes(app):
         )
 
     @app.route("/reports/installments")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_installments():
         query = (
             InstallmentPlan.query.join(ShareSubscription)
@@ -6161,6 +6566,8 @@ def register_routes(app):
         )
 
     @app.route("/reports/members-financial")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_members_financial():
         """Per-member subscribed, paid, outstanding, confirmed value/units, profit — doc §15.1 summary columns."""
         st = request.args.get("status", "").strip()
@@ -6223,6 +6630,8 @@ def register_routes(app):
         )
 
     @app.route("/reports/profit-calculation")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_profit_calculation():
         """Narrative + hypothetical distribution preview — doc §11 / §15.5 profit calculation summary."""
         r = forbid_agent()
@@ -6254,6 +6663,8 @@ def register_routes(app):
         )
 
     @app.route("/reports/profit-summary")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_profit_summary():
         r = forbid_agent()
         if r:
@@ -6276,6 +6687,8 @@ def register_routes(app):
         return render_template("reports/profit_summary.html", rows=out)
 
     @app.route("/reports/investments/summary")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_investment_summary():
         r = forbid_agent()
         if r:
@@ -6329,6 +6742,8 @@ def register_routes(app):
         )
 
     @app.route("/reports/daily")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_daily():
         d = _parse_date(request.args.get("date")) or date.today()
         q = Contribution.query.filter(Contribution.date == d).join(Member)
@@ -6346,6 +6761,8 @@ def register_routes(app):
         return render_template("reports/daily.html", rows=rows, total=total, report_date=d)
 
     @app.route("/reports/projects/profitability")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_projects_profitability():
         r = forbid_agent()
         if r:
@@ -6405,6 +6822,8 @@ def register_routes(app):
         )
 
     @app.route("/reports/community-model")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.REPORTS_HUB)
     def reports_community_model():
         """Community investment model: narrative + pooled collections, share payments, deployment by category, profit basis."""
         mids = _dashboard_scoped_member_ids()
@@ -6483,6 +6902,8 @@ def register_routes(app):
         )
 
     @app.route("/export/members.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_MEMBERS)
     def export_members_xlsx():
         wb = Workbook()
         ws = wb.active
@@ -6546,6 +6967,8 @@ def register_routes(app):
         return _xlsx_response(bio.getvalue(), "members.xlsx")
 
     @app.route("/export/agents.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_AGENTS)
     def export_agents_xlsx():
         r = forbid_agent()
         if r:
@@ -6601,6 +7024,8 @@ def register_routes(app):
         return _xlsx_response(bio.getvalue(), "agents.xlsx")
 
     @app.route("/export/contributions.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_CONTRIBUTIONS)
     def export_contributions_xlsx():
         wb = Workbook()
         ws = wb.active
@@ -6654,6 +7079,8 @@ def register_routes(app):
         return _xlsx_response(bio.getvalue(), "contributions.xlsx")
 
     @app.route("/export/investments.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_INVESTMENTS)
     def export_investments_xlsx():
         r = forbid_agent()
         if r:
@@ -6701,6 +7128,8 @@ def register_routes(app):
         return _xlsx_response(bio.getvalue(), "investments.xlsx")
 
     @app.route("/export/profit_distributions.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_PROFIT)
     def export_profit_xlsx():
         wb = Workbook()
         ws = wb.active
@@ -6733,6 +7162,8 @@ def register_routes(app):
         return _xlsx_response(bio.getvalue(), "profit_distributions.xlsx")
 
     @app.route("/export/projects.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_PROJECTS)
     def export_projects_xlsx():
         wb = Workbook()
         ws = wb.active
@@ -6785,6 +7216,8 @@ def register_routes(app):
         return pdf.output()
 
     @app.route("/export/members.pdf")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_MEMBERS_PDF)
     def export_members_pdf():
         kind_labels = dict(MEMBER_KINDS)
         headers = ["Member ID", "Name", "Type", "Phone", "Agent", "Status", "Contributions", "Profit"]
@@ -6811,6 +7244,8 @@ def register_routes(app):
         )
 
     @app.route("/export/contributions.pdf")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_CONTRIBUTIONS_PDF)
     def export_contributions_pdf():
         rows_data = []
         cq = (
@@ -6850,10 +7285,9 @@ def register_routes(app):
         )
 
     @app.route("/audit")
+    @role_required(*STAFF_ROLES)
+    @permission_required(Permission.AUDIT_VIEW)
     def audit_logs():
-        if current_user.role != "admin":
-            flash("Audit logs are only available to administrators.", "warning")
-            return redirect(url_for("dashboard"))
         page = max(1, request.args.get("page", 1, type=int) or 1)
         per_page = min(max(10, request.args.get("per_page", 50, type=int) or 50), 200)
         total_count = _audit_filtered_query().count()
@@ -6946,10 +7380,9 @@ def register_routes(app):
         )
 
     @app.route("/audit/export.csv")
+    @role_required(*STAFF_ROLES)
+    @permission_required(Permission.AUDIT_EXPORT)
     def audit_export_csv():
-        if current_user.role != "admin":
-            flash("Audit export is only available to administrators.", "warning")
-            return redirect(url_for("dashboard"))
         rows = _audit_filtered_query().order_by(AuditLog.created_at.desc()).limit(10000).all()
         buf = io.StringIO()
         w = csv.writer(buf)
@@ -6976,6 +7409,7 @@ def register_routes(app):
 
     @app.route("/invoices")
     @app.route("/invoices.html")
+    @page_view_permission(Permission.INVOICES_VIEW, allow_member=True)
     def invoices_list():
         """Payment receipts as invoices: same underlying data as contributions, scoped and filterable."""
         member_id = request.args.get("member_id", type=int)
@@ -7090,6 +7524,7 @@ def register_routes(app):
         )
 
     @app.route("/invoice-detail.html")
+    @page_view_permission(Permission.INVOICES_VIEW, allow_member=True)
     def invoice_detail_legacy():
         invoice_id = request.args.get("id", type=int)
         if not invoice_id:
@@ -7098,12 +7533,14 @@ def register_routes(app):
         return redirect(url_for("invoice_detail", id=invoice_id))
 
     @app.route("/invoice-detail")
+    @page_view_permission(Permission.INVOICES_VIEW, allow_member=True)
     def invoice_detail_missing_id():
         """Avoid a bare 404 when users open /invoice-detail without an id."""
         flash("Open an invoice from the Invoices list — each payment has its own invoice link.", "info")
         return redirect(url_for("invoices_list"))
 
     @app.route("/invoice-detail/<int:id>")
+    @page_view_permission(Permission.INVOICES_VIEW, allow_member=True)
     def invoice_detail(id):
         c = (
             Contribution.query.options(

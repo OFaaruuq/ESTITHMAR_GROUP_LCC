@@ -49,7 +49,7 @@
     <div class="d-flex flex-wrap gap-2">
         <a href="{{ url_for('contributions_new', preselect=sub.member_id, subscription_id=sub.id) }}" class="btn btn-primary btn-sm"><i class="ri-hand-coin-line me-1"></i>Add payment</a>
         <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-outline-primary btn-sm"><i class="ri-calendar-todo-line me-1"></i>Installments</a>
-        {% if current_user.role in ['admin', 'operator', 'agent'] %}
+        {% if current_user.role in ['admin', 'operator', 'finance', 'agent'] %}
         <a href="{{ url_for('subscriptions_edit', id=sub.id) }}" class="btn btn-outline-secondary btn-sm"><i class="ri-pencil-line me-1"></i>Edit</a>
         {% endif %}
         <div class="btn-group">
@@ -224,7 +224,7 @@
                     {% if sub.certificate.status == 'Issued' %}
                     <a href="{{ url_for('certificates_pdf', id=sub.certificate.id) }}" class="btn btn-sm btn-outline-success"><i class="ri-file-pdf-line me-1"></i>PDF</a>
                     {% endif %}
-                    {% if current_user.role in ['admin', 'operator'] and sub.certificate.status == 'Revoked' %}
+                    {% if current_user.role in ['admin', 'operator', 'finance'] and sub.certificate.status == 'Revoked' %}
                     <form method="post" action="{{ url_for('certificates_reinstate', id=sub.certificate.id) }}" class="d-inline" onsubmit="return confirm('Reinstate this certificate to Issued?');">
                         <button type="submit" class="btn btn-sm btn-success"><i class="ri-arrow-go-back-line me-1"></i>Reinstate to Issued</button>
                     </form>
@@ -246,7 +246,7 @@
 
         <div class="card mt-3">
             <div class="card-body py-3 d-flex flex-wrap gap-2">
-                {% if current_user.role in ['admin', 'operator'] and sub.status not in ['Cancelled', 'Fully Paid'] %}
+                {% if current_user.role in ['admin', 'operator', 'finance'] and sub.status not in ['Cancelled', 'Fully Paid'] %}
                 <form method="post" action="{{ url_for('subscriptions_cancel', id=sub.id) }}" class="d-inline" onsubmit="return confirm('Cancel this share subscription? This applies to Pending or Partially paid subscriptions only.');">
                     <button type="submit" class="btn btn-outline-danger btn-sm">Cancel subscription</button>
                 </form>

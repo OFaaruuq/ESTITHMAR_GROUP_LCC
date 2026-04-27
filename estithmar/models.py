@@ -77,6 +77,7 @@ PROFIT_DISTRIBUTION_FREQUENCIES = [
 USER_ROLES = [
     ("admin", "Admin"),
     ("operator", "Operator"),
+    ("finance", "Finance"),
     ("agent", "Agent"),
     ("member", "Member"),
 ]
@@ -752,9 +753,56 @@ class AppUser(UserMixin, db.Model):
     member_id = db.Column(db.Integer, db.ForeignKey("members.id"), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_superuser = db.Column(db.Boolean, nullable=False, default=False)
+    # When true, all permission checks pass (use sparingly; prefer role defaults + grants).
 
     agent = db.relationship("Agent", backref="users", foreign_keys=[agent_id])
     member = db.relationship("Member", backref="app_users", foreign_keys=[member_id])
+    extra_permissions = db.relationship(
+        "UserGrantedPermission", back_populates="user", lazy="dynamic", cascade="all, delete-orphan"
+    )
+
+
+class PermissionDefinition(db.Model):
+    """Catalog of assignable fine-grained permissions (admin-defined keys)."""
+
+    __tablename__ = "permission_definitions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    label = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    role_links = db.relationship("RoleDefaultPermission", back_populates="permission", cascade="all, delete-orphan")
+    user_grants = db.relationship("UserGrantedPermission", back_populates="permission", cascade="all, delete-orphan")
+
+
+class RoleDefaultPermission(db.Model):
+    """Which permissions each built-in role receives by default (editable by admin)."""
+
+    __tablename__ = "role_default_permissions"
+    __table_args__ = (db.UniqueConstraint("role", "permission_id", name="uq_rdp_role_perm"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    role = db.Column(db.String(32), nullable=False, index=True)
+    permission_id = db.Column(db.Integer, db.ForeignKey("permission_definitions.id", ondelete="CASCADE"), nullable=False)
+    permission = db.relationship("PermissionDefinition", back_populates="role_links", foreign_keys=[permission_id])
+
+
+class UserGrantedPermission(db.Model):
+    """Additional permissions granted to a user beyond their role defaults (least privilege + overrides)."""
+
+    __tablename__ = "user_granted_permissions"
+    __table_args__ = (db.UniqueConstraint("user_id", "permission_id", name="uq_ugp_user_perm"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("app_users.id", ondelete="CASCADE"), nullable=False, index=True)
+    permission_id = db.Column(db.Integer, db.ForeignKey("permission_definitions.id", ondelete="CASCADE"), nullable=False)
+    user = db.relationship("AppUser", back_populates="extra_permissions")
+    permission = db.relationship("PermissionDefinition", back_populates="user_grants")
 
 
 class AppSettings(db.Model):

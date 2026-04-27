@@ -2,7 +2,7 @@
 {% block title %}Contributions{% endblock %}
 {% block page_heading %}Collection (contributions){% endblock %}
 {% block content %}
-<p class="text-muted small mb-3">Record and review member payments. Filters apply to the table, totals, and Excel export. Verification is limited to administrators and operators.</p>
+<p class="text-muted small mb-3">Record and review member payments. Filters apply to the table, totals, and Excel export. <strong>Verification</strong> is limited to <strong>Finance</strong> and <strong>Admin</strong> (operators may record payments only).</p>
 
 <div class="card mb-3">
     <div class="card-header py-3">
@@ -157,7 +157,7 @@
                         </td>
                         <td class="text-end text-nowrap">
                             <a href="{{ url_for('contributions_receipt', id=c.id) }}" class="btn btn-sm btn-soft-primary">Receipt</a>
-                            {% if current_user.role in ('admin', 'operator') %}
+                            {% if can_verify_payments() %}
                             {% if not c.verified %}
                             <form method="post" action="{{ url_for('contributions_verify', id=c.id) }}" class="d-inline"><button type="submit" class="btn btn-sm btn-outline-success">Verify</button></form>
                             {% else %}

@@ -33,7 +33,7 @@
                     <a href="{{ url_for('logout') }}" class="btn btn-sm btn-soft-secondary">Logout</a>
                 </div>
                 {% endif %}
-                {% if current_user.role != 'member' and request.endpoint not in ('settings_page', 'settings_notifications', 'settings_payment_methods') %}
+                {% if current_user.role != 'member' and request.endpoint not in ('settings_page', 'settings_notifications', 'settings_payment_methods', 'settings_database_backup') %}
                 <form class="app-search d-none d-lg-block me-3" method="get" action="{{ url_for('members_list') }}">
                     <div class="position-relative">
                         <input type="text" name="q" class="form-control" placeholder="Search members…" value="">

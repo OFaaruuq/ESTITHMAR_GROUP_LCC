@@ -142,7 +142,7 @@
                                     </div>
                                 </div>
                                 <div class="border-top p-2 bg-light bg-opacity-50">
-                                    {% if current_user.role in ('admin', 'operator') %}
+                                    {% if current_user.role in ('admin', 'operator', 'finance') %}
                                     <a class="btn btn-sm btn-soft-primary w-100 text-start" href="{{ url_for('settings_page') }}">
                                         <i class="ri-settings-3-line me-1"></i> Organization settings
                                     </a>
@@ -216,7 +216,7 @@
                                             </a>
                                         </div>
                                         <div class="col">
-                                            {% if current_user.role in ('admin', 'operator') %}
+                                            {% if current_user.role in ('admin', 'operator', 'finance') %}
                                             <a class="dropdown-icon-item" href="{{ url_for('settings_page') }}">
                                                 <i class="ri-settings-3-line font-size-22 text-primary d-block mb-1"></i>
                                                 <span>Settings</span>

@@ -148,7 +148,7 @@
                 <h5 class="mb-2 fw-semibold">Certificate dashboard</h5>
                 <p class="text-muted small mb-0" style="max-width: 44rem;">
                     Each certificate belongs to <strong>one member investment</strong>. Use <strong>View</strong> for print preview or <strong>PDF</strong> when issued.
-                    {% if current_user.role in ['admin', 'operator'] %}
+                    {% if current_user.role in ['admin', 'operator', 'finance'] %}
                     Admins and operators can <strong>revoke</strong> mistakes or <strong>reinstate</strong> a revoked certificate back to Issued.
                     {% else %}
                     Scoped to members linked to your agent profile.
@@ -290,14 +290,14 @@
                                     <a class="btn btn-outline-success" href="{{ url_for('certificates_pdf', id=c.id) }}" title="Download PDF"><i class="ri-download-2-line me-1"></i>PDF</a>
                                     {% endif %}
                                 </div>
-                                {% if current_user.role in ['admin', 'operator'] and c.status == 'Issued' %}
+                                {% if current_user.role in ['admin', 'operator', 'finance'] and c.status == 'Issued' %}
                                 <form method="post" action="{{ url_for('certificates_revoke', id=c.id) }}" class="d-inline-block" style="max-width: 15rem;" onsubmit="return confirm('Revoke certificate {{ c.certificate_no }}? You can reinstate it from this list if this was a mistake.');">
                                     <div class="input-group input-group-sm flex-nowrap">
                                         <input type="text" name="reason" class="form-control" maxlength="500" placeholder="Reason (optional)" aria-label="Revocation reason for audit log">
                                         <button class="btn btn-outline-danger" type="submit" title="Revoke">Revoke</button>
                                     </div>
                                 </form>
-                                {% elif current_user.role in ['admin', 'operator'] and c.status == 'Revoked' %}
+                                {% elif current_user.role in ['admin', 'operator', 'finance'] and c.status == 'Revoked' %}
                                 <form method="post" action="{{ url_for('certificates_reinstate', id=c.id) }}" class="d-inline" onsubmit="return confirm('Reinstate {{ c.certificate_no }} to Issued? PDF download will be available again.');">
                                     <button class="btn btn-sm btn-success" type="submit" title="Undo revocation">Reinstate</button>
                                 </form>

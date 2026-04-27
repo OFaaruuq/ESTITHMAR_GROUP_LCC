@@ -99,6 +99,8 @@
                 <span class="badge rounded-pill px-3 py-2 text-bg-danger">{{ role_labels.get(user.role, user.role) }}</span>
                 {% elif user.role == 'operator' %}
                 <span class="badge rounded-pill px-3 py-2 text-bg-primary">{{ role_labels.get(user.role, user.role) }}</span>
+                {% elif user.role == 'finance' %}
+                <span class="badge rounded-pill px-3 py-2 text-bg-info">{{ role_labels.get(user.role, user.role) }}</span>
                 {% else %}
                 <span class="badge rounded-pill px-3 py-2 text-bg-secondary">{{ role_labels.get(user.role, user.role) }}</span>
                 {% endif %}
@@ -178,12 +180,48 @@
                     <div class="mb-3">
                         <label class="form-label small fw-semibold text-secondary" for="role-select">Role</label>
                         <select name="role" class="form-select form-select-lg" id="role-select" aria-describedby="role-help">
-                            {% for key, label in roles %}
+                            {% for key, label in role_choices %}
                             <option value="{{ key }}" {{ 'selected' if (user and user.role == key) or (not user and key == 'operator') else '' }}>{{ label }}</option>
                             {% endfor %}
                         </select>
-                        <div id="role-help" class="form-text">Determines which modules and data this user can reach.</div>
+                        <div id="role-help" class="form-text">Determines baseline access. Fine-grained permissions are configured under <a href="{{ url_for('users_permissions_hub') }}">User management → Permissions</a> (role defaults and optional extra grants below).</div>
                     </div>
+
+                    {% if show_superuser %}
+                    <div class="mb-3 p-3 rounded-3 border border-warning border-opacity-50 bg-warning bg-opacity-10">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_superuser" value="1" id="is-su"
+                                   {{ 'checked' if user and user.is_superuser else '' }}>
+                            <label class="form-check-label fw-semibold" for="is-su">Superuser (full access)</label>
+                        </div>
+                        <p class="form-text small mb-0">Bypasses all permission checks. Use for break-glass administrators only. Prefer role defaults + grants for least privilege.</p>
+                    </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <div class="uf-section-label">Extra permissions (grants)</div>
+                        <p class="small text-muted">Adds capabilities on top of the role&rsquo;s default set. Remove checkboxes to revoke.</p>
+                        {% if all_permissions %}
+                        <div class="border rounded-3 p-2" style="max-height: 220px; overflow-y: auto;">
+                            {% for p in all_permissions %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="grant_perm_id" value="{{ p.id }}" id="gp{{ p.id }}"
+                                       {{ 'checked' if p.id in granted_ids else '' }}>
+                                <label class="form-check-label small" for="gp{{ p.id }}"><code>{{ p.key }}</code> — {{ p.label }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="text-muted small mb-0">No permissions defined. Open <a href="{{ url_for('users_permissions_hub') }}">Permissions</a> to create the catalog first.</p>
+                        {% endif %}
+                    </div>
+
+                    {% if user and user.id and effective_keys %}
+                    <div class="mb-3 p-2 rounded-2 border bg-light small">
+                        <span class="text-uppercase text-muted fw-bold" style="font-size: .7rem; letter-spacing: .06em;">Effective</span>
+                        <p class="mb-0 mt-1"><code class="me-1">{{ (effective_keys or [])|join(', ') }}</code></p>
+                    </div>
+                    {% endif %}
 
                     <div class="uf-agent-panel p-3 mb-3" id="agent-box" role="region" aria-labelledby="agent-heading">
                         <h6 class="small fw-semibold mb-2" id="agent-heading"><i class="ri-links-line me-1 text-primary"></i>Linked sales agent</h6>
@@ -247,7 +285,16 @@
                                 <span class="text-primary mt-1"><i class="ri-database-2-line"></i></span>
                                 <div>
                                     <div class="fw-semibold small">Operator</div>
-                                    <p class="text-muted small mb-0">Operational data: members, money in/out, investments — not user admin.</p>
+                                    <p class="text-muted small mb-0">Operational data: members, money in/out, investments — not user admin. Cannot verify bank/cash for receipts.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="uf-perm-item">
+                            <div class="d-flex align-items-start gap-2">
+                                <span class="text-success mt-1"><i class="ri-bank-line"></i></span>
+                                <div>
+                                    <div class="fw-semibold small">Finance</div>
+                                    <p class="text-muted small mb-0">Back-office like operator, plus <strong>verify / unverify</strong> payment receipts (segregation of duties).</p>
                                 </div>
                             </div>
                         </div>

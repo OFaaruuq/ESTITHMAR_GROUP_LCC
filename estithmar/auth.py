@@ -7,6 +7,7 @@ from flask_login import LoginManager, current_user
 
 from estithmar import db
 from estithmar.models import AppUser
+from estithmar.permissions import user_has_permission
 
 login_manager = LoginManager()
 login_manager.login_view = "login"
@@ -33,6 +34,66 @@ def role_required(*roles: str):
                 flash("You do not have permission for this action.", "danger")
                 return redirect(url_for("dashboard"))
             return fn(*args, **kwargs)
+
+        return inner
+
+    return deco
+
+
+def permission_required(permission: str):
+    """Require a named DB-backed permission (``Permission`` / ``permission_definitions``). Superuser passes."""
+
+    def deco(fn):
+        @wraps(fn)
+        def inner(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for("login", next=request.path))
+            if not user_has_permission(current_user, permission):
+                flash("You do not have permission for this action.", "danger")
+                return redirect(url_for("dashboard"))
+            return fn(*args, **kwargs)
+
+        return inner
+
+    return deco
+
+
+def page_view_permission(permission: str, *, allow_member: bool = True):
+    """For HTML pages: require a DB permission for staff; optionally allow ``member`` (scoped portal) without a grant.
+
+    Use for list/detail views shared with the member portal. Post/action routes should use ``permission_required`` or other guards.
+    """
+
+    def deco(fn):
+        @wraps(fn)
+        def inner(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for("login", next=request.path))
+            if allow_member and getattr(current_user, "role", None) == "member":
+                return fn(*args, **kwargs)
+            if not user_has_permission(current_user, permission):
+                flash("You do not have permission to view this page.", "warning")
+                return redirect(url_for("dashboard"))
+            return fn(*args, **kwargs)
+
+        return inner
+
+    return deco
+
+
+def any_permission_required(*keys: str):
+    """User must be granted at least one of the permission keys (role defaults, grants, or superuser)."""
+
+    def deco(fn):
+        @wraps(fn)
+        def inner(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for("login", next=request.path))
+            for k in keys:
+                if k and user_has_permission(current_user, k):
+                    return fn(*args, **kwargs)
+            flash("You do not have permission for this action.", "danger")
+            return redirect(url_for("dashboard"))
 
         return inner
 

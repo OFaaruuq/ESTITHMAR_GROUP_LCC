@@ -19,19 +19,23 @@
         <div id="sidebar-menu">
             <ul class="metismenu list-unstyled" id="side-menu">
                 <li class="menu-title">Main modules</li>
+                {% if nav_can('core.dashboard') %}
                 <li>
                     <a href="{{ url_for('dashboard') }}" class="waves-effect">
                         <i class="uim uim-airplay"></i>
                         <span>Dashboard</span>
                     </a>
                 </li>
+                {% endif %}
+                {% if nav_can('members.view') %}
                 <li>
                     <a href="{{ url_for('members_list') }}" class="waves-effect">
                         <i class="ri-team-line"></i>
                         <span>{% if current_user.role == 'agent' %}My team{% else %}Members{% endif %}</span>
                     </a>
                 </li>
-                {% if current_user.role not in ('agent', 'member') %}
+                {% endif %}
+                {% if current_user.role not in ('agent', 'member') and nav_can('agents.view') %}
                 <li>
                     <a href="{{ url_for('agents_list') }}" class="waves-effect">
                         <i class="ri-map-pin-user-line"></i>
@@ -39,63 +43,61 @@
                     </a>
                 </li>
                 {% endif %}
+                {% if nav_can('contributions.view') %}
                 <li>
                     <a href="{{ url_for('contributions_list') }}" class="waves-effect">
                         <i class="ri-hand-coin-line"></i>
                         <span>Contributions</span>
                     </a>
                 </li>
+                {% endif %}
+                {% if nav_can('projects.view') %}
                 <li>
                     <a href="{{ url_for('projects_list') }}" class="waves-effect">
                         <i class="ri-folder-3-line"></i>
                         <span>Projects</span>
                     </a>
                 </li>
+                {% endif %}
+                {% if nav_can('investments.view') %}
                 <li>
                     <a href="{{ url_for('investments_list') }}" class="waves-effect">
                         <i class="ri-line-chart-line"></i>
                         <span>Investments</span>
                     </a>
                 </li>
+                {% endif %}
+                {% if nav_can('invoices.view') %}
                 <li>
                     <a href="{{ url_for('invoices_list') }}" class="waves-effect">
                         <i class="ri-file-list-3-line"></i>
                         <span>Invoices</span>
                     </a>
                 </li>
+                {% endif %}
+                {% if nav_can('subscriptions.view') %}
                 <li>
                     <a href="{{ url_for('subscriptions_list') }}" class="waves-effect">
                         <i class="ri-stack-line"></i>
                         <span>Subscriptions</span>
                     </a>
                 </li>
+                {% endif %}
+                {% if nav_can('certificates.view') %}
                 <li>
                     <a href="{{ url_for('certificates_list') }}" class="waves-effect">
                         <i class="ri-award-line"></i>
                         <span>Certificates</span>
                     </a>
                 </li>
-                {% if current_user.role in ('admin', 'operator') %}
+                {% endif %}
+                {% if current_user.role in ('admin', 'operator', 'finance') %}
+                {% if has_permission('profit.view') %}
                 <li>
                     <a href="{{ url_for('profit_distribute') }}" class="waves-effect">
                         <i class="ri-share-forward-line"></i>
                         <span>Profit distribution</span>
                     </a>
-                </li>
-                <li>
-                    <a href="javascript:void(0);" class="has-arrow waves-effect">
-                        <i class="ri-book-2-line"></i>
-                        <span>Accounting</span>
-                    </a>
-                    <ul class="sub-menu" aria-expanded="false">
-                        <li><a href="{{ url_for('accounting_hub') }}">Overview</a></li>
-                        <li><a href="{{ url_for('accounting_settings') }}">Account settings</a></li>
-                        <li><a href="{{ url_for('accounting_chart') }}">Chart of accounts</a></li>
-                        <li><a href="{{ url_for('accounting_journal') }}">Journal entries</a></li>
-                        <li><a href="{{ url_for('accounting_manual_entry') }}">New journal entry</a></li>
-                        <li><a href="{{ url_for('accounting_trial_balance') }}">Trial balance</a></li>
-                        <li><a href="{{ url_for('accounting_ledger') }}">General ledger</a></li>
-                    </ul>
                 </li>
                 {% else %}
                 <li>
@@ -105,7 +107,32 @@
                     </a>
                 </li>
                 {% endif %}
-                {% if current_user.role != 'member' %}
+                {% if has_permission('accounting.view') or has_permission('accounting.journal') or has_permission('accounting.chart') %}
+                <li>
+                    <a href="javascript:void(0);" class="has-arrow waves-effect">
+                        <i class="ri-book-2-line"></i>
+                        <span>Accounting</span>
+                    </a>
+                    <ul class="sub-menu" aria-expanded="false">
+                        {% if has_permission('accounting.view') %}<li><a href="{{ url_for('accounting_hub') }}">Overview</a></li>{% endif %}
+                        {% if has_permission('accounting.settings') %}<li><a href="{{ url_for('accounting_settings') }}">Account settings</a></li>{% endif %}
+                        {% if has_permission('accounting.chart') %}<li><a href="{{ url_for('accounting_chart') }}">Chart of accounts</a></li>{% endif %}
+                        {% if has_permission('accounting.journal') %}<li><a href="{{ url_for('accounting_journal') }}">Journal entries</a></li>{% endif %}
+                        {% if has_permission('accounting.manual_entry') %}<li><a href="{{ url_for('accounting_manual_entry') }}">New journal entry</a></li>{% endif %}
+                        {% if has_permission('accounting.trial_balance') %}<li><a href="{{ url_for('accounting_trial_balance') }}">Trial balance</a></li>{% endif %}
+                        {% if has_permission('accounting.ledger') %}<li><a href="{{ url_for('accounting_ledger') }}">General ledger</a></li>{% endif %}
+                    </ul>
+                </li>
+                {% endif %}
+                {% else %}
+                <li>
+                    <a href="{{ url_for('profit_history') }}" class="waves-effect">
+                        <i class="ri-share-forward-line"></i>
+                        <span>Profit history</span>
+                    </a>
+                </li>
+                {% endif %}
+                {% if current_user.role != 'member' and has_permission('reports.hub') %}
                 <li>
                     <a href="{{ url_for('reports_hub') }}" class="waves-effect">
                         <i class="ri-file-chart-line"></i>
@@ -113,33 +140,40 @@
                     </a>
                 </li>
                 {% endif %}
-                {% if current_user.role in ('admin', 'operator') %}
+                {% if has_permission('settings.view') or has_permission('settings.notifications') or has_permission('settings.payment_methods') or has_permission('settings.database_backup') or has_permission('accounting.settings') %}
                 <li>
                     <a href="javascript:void(0);" class="has-arrow waves-effect">
                         <i class="ri-settings-3-line"></i>
                         <span>Settings</span>
                     </a>
                     <ul class="sub-menu" aria-expanded="false">
-                        <li><a href="{{ url_for('settings_page') }}">General</a></li>
-                        <li><a href="{{ url_for('settings_notifications') }}">Email &amp; WhatsApp</a></li>
-                        <li><a href="{{ url_for('settings_payment_methods') }}">Payment methods</a></li>
-                        <li><a href="{{ url_for('accounting_settings') }}">Fiscal &amp; GL</a></li>
+                        {% if has_permission('settings.view') %}<li><a href="{{ url_for('settings_page') }}">General</a></li>{% endif %}
+                        {% if has_permission('settings.notifications') %}<li><a href="{{ url_for('settings_notifications') }}">Email &amp; WhatsApp</a></li>{% endif %}
+                        {% if has_permission('settings.payment_methods') %}<li><a href="{{ url_for('settings_payment_methods') }}">Payment methods</a></li>{% endif %}
+                        {% if has_permission('settings.database_backup') %}<li><a href="{{ url_for('settings_database_backup') }}">Database backup</a></li>{% endif %}
+                        {% if has_permission('accounting.settings') %}<li><a href="{{ url_for('accounting_settings') }}">Fiscal &amp; GL</a></li>{% endif %}
                     </ul>
                 </li>
-                {% if current_user.role == 'admin' %}
+                {% endif %}
+                {% if has_permission('users.view') or has_permission('users.permissions') %}
                 <li>
-                    <a href="{{ url_for('users_list') }}" class="waves-effect">
+                    <a href="javascript:void(0);" class="has-arrow waves-effect" aria-expanded="false">
                         <i class="ri-shield-user-line"></i>
                         <span>User management</span>
                     </a>
+                    <ul class="sub-menu" aria-expanded="false">
+                        {% if has_permission('users.view') %}<li><a href="{{ url_for('users_list') }}">Users</a></li>{% endif %}
+                        {% if has_permission('users.permissions') %}<li><a href="{{ url_for('users_permissions_hub') }}">Permissions</a></li>{% endif %}
+                    </ul>
                 </li>
+                {% endif %}
+                {% if has_permission('audit.view') %}
                 <li>
                     <a href="{{ url_for('audit_logs') }}" class="waves-effect">
                         <i class="ri-history-line"></i>
                         <span>Audit logs</span>
                     </a>
                 </li>
-                {% endif %}
                 {% endif %}
             </ul>
         </div>
@@ -162,7 +196,7 @@
         <div class="dropdown-menu dropdown-menu-end" aria-labelledby="sidebar-footer-user-dropdown">
             <a class="dropdown-item" href="{{ url_for('pages_profile') }}"><i class="mdi mdi-account-circle text-muted font-size-16 align-middle me-1"></i> <span class="align-middle">Profile</span></a>
             <div class="dropdown-divider"></div>
-            {% if current_user.role in ('admin', 'operator') %}
+            {% if has_permission('settings.view') %}
             <a class="dropdown-item" href="{{ url_for('settings_page') }}"><i class="mdi mdi-cog-outline text-muted font-size-16 align-middle me-1"></i> <span class="align-middle">Settings</span></a>
             {% endif %}
             <a class="dropdown-item" href="{{ url_for('logout') }}"><i class="mdi mdi-logout text-muted font-size-16 align-middle me-1"></i> <span class="align-middle">Logout</span></a>

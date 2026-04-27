@@ -30,7 +30,10 @@
             <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_page') }}"><i class="ri-settings-3-line me-1"></i>General</a></li>
             <li class="nav-item"><a class="nav-link active" href="{{ url_for('settings_notifications') }}" aria-current="page"><i class="ri-mail-send-line me-1"></i>Email &amp; WhatsApp</a></li>
             <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_payment_methods') }}"><i class="ri-bank-card-line me-1"></i>Payment methods</a></li>
-            {% if current_user.role in ('admin', 'operator') %}
+            {% if has_permission('settings.database_backup') %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_database_backup') }}"><i class="ri-database-2-line me-1"></i>Database backup</a></li>
+            {% endif %}
+            {% if current_user.role in ('admin', 'operator', 'finance') %}
             <li class="nav-item"><a class="nav-link" href="{{ url_for('accounting_settings') }}"><i class="ri-book-2-line me-1"></i>Fiscal &amp; GL</a></li>
             {% endif %}
         </ul>
