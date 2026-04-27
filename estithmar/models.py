@@ -756,6 +756,11 @@ class AppUser(UserMixin, db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_superuser = db.Column(db.Boolean, nullable=False, default=False)
+    last_login_at = db.Column(db.DateTime, nullable=True)
+    last_seen_at = db.Column(db.DateTime, nullable=True)
+    last_seen_ip = db.Column(db.String(64), nullable=True)
+    last_seen_user_agent = db.Column(db.String(255), nullable=True)
+    session_version = db.Column(db.Integer, nullable=False, default=1)
     # When true, all permission checks pass (use sparingly; prefer role defaults + grants).
 
     agent = db.relationship("Agent", backref="users", foreign_keys=[agent_id])
@@ -879,6 +884,22 @@ class ReportSchedule(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     created_by = db.relationship("AppUser", foreign_keys=[created_by_user_id])
+
+
+class UserSessionLog(db.Model):
+    __tablename__ = "user_session_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("app_users.id"), nullable=False, index=True)
+    login_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    last_seen_at = db.Column(db.DateTime, nullable=True, index=True)
+    logout_at = db.Column(db.DateTime, nullable=True)
+    ip_address = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(255), nullable=True)
+    was_forced_logout = db.Column(db.Boolean, nullable=False, default=False)
+    ended_reason = db.Column(db.String(32), nullable=True)
+
+    user = db.relationship("AppUser", foreign_keys=[user_id])
 
 
 class NotificationDeliveryLog(db.Model):

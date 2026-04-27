@@ -89,6 +89,7 @@ from estithmar.models import (
     PermissionDefinition,
     RoleDefaultPermission,
     NotificationDeliveryLog,
+    UserSessionLog,
     ProfitDistribution,
     ProfitDistributionBatch,
     ReportSchedule,
@@ -214,6 +215,22 @@ def log_audit(action, entity_type=None, entity_id=None, details=None):
             details=details,
         )
     )
+
+
+def _client_ip() -> str:
+    raw_xff = (request.headers.get("X-Forwarded-For") or "").strip()
+    if raw_xff:
+        first = raw_xff.split(",")[0].strip()
+        if first:
+            return first[:64]
+    rip = (request.headers.get("X-Real-IP") or "").strip()
+    if rip:
+        return rip[:64]
+    return (request.remote_addr or "")[:64]
+
+
+def _user_agent_short() -> str:
+    return ((request.user_agent.string or "").strip() or "")[:255]
 
 
 def _parse_date(s: str | None) -> date | None:
@@ -766,6 +783,7 @@ def _audit_notification_item(log: AuditLog) -> dict | None:
         "settings_updated": "System settings updated",
         "settings_notifications_updated": "Notification settings updated",
         "database_backup_created": "Database backup file created",
+        "user_force_logout": "User session forcibly ended",
         "profit_distributed": "Profit distribution recorded",
         "investment_created": "Investment created",
         "investment_updated": "Investment updated",
@@ -1230,6 +1248,7 @@ def register_routes(app):
     def _audit_filtered_query():
         """Apply GET filters for audit log list and CSV export (same rules)."""
         action_f = (request.args.get("action") or "").strip()
+        actor_f = (request.args.get("actor") or "").strip()
         entity_type = (request.args.get("entity_type") or "").strip()
         date_from = _parse_date(request.args.get("date_from"))
         date_to = _parse_date(request.args.get("date_to"))
@@ -1237,6 +1256,8 @@ def register_routes(app):
         query = AuditLog.query
         if action_f:
             query = query.filter(AuditLog.action.ilike(f"%{action_f}%"))
+        if actor_f:
+            query = query.filter(AuditLog.actor_username.ilike(f"%{actor_f}%"))
         if entity_type:
             query = query.filter(AuditLog.entity_type == entity_type)
         if date_from:
@@ -1292,6 +1313,44 @@ def register_routes(app):
             flash("You cannot modify installment plans.", "warning")
             return redirect(url_for("dashboard"))
 
+    @app.before_request
+    def _touch_user_presence():
+        if not current_user.is_authenticated:
+            return
+        ep = request.endpoint
+        if not ep or ep == "static":
+            return
+        now = datetime.utcnow()
+        last_touched_ts = session.get("_presence_touch_ts")
+        try:
+            if last_touched_ts and (now.timestamp() - float(last_touched_ts)) < 60:
+                return
+        except Exception:
+            pass
+        try:
+            u = db.session.get(AppUser, current_user.id)
+            if u is None:
+                return
+            sess_ver = int(getattr(u, "session_version", 1) or 1)
+            seen_ver = int(session.get("_sv", sess_ver) or sess_ver)
+            if seen_ver != sess_ver:
+                logout_user()
+                session.clear()
+                flash("Your session was ended by an administrator.", "warning")
+                return redirect(url_for("login"))
+            u.last_seen_at = now
+            u.last_seen_ip = _client_ip()
+            u.last_seen_user_agent = _user_agent_short()
+            sid = session.get("_usid")
+            if sid:
+                row = db.session.get(UserSessionLog, int(sid))
+                if row and row.user_id == u.id and not row.logout_at:
+                    row.last_seen_at = now
+            db.session.commit()
+            session["_presence_touch_ts"] = now.timestamp()
+        except Exception:
+            db.session.rollback()
+
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if current_user.is_authenticated:
@@ -1307,6 +1366,24 @@ def register_routes(app):
                     u = AppUser.query.filter(func.lower(AppUser.email) == ident.lower()).first()
             if u and u.is_active and check_password_hash(u.password_hash, password):
                 login_user(u)
+                now = datetime.utcnow()
+                u.last_login_at = now
+                u.last_seen_at = now
+                u.last_seen_ip = _client_ip()
+                u.last_seen_user_agent = _user_agent_short()
+                u.session_version = int(getattr(u, "session_version", 1) or 1)
+                ses = UserSessionLog(
+                    user_id=u.id,
+                    login_at=now,
+                    last_seen_at=now,
+                    ip_address=_client_ip(),
+                    user_agent=_user_agent_short(),
+                )
+                db.session.add(ses)
+                db.session.commit()
+                session["_presence_touch_ts"] = now.timestamp()
+                session["_sv"] = int(u.session_version or 1)
+                session["_usid"] = int(ses.id)
                 if nxt.startswith("/"):
                     return redirect(nxt)
                 return redirect(url_for("dashboard"))
@@ -1409,6 +1486,23 @@ def register_routes(app):
                 phone=phone_norm,
             )
             login_user(u)
+            now = datetime.utcnow()
+            u.last_login_at = now
+            u.last_seen_at = now
+            u.last_seen_ip = _client_ip()
+            u.last_seen_user_agent = _user_agent_short()
+            ses = UserSessionLog(
+                user_id=u.id,
+                login_at=now,
+                last_seen_at=now,
+                ip_address=_client_ip(),
+                user_agent=_user_agent_short(),
+            )
+            db.session.add(ses)
+            db.session.commit()
+            session["_presence_touch_ts"] = now.timestamp()
+            session["_sv"] = int(u.session_version or 1)
+            session["_usid"] = int(ses.id)
             flash("Welcome — your member portal is ready.", "success")
             return redirect(url_for("dashboard"))
         return render_template("register.html")
@@ -1440,6 +1534,24 @@ def register_routes(app):
 
     @app.route("/logout")
     def logout():
+        try:
+            u = db.session.get(AppUser, current_user.id) if current_user.is_authenticated else None
+            if u is not None:
+                now = datetime.utcnow()
+                u.last_seen_at = now
+                sid = session.get("_usid")
+                if sid:
+                    row = db.session.get(UserSessionLog, int(sid))
+                    if row and row.user_id == u.id and not row.logout_at:
+                        row.last_seen_at = now
+                        row.logout_at = now
+                        row.ended_reason = "logout"
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+        session.pop("_presence_touch_ts", None)
+        session.pop("_sv", None)
+        session.pop("_usid", None)
         logout_user()
         flash("Signed out.", "info")
         return redirect(url_for("login"))
@@ -5592,6 +5704,92 @@ def register_routes(app):
             counts=counts,
         )
 
+    @app.route("/users/online", methods=["GET", "POST"])
+    @role_required("admin")
+    @permission_required(Permission.USERS_VIEW)
+    def users_online():
+        now = datetime.utcnow()
+        if request.method == "POST":
+            action = (request.form.get("action") or "").strip()
+            target_id = request.form.get("user_id", type=int)
+            if action == "force_logout" and target_id:
+                target = db.session.get(AppUser, target_id)
+                if not target:
+                    flash("User not found.", "warning")
+                    return redirect(url_for("users_online"))
+                target.session_version = int(getattr(target, "session_version", 1) or 1) + 1
+                active_sessions = (
+                    UserSessionLog.query.filter(
+                        UserSessionLog.user_id == target.id,
+                        UserSessionLog.logout_at.is_(None),
+                    ).all()
+                )
+                for s in active_sessions:
+                    s.logout_at = now
+                    s.last_seen_at = now
+                    s.was_forced_logout = True
+                    s.ended_reason = "forced_logout"
+                db.session.commit()
+                log_audit("user_force_logout", "AppUser", target.id, f"username={target.username}")
+                db.session.commit()
+                flash(f"Forced logout sent for user: {target.username}.", "success")
+                return redirect(url_for("users_online"))
+
+        threshold = now - timedelta(minutes=5)
+        suspicious_window = now - timedelta(hours=24)
+        users = (
+            AppUser.query.options(joinedload(AppUser.agent), joinedload(AppUser.member))
+            .filter(AppUser.is_active == True)  # noqa: E712
+            .order_by(AppUser.last_seen_at.desc(), AppUser.username.asc())
+            .all()
+        )
+        online_rows = [u for u in users if u.last_seen_at and u.last_seen_at >= threshold]
+        role_online_counts = {"admin": 0, "operator": 0, "finance": 0, "agent": 0, "member": 0}
+        for u in online_rows:
+            if u.role in role_online_counts:
+                role_online_counts[u.role] += 1
+
+        suspicious_ids: set[int] = set()
+        ip_counts_rows = (
+            db.session.query(
+                UserSessionLog.user_id,
+                func.count(func.distinct(UserSessionLog.ip_address)).label("ip_count"),
+            )
+            .filter(
+                UserSessionLog.login_at >= suspicious_window,
+                UserSessionLog.ip_address.isnot(None),
+                UserSessionLog.ip_address != "",
+            )
+            .group_by(UserSessionLog.user_id)
+            .all()
+        )
+        for uid, ip_count in ip_counts_rows:
+            if int(ip_count or 0) >= 3:
+                suspicious_ids.add(int(uid))
+
+        selected_user_id = request.args.get("user_id", type=int)
+        sess_q = UserSessionLog.query.options(joinedload(UserSessionLog.user)).order_by(UserSessionLog.login_at.desc())
+        if selected_user_id:
+            sess_q = sess_q.filter(UserSessionLog.user_id == selected_user_id)
+        sessions = sess_q.limit(200).all()
+
+        return render_template(
+            "users/online.html",
+            users=users,
+            sessions=sessions,
+            selected_user_id=selected_user_id,
+            online_rows=online_rows,
+            online_count=len(online_rows),
+            total_count=len(users),
+            threshold_minutes=5,
+            now_utc=now,
+            role_online_counts=role_online_counts,
+            suspicious_ids=suspicious_ids,
+            suspicious_window_hours=24,
+            role_labels=dict(USER_ROLES),
+            fmt_time_ago=_fmt_time_ago,
+        )
+
     @app.route("/users/new", methods=["GET", "POST"])
     @role_required("admin", "operator", "finance")
     @permission_required(Permission.USERS_CREATE)
@@ -7330,6 +7528,15 @@ def register_routes(app):
             db.session.query(AuditLog.action).distinct().order_by(AuditLog.action.asc()).limit(200).all()
         )
         action_choices = [a[0] for a in action_rows if a[0]]
+        actor_rows = (
+            db.session.query(AuditLog.actor_username)
+            .filter(AuditLog.actor_username.isnot(None), AuditLog.actor_username != "")
+            .distinct()
+            .order_by(AuditLog.actor_username.asc())
+            .limit(200)
+            .all()
+        )
+        actor_choices = [u[0] for u in actor_rows if u[0]]
 
         def _audit_list_qs(page_num: int) -> str:
             d = request.args.to_dict(flat=True)
@@ -7384,7 +7591,9 @@ def register_routes(app):
             export_url=export_url,
             entity_type_choices=entity_type_choices,
             action_choices=action_choices,
+            actor_choices=actor_choices,
             action_filter=(request.args.get("action") or "").strip(),
+            actor_filter=(request.args.get("actor") or "").strip(),
             entity_type_filter=(request.args.get("entity_type") or "").strip(),
             date_from=_parse_date(request.args.get("date_from")),
             date_to=_parse_date(request.args.get("date_to")),

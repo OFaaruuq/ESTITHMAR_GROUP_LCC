@@ -40,6 +40,51 @@ def ensure_app_schema() -> None:
             db.session.execute(text("ALTER TABLE app_users ADD COLUMN member_id INTEGER"))
         db.session.commit()
 
+    if not _has_column("app_users", "last_login_at"):
+        if dialect == "postgresql":
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN last_login_at TIMESTAMP"))
+        elif "mssql" in dialect:
+            db.session.execute(text("ALTER TABLE app_users ADD last_login_at DATETIME2 NULL"))
+        else:
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN last_login_at TIMESTAMP"))
+        db.session.commit()
+
+    if not _has_column("app_users", "last_seen_at"):
+        if dialect == "postgresql":
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN last_seen_at TIMESTAMP"))
+        elif "mssql" in dialect:
+            db.session.execute(text("ALTER TABLE app_users ADD last_seen_at DATETIME2 NULL"))
+        else:
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN last_seen_at TIMESTAMP"))
+        db.session.commit()
+
+    if not _has_column("app_users", "last_seen_ip"):
+        if dialect == "postgresql":
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN last_seen_ip VARCHAR(64)"))
+        elif "mssql" in dialect:
+            db.session.execute(text("ALTER TABLE app_users ADD last_seen_ip NVARCHAR(64) NULL"))
+        else:
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN last_seen_ip VARCHAR(64)"))
+        db.session.commit()
+
+    if not _has_column("app_users", "last_seen_user_agent"):
+        if dialect == "postgresql":
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN last_seen_user_agent VARCHAR(255)"))
+        elif "mssql" in dialect:
+            db.session.execute(text("ALTER TABLE app_users ADD last_seen_user_agent NVARCHAR(255) NULL"))
+        else:
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN last_seen_user_agent VARCHAR(255)"))
+        db.session.commit()
+
+    if not _has_column("app_users", "session_version"):
+        if dialect == "postgresql":
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1"))
+        elif "mssql" in dialect:
+            db.session.execute(text("ALTER TABLE app_users ADD session_version INT NOT NULL CONSTRAINT DF_app_users_session_version DEFAULT 1"))
+        else:
+            db.session.execute(text("ALTER TABLE app_users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1"))
+        db.session.commit()
+
     if not _has_column("agents", "email"):
         if dialect == "postgresql":
             db.session.execute(text("ALTER TABLE agents ADD COLUMN email VARCHAR(120)"))
@@ -107,9 +152,83 @@ def ensure_app_schema() -> None:
 
     _ensure_member_documents_table(engine, dialect, insp)
     _ensure_audit_actor_columns(engine, dialect, insp)
+    _ensure_user_session_log_schema(engine, dialect)
     _ensure_payment_options_schema(engine, dialect)
     _ensure_finops_extensions_schema(engine, dialect)
     _ensure_rbac_schema(engine, dialect, insp)
+
+
+def _ensure_user_session_log_schema(engine, dialect: str) -> None:
+    insp = inspect(engine)
+
+    def _has_table(name: str) -> bool:
+        try:
+            return insp.has_table(name)
+        except Exception:
+            return False
+
+    if _has_table("user_session_logs"):
+        return
+
+    if dialect == "postgresql":
+        db.session.execute(
+            text(
+                """
+                CREATE TABLE user_session_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES app_users(id),
+                    login_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    last_seen_at TIMESTAMP NULL,
+                    logout_at TIMESTAMP NULL,
+                    ip_address VARCHAR(64) NULL,
+                    user_agent VARCHAR(255) NULL,
+                    was_forced_logout BOOLEAN NOT NULL DEFAULT false,
+                    ended_reason VARCHAR(32) NULL
+                )
+                """
+            )
+        )
+    elif "mssql" in dialect:
+        db.session.execute(
+            text(
+                """
+                CREATE TABLE user_session_logs (
+                    id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    login_at DATETIME2 NOT NULL CONSTRAINT DF_usl_login_at DEFAULT SYSUTCDATETIME(),
+                    last_seen_at DATETIME2 NULL,
+                    logout_at DATETIME2 NULL,
+                    ip_address NVARCHAR(64) NULL,
+                    user_agent NVARCHAR(255) NULL,
+                    was_forced_logout BIT NOT NULL CONSTRAINT DF_usl_forced DEFAULT 0,
+                    ended_reason NVARCHAR(32) NULL,
+                    CONSTRAINT FK_usl_user FOREIGN KEY (user_id) REFERENCES app_users(id)
+                )
+                """
+            )
+        )
+    else:
+        db.session.execute(
+            text(
+                """
+                CREATE TABLE user_session_logs (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL REFERENCES app_users(id),
+                    login_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    last_seen_at TIMESTAMP NULL,
+                    logout_at TIMESTAMP NULL,
+                    ip_address VARCHAR(64) NULL,
+                    user_agent VARCHAR(255) NULL,
+                    was_forced_logout INTEGER NOT NULL DEFAULT 0,
+                    ended_reason VARCHAR(32) NULL
+                )
+                """
+            )
+        )
+    db.session.execute(text("CREATE INDEX ix_user_session_logs_user_id ON user_session_logs (user_id)"))
+    db.session.execute(text("CREATE INDEX ix_user_session_logs_login_at ON user_session_logs (login_at)"))
+    db.session.execute(text("CREATE INDEX ix_user_session_logs_last_seen_at ON user_session_logs (last_seen_at)"))
+    db.session.commit()
 
 
 def _ensure_audit_actor_columns(engine, dialect: str, insp) -> None:

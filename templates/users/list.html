@@ -28,7 +28,12 @@
                 <strong>Member</strong> — investor portal for one linked member record (read-only, scoped data).
             </p>
         </div>
-        <a href="{{ url_for('users_new') }}" class="btn btn-primary"><i class="ri-user-add-line me-1"></i>New user</a>
+        <div class="d-flex flex-wrap gap-2">
+            {% if current_user.role == 'admin' %}
+            <a href="{{ url_for('users_online') }}" class="btn btn-outline-success"><i class="ri-radar-line me-1"></i>Online users</a>
+            {% endif %}
+            <a href="{{ url_for('users_new') }}" class="btn btn-primary"><i class="ri-user-add-line me-1"></i>New user</a>
+        </div>
     </div>
 </div>
 
@@ -106,7 +111,12 @@
             <h6 class="mb-0">All users</h6>
             <p class="text-muted small mb-0">Sorted by username.</p>
         </div>
-        <a href="{{ url_for('users_new') }}" class="btn btn-sm btn-primary d-none d-md-inline-flex"><i class="ri-user-add-line me-1"></i>New user</a>
+        <div class="d-flex flex-wrap gap-2">
+            {% if current_user.role == 'admin' %}
+            <a href="{{ url_for('users_online') }}" class="btn btn-sm btn-outline-success d-none d-md-inline-flex"><i class="ri-radar-line me-1"></i>Online users</a>
+            {% endif %}
+            <a href="{{ url_for('users_new') }}" class="btn btn-sm btn-primary d-none d-md-inline-flex"><i class="ri-user-add-line me-1"></i>New user</a>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">

@@ -114,6 +114,7 @@
     <div class="d-flex flex-wrap align-items-center gap-2 small">
         <span class="text-muted">Active filters:</span>
         {% if action_filter %}<span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25">Action ~ {{ action_filter }}</span>{% endif %}
+        {% if actor_filter %}<span class="badge bg-success-subtle text-success border border-success border-opacity-25">User ~ {{ actor_filter }}</span>{% endif %}
         {% if entity_type_filter %}<span class="badge bg-info-subtle text-info border">{{ entity_type_filter }}</span>{% endif %}
         {% if date_from %}<span class="badge bg-light text-dark border">From {{ date_from }}</span>{% endif %}
         {% if date_to %}<span class="badge bg-light text-dark border">To {{ date_to }}</span>{% endif %}
@@ -168,6 +169,15 @@
                 <datalist id="audit-actions">
                     {% for a in action_choices %}
                     <option value="{{ a }}">
+                    {% endfor %}
+                </datalist>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small mb-0">User Name</label>
+                <input type="search" name="actor" class="form-control" list="audit-actors" placeholder="e.g. admin, omar" value="{{ actor_filter or '' }}" autocomplete="off">
+                <datalist id="audit-actors">
+                    {% for u in actor_choices %}
+                    <option value="{{ u }}">
                     {% endfor %}
                 </datalist>
             </div>

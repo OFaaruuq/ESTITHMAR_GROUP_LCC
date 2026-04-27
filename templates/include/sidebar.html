@@ -163,6 +163,7 @@
                     </a>
                     <ul class="sub-menu" aria-expanded="false">
                         {% if has_permission('users.view') %}<li><a href="{{ url_for('users_list') }}">Users</a></li>{% endif %}
+                        {% if has_permission('users.view') and current_user.role == 'admin' %}<li><a href="{{ url_for('users_online') }}">Online users</a></li>{% endif %}
                         {% if has_permission('users.permissions') %}<li><a href="{{ url_for('users_permissions_hub') }}">Permissions</a></li>{% endif %}
                     </ul>
                 </li>
