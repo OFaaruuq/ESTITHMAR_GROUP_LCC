@@ -11,8 +11,14 @@ from __future__ import annotations
 import argparse
 import getpass
 import sys
+from pathlib import Path
 
 from werkzeug.security import generate_password_hash
+
+# Ensure project root is importable even when running from ./scripts
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from estithmar import create_app, db
 from estithmar.models import AppUser
