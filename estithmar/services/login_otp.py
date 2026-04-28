@@ -33,6 +33,30 @@ def is_otp_required() -> bool:
     return ex.get("require_login_otp", True) is not False
 
 
+def is_otp_required_for_user(user: AppUser | None) -> bool:
+    """
+    Per-user OTP policy.
+    - Global switch still applies.
+    - Admin users are exempt by default (so SMTP issues never lock out admin access).
+    - Optional override via ESTITHMAR_OTP_REQUIRE_ADMIN=1 to enforce OTP for admin too.
+    """
+    if not is_otp_required():
+        return False
+    if user is None:
+        return True
+    role = (getattr(user, "role", None) or "").strip().lower()
+    if role == "admin":
+        if (os.environ.get("ESTITHMAR_OTP_REQUIRE_ADMIN") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        ):
+            return True
+        return False
+    return True
+
+
 def has_pending_verification() -> bool:
     return bool(session.get(SESSION_NONCE_KEY))
 

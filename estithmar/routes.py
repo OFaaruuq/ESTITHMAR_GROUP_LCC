@@ -1456,7 +1456,7 @@ def register_routes(app):
                 nxt2 = nxt if (nxt or "").strip().startswith("/") else ""
                 from estithmar.services import login_otp as _lotp
 
-                if _lotp.is_otp_required():
+                if _lotp.is_otp_required_for_user(u):
                     ok, err = _lotp.start_challenge_for_user(
                         u,
                         nxt2,
@@ -1669,7 +1669,7 @@ def register_routes(app):
             u = db.session.get(AppUser, u.id) or u
             from estithmar.services import login_otp as _reg_otp
 
-            if _reg_otp.is_otp_required():
+            if _reg_otp.is_otp_required_for_user(u):
                 ok, oerr = _reg_otp.start_challenge_for_user(
                     u, "/dashboard", client_ip=_client_ip()
                 )
