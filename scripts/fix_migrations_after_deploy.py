@@ -6,6 +6,8 @@ What this script fixes:
    NameError: name 'connectable' is not defined
 2) Optional hardening for MSSQL:
    - ensure compare_type=False in online migration context to avoid DATETIME2 churn.
+3) Multiple Alembic heads on deploy:
+   - auto-merge heads and retry upgrade.
 
 Usage (from project root):
   python scripts/fix_migrations_after_deploy.py
@@ -18,6 +20,7 @@ import argparse
 import subprocess
 import sys
 from pathlib import Path
+import re
 
 
 def _read(path: Path) -> str:
@@ -116,6 +119,81 @@ def run_upgrade(project_root: Path) -> int:
     return proc.returncode
 
 
+def _run(project_root: Path, cmd: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd,
+        cwd=str(project_root),
+        text=True,
+        capture_output=True,
+    )
+
+
+def _print_proc(proc: subprocess.CompletedProcess[str]) -> None:
+    if proc.stdout:
+        print(proc.stdout, end="")
+    if proc.stderr:
+        print(proc.stderr, end="", file=sys.stderr)
+
+
+def _parse_heads_output(text: str) -> list[str]:
+    # Typical line: "abc123 (head)" or "abc123 (head), message"
+    out: list[str] = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        m = re.match(r"^([0-9a-f]{6,40})\b", s, flags=re.I)
+        if m:
+            out.append(m.group(1))
+    # Keep unique order
+    uniq: list[str] = []
+    for h in out:
+        if h not in uniq:
+            uniq.append(h)
+    return uniq
+
+
+def merge_heads_if_needed(project_root: Path) -> bool:
+    """
+    Returns True when a merge revision was created.
+    """
+    heads_proc = _run(project_root, ["flask", "db", "heads"])
+    _print_proc(heads_proc)
+    if heads_proc.returncode != 0:
+        return False
+    heads = _parse_heads_output(heads_proc.stdout or "")
+    if len(heads) <= 1:
+        return False
+    print(f"Detected multiple heads: {', '.join(heads)}")
+    msg = "auto-merge heads after deploy"
+    merge_cmd = ["flask", "db", "merge", "-m", msg, *heads]
+    print(f"Running: {' '.join(merge_cmd)}")
+    merge_proc = _run(project_root, merge_cmd)
+    _print_proc(merge_proc)
+    return merge_proc.returncode == 0
+
+
+def run_upgrade_with_auto_merge(project_root: Path) -> int:
+    """
+    Run upgrade. If multiple-head error occurs, auto-merge and retry once.
+    """
+    first = _run(project_root, ["flask", "db", "upgrade"])
+    _print_proc(first)
+    if first.returncode == 0:
+        return 0
+    err = (first.stderr or "") + "\n" + (first.stdout or "")
+    if "Multiple head revisions are present" in err:
+        merged = merge_heads_if_needed(project_root)
+        if not merged:
+            print("ERROR: Could not auto-merge heads.", file=sys.stderr)
+            return first.returncode
+        print("Retrying: flask db upgrade")
+        second = _run(project_root, ["flask", "db", "upgrade"])
+        _print_proc(second)
+        return second.returncode
+    return first.returncode
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fix migration files after deployment.")
     parser.add_argument(
@@ -127,6 +205,11 @@ def main() -> int:
         "--run-upgrade",
         action="store_true",
         help="Run `flask db upgrade` after applying fixes.",
+    )
+    parser.add_argument(
+        "--no-auto-merge-heads",
+        action="store_true",
+        help="Disable automatic alembic heads merge when multiple heads are detected.",
     )
     args = parser.parse_args()
 
@@ -144,7 +227,9 @@ def main() -> int:
         print(f"No change needed: {env_py}")
 
     if args.run_upgrade:
-        return run_upgrade(root)
+        if args.no_auto_merge_heads:
+            return run_upgrade(root)
+        return run_upgrade_with_auto_merge(root)
     return 0
 
 
