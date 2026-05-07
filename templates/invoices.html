@@ -5,6 +5,7 @@
 <p class="text-muted small mb-3">
     Each row is a <strong>recorded payment</strong> (contribution). Invoice numbers use the receipt number when set, otherwise <code>INV-#####</code>.
     <strong>Paid</strong> means this payment is settled as a line item; <strong>Partially paid</strong> means the linked share subscription still has a remaining balance overall.
+    With SMTP configured and a member email on file, use <strong>Email PDF</strong> to send the official receipt attachment.
 </p>
 
 <div class="row g-3 mb-3">
@@ -176,6 +177,14 @@
                         <td class="text-end text-nowrap">
                             <a href="{{ url_for('invoice_detail', id=c.id) }}" class="btn btn-sm btn-soft-primary">View</a>
                             <a href="{{ url_for('contributions_receipt', id=c.id) }}" class="btn btn-sm btn-outline-secondary">Receipt</a>
+                            {% if mail_configured() and c.member.email and c.member.email.strip() %}
+                            <form method="post" action="{{ url_for('contributions_receipt_email_pdf', id=c.id) }}" class="d-inline mb-0">
+                                <input type="hidden" name="return_to" value="invoices">
+                                <button type="submit" class="btn btn-sm btn-outline-success" title="Email official receipt PDF to {{ c.member.email }}">
+                                    <i class="ri-mail-send-line"></i><span class="visually-hidden"> Email PDF</span>
+                                </button>
+                            </form>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}

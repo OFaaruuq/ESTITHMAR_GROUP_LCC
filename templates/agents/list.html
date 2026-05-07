@@ -189,6 +189,12 @@
                         <td class="text-end text-nowrap">
                             <a href="{{ url_for('agents_profile', id=a.id) }}" class="btn btn-sm btn-soft-primary">Profile</a>
                             <a href="{{ url_for('agents_edit', id=a.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                            {% if has_permission('agents.send_report') %}
+                            <form method="post" action="{{ url_for('agents_send_report', id=a.id) }}" class="d-inline" onsubmit="return confirm('Send the KPI portfolio email to this agent?');">
+                                <input type="hidden" name="next" value="{{ request.full_path }}">
+                                <button type="submit" class="btn btn-sm btn-outline-primary" title="Email KPI portfolio report" {% if not a.email %}disabled{% endif %}><i class="ri-mail-send-line"></i></button>
+                            </form>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}

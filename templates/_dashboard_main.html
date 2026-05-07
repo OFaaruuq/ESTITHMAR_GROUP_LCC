@@ -192,7 +192,7 @@
 
                         <div class="row g-3 mb-3">
                             <div class="col-12"><h6 class="text-muted text-uppercase small mb-0">More indicators</h6></div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <div class="card border-0 shadow-sm h-100 dash-kpi-card">
                                     <div class="card-body">
                                         <div class="d-flex justify-content-between align-items-start mb-2">
@@ -206,7 +206,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <div class="card border-0 shadow-sm h-100 dash-kpi-card">
                                     <div class="card-body">
                                         <div class="d-flex justify-content-between align-items-start mb-2">
@@ -218,7 +218,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <div class="card border-0 shadow-sm h-100 dash-kpi-card">
                                     <div class="card-body">
                                         <div class="d-flex justify-content-between align-items-start mb-2">
@@ -230,6 +230,105 @@
                                         <a class="btn btn-sm btn-soft-danger" href="{{ url_for('subscriptions_list', overdue=1) }}">Follow up overdue</a>
                                     </div>
                                 </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card border-0 shadow-sm h-100 dash-kpi-card">
+                                    <div class="card-body">
+                                        {% set proj_util_pct = ((project_sum_invested / project_sum_budget) * 100) if project_sum_budget and project_sum_budget > 0 else None %}
+                                        {% set proj_util_pct_safe = (proj_util_pct if proj_util_pct is not none else 0) %}
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="text-muted text-uppercase small">Projects health</span>
+                                            <span class="dash-kpi-icon bg-info bg-opacity-10 text-info"><i class="ri-folder-warning-line"></i></span>
+                                        </div>
+                                        <div class="d-flex align-items-end justify-content-between mb-2">
+                                            <h4 class="mb-0">{{ total_projects|default(0) }}</h4>
+                                            <span class="small text-muted">Tracked projects</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between small mb-1">
+                                            <span class="text-muted">Budget</span>
+                                            <span class="fw-medium">{{ project_sum_budget|money }} {{ cur_code }}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between small mb-1">
+                                            <span class="text-muted">Invested</span>
+                                            <span class="fw-medium">{{ project_sum_invested|money }} {{ cur_code }}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between small mb-2">
+                                            <span class="text-muted">Headroom</span>
+                                            <span class="fw-medium">{{ project_budget_headroom_total|money }} {{ cur_code }}</span>
+                                        </div>
+                                        <div class="progress mb-2" style="height:6px;">
+                                            <div class="progress-bar bg-info" role="progressbar" style="width: {{ [proj_util_pct_safe|float, 100]|min }}%;" aria-valuenow="{{ proj_util_pct_safe|round(1) }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                        <p class="text-muted small mb-2">
+                                            Utilization {% if proj_util_pct is not none %}{{ proj_util_pct|round(1) }}%{% else %}—{% endif %}
+                                        </p>
+                                        <p class="small mb-0 d-flex flex-wrap gap-1">
+                                            <a href="{{ url_for('projects_list', over_budget=1) }}" class="badge rounded-pill text-bg-danger text-decoration-none">Over budget {{ project_over_budget_count }}</a>
+                                            <a href="{{ url_for('projects_list', ending_soon=30) }}" class="badge rounded-pill text-bg-warning text-dark text-decoration-none">Ending soon {{ project_ending_soon_count }}</a>
+                                            <a href="{{ url_for('projects_list', no_investment=1) }}" class="badge rounded-pill text-bg-secondary text-decoration-none">No investment {{ project_no_investment_count }}</a>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card border-0 shadow-sm mb-3">
+                            <div class="card-header bg-transparent border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <div>
+                                    <h5 class="card-title mb-0">Project analytics</h5>
+                                    <p class="text-muted small mb-0">Status distribution across tracked projects</p>
+                                </div>
+                                <a href="{{ url_for('projects_list') }}" class="btn btn-sm btn-soft-primary">Open projects</a>
+                            </div>
+                            <div class="card-body">
+                                {% set ps_planned = project_status_counts.get('Planned', 0) %}
+                                {% set ps_active = project_status_counts.get('Active', 0) %}
+                                {% set ps_hold = project_status_counts.get('On Hold', 0) %}
+                                {% set ps_completed = project_status_counts.get('Completed', 0) %}
+                                {% set ps_closed = project_status_counts.get('Closed', 0) %}
+                                <div class="row g-2 mb-3">
+                                    <div class="col-6 col-md-4 col-lg">
+                                        <a href="{{ url_for('projects_list', status='Planned') }}" class="text-decoration-none">
+                                            <div class="biz-kpi-stat">
+                                                <div class="label">Planned</div>
+                                                <div class="value">{{ ps_planned }}</div>
+                                            </div>
+                                        </a>
+                                    </div>
+                                    <div class="col-6 col-md-4 col-lg">
+                                        <a href="{{ url_for('projects_list', status='Active') }}" class="text-decoration-none">
+                                            <div class="biz-kpi-stat">
+                                                <div class="label">Active</div>
+                                                <div class="value text-success">{{ ps_active }}</div>
+                                            </div>
+                                        </a>
+                                    </div>
+                                    <div class="col-6 col-md-4 col-lg">
+                                        <a href="{{ url_for('projects_list', status='On Hold') }}" class="text-decoration-none">
+                                            <div class="biz-kpi-stat">
+                                                <div class="label">On Hold</div>
+                                                <div class="value text-warning">{{ ps_hold }}</div>
+                                            </div>
+                                        </a>
+                                    </div>
+                                    <div class="col-6 col-md-6 col-lg">
+                                        <a href="{{ url_for('projects_list', status='Completed') }}" class="text-decoration-none">
+                                            <div class="biz-kpi-stat">
+                                                <div class="label">Completed</div>
+                                                <div class="value text-primary">{{ ps_completed }}</div>
+                                            </div>
+                                        </a>
+                                    </div>
+                                    <div class="col-6 col-md-6 col-lg">
+                                        <a href="{{ url_for('projects_list', status='Closed') }}" class="text-decoration-none">
+                                            <div class="biz-kpi-stat">
+                                                <div class="label">Closed</div>
+                                                <div class="value text-secondary">{{ ps_closed }}</div>
+                                            </div>
+                                        </a>
+                                    </div>
+                                </div>
+                                <div id="project-status-chart" class="apex-charts dashboard-chart-clickable" style="min-height:280px" title="Click a status to open filtered projects"></div>
                             </div>
                         </div>
 
@@ -512,6 +611,7 @@
                             'businessKpiCert': business_kpi_cert_donut,
                             'currencySymbol': cur_sym,
                             'currencyCode': cur_code,
+                            'projectStatusCounts': project_status_counts,
                             'membersRegionMap': members_region_map,
                             'chartLinks': dashboard_chart_links
                         }|tojson }}</script>

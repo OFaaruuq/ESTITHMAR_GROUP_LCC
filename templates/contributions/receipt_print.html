@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Receipt {{ c.receipt_no or c.id }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/bootstrap.min.css', _external=True) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/icons.min.css', _external=True) }}">
+    <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body.receipt-pdf-body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .receipt-print-root {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 0.5rem 0 1rem;
+    }
+    {% include 'contributions/_receipt_styles.html' %}
+    </style>
+</head>
+<body class="receipt-pdf-body">
+<div class="receipt-print-root">
+{% include 'contributions/_receipt_card.html' %}
+</div>
+</body>
+</html>

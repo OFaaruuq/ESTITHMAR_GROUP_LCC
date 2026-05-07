@@ -89,12 +89,24 @@ def whatsapp_configured() -> bool:
     return bool(t["sid"] and t["token"] and t["from"])
 
 
+def _mime_attachment(filename: str, data: bytes, mimetype: str) -> MIMEBase:
+    main, sep, sub = (mimetype or "").strip().partition("/")
+    if not sep or not sub:
+        main, sub = "application", "octet-stream"
+    part = MIMEBase(main.strip() or "application", sub.strip() or "octet-stream")
+    part.set_payload(data)
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", "attachment", filename=filename)
+    return part
+
+
 def send_email(
     to_addr: str,
     subject: str,
     body_text: str,
     *,
     body_html: str | None = None,
+    attachments: list[tuple[str, bytes, str]] | None = None,
 ) -> tuple[bool, str | None]:
     c = effective_smtp()
     server = c["host"]
@@ -145,27 +157,37 @@ def send_email(
             body_html = _html_without_broken_cid(body_html)
             logo_path = None
 
+    att_list = list(attachments) if attachments else []
+
     if body_html and logo_path and f"cid:{ESTITHMAR_EMAIL_LOGO_CID}" in body_html:
-        msg = MIMEMultipart("related")
-        msg["Subject"] = subject
-        msg["From"] = str(sender)
-        msg["To"] = to_addr
+        body_root = MIMEMultipart("related")
         alt = MIMEMultipart("alternative")
         alt.attach(MIMEText(body_text, "plain", "utf-8"))
         alt.attach(MIMEText(body_html, "html", "utf-8"))
-        msg.attach(alt)
+        body_root.attach(alt)
         part = _image_part(logo_path)
         part.add_header("Content-ID", f"<{ESTITHMAR_EMAIL_LOGO_CID}>")
         part.add_header("Content-Disposition", "inline", filename=os.path.basename(logo_path) or "logo")
-        msg.attach(part)
+        body_root.attach(part)
     else:
-        msg = MIMEMultipart("alternative")
+        body_root = MIMEMultipart("alternative")
+        body_root.attach(MIMEText(body_text, "plain", "utf-8"))
+        if body_html:
+            body_root.attach(MIMEText(body_html, "html", "utf-8"))
+
+    if att_list:
+        msg = MIMEMultipart("mixed")
         msg["Subject"] = subject
         msg["From"] = str(sender)
         msg["To"] = to_addr
-        msg.attach(MIMEText(body_text, "plain", "utf-8"))
-        if body_html:
-            msg.attach(MIMEText(body_html, "html", "utf-8"))
+        msg.attach(body_root)
+        for fn, raw, mt in att_list:
+            msg.attach(_mime_attachment(fn, raw, mt))
+    else:
+        msg = body_root
+        msg["Subject"] = subject
+        msg["From"] = str(sender)
+        msg["To"] = to_addr
 
     try:
         with smtplib.SMTP(server, port, timeout=30) as smtp:
@@ -270,6 +292,7 @@ def send_email_with_retry(
     body_text: str,
     *,
     body_html: str | None = None,
+    attachments: list[tuple[str, bytes, str]] | None = None,
     retries: int = 2,
     message_kind: str | None = None,
     context: dict | None = None,
@@ -277,7 +300,7 @@ def send_email_with_retry(
     attempts = max(1, int(retries) + 1)
     last_err = None
     for _ in range(attempts):
-        ok, err = send_email(to_addr, subject, body_text, body_html=body_html)
+        ok, err = send_email(to_addr, subject, body_text, body_html=body_html, attachments=attachments)
         if ok:
             _log_delivery(
                 channel="email",

@@ -31,6 +31,14 @@
                 <button type="submit" class="btn btn-outline-primary btn-sm w-100">Generate</button>
             </div>
         </form>
+        <hr>
+        <form method="post" class="d-flex flex-wrap align-items-center gap-2">
+            <input type="hidden" name="action" value="rebalance_due">
+            <button type="submit" class="btn btn-outline-warning btn-sm">Auto-correct due amounts</button>
+            <span class="text-muted small">
+                Rebalances installment due amounts to match the subscription total while preserving amounts already paid.
+            </span>
+        </form>
     </div>
     <div class="card-header">Add installment row</div>
     <div class="card-body">

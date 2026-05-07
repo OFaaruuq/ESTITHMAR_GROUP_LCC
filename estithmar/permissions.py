@@ -66,6 +66,12 @@ PERMISSION_CATALOG: list[tuple[str, str, str, int]] = [
     ("agents.view_detail", "Agents — view", "View an agent’s profile and linked members.", 42),
     ("agents.edit", "Agents — edit", "Update agent data.", 43),
     ("agents.export", "Agents — export", "Export agents to Excel or related bulk extract.", 44),
+    (
+        "agents.send_report",
+        "Agents — email individual report",
+        "Send the KPI portfolio email to one agent (manual; requires SMTP and agent email).",
+        45,
+    ),
     # API
     (
         "api.lookup_agent_regions",
@@ -532,6 +538,7 @@ class Permission:
     AGENTS_CREATE = "agents.create"
     AGENTS_VIEW_DETAIL = "agents.view_detail"
     AGENTS_EDIT = "agents.edit"
+    AGENTS_SEND_REPORT = "agents.send_report"
     # Subscriptions
     SUBSCRIPTIONS_VIEW = "subscriptions.view"
     SUBSCRIPTIONS_CREATE = "subscriptions.create"

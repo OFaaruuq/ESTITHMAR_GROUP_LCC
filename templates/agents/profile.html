@@ -126,6 +126,28 @@
                 </dl>
             </div>
         </div>
+        {% if has_permission('agents.send_report') %}
+        <div class="card border-0 shadow-sm mb-0">
+            <div class="card-header bg-transparent py-3">
+                <h5 class="mb-0"><i class="ri-mail-send-line me-2 text-primary"></i>Email portfolio report</h5>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted mb-3">Sends the KPI portfolio email to this agent. This action works even when <strong>notify agents</strong> is turned off in email settings; SMTP must still be configured.</p>
+                <form method="post" action="{{ url_for('agents_send_report', id=agent.id) }}">
+                    <div class="mb-3">
+                        <label for="report_note" class="form-label small mb-1">Optional note to the agent</label>
+                        <textarea class="form-control form-control-sm" id="report_note" name="report_note" rows="2" maxlength="500" placeholder="Short message included at the top of the email"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm" {% if not agent_report_mail_ready or not agent.email %}disabled{% endif %}><i class="ri-send-plane-line me-1"></i>Send report</button>
+                    {% if not agent_report_mail_ready %}
+                    <p class="small text-danger mb-0 mt-2">Email (SMTP) is not configured. Open Settings → Email &amp; notifications.</p>
+                    {% elif not agent.email %}
+                    <p class="small text-warning mb-0 mt-2">Add an email address for this agent (Edit) before sending.</p>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+        {% endif %}
     </div>
     <div class="col-lg-7 mb-4">
         <div class="card border-0 shadow-sm h-100">

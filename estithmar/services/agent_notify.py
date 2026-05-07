@@ -122,9 +122,14 @@ def send_agent_portfolio_email(
     *,
     trigger: str = "update",
     extra_lead: str = "",
+    force: bool = False,
 ) -> bool:
-    """Send a full KPI email to the agent. Returns True if a send was attempted and mail is configured."""
-    if not should_notify_agents():
+    """Send a full KPI email to the agent. Returns True if a send was attempted and mail is configured.
+
+    When ``force`` is True (staff-initiated individual report), the global
+    ``notify_agents_enabled`` toggle is ignored so operators can still email one agent.
+    """
+    if not force and not should_notify_agents():
         return False
     to = (agent.email or "").strip()
     if not to or "@" not in to:

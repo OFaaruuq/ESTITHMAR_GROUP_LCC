@@ -438,16 +438,10 @@
             var col = document.querySelector('#column-chart');
             var donut = document.querySelector('#donut-chart');
             if (col && D.hasChartData) {
-                var darkSeries = (D.values || []).map(function(v) { return Number(v || 0) * 0.75; });
-                var lightSeries = (D.values || []).map(function(v) { return Number(v || 0) * 0.25; });
                 new ApexCharts(col, {
-                    series: [
-                        { name: 'Collected', data: darkSeries },
-                        { name: 'Other', data: lightSeries }
-                    ],
+                    series: [{ name: 'Collected', data: (D.values || []).map(function(v) { return Number(v || 0); }) }],
                     chart: {
                         type: 'bar',
-                        stacked: true,
                         height: 320,
                         toolbar: { show: false },
                         events: navEvents(L.performance_months)
@@ -460,7 +454,7 @@
                     xaxis: { categories: D.labels },
                     legend: { show: false },
                     grid: { borderColor: '#e9ecef' },
-                    colors: ['#0f7b8f', '#d5e3ea'],
+                    colors: ['#0f7b8f'],
                     yaxis: { labels: { formatter: function(v) { return v.toFixed(0); } } }
                 }).render();
             }
@@ -489,7 +483,7 @@
                                         total: {
                                             show: true,
                                             label: 'Total value',
-                                            formatter: function() { return '$' + dsum.toFixed(0); }
+                                            formatter: function() { return (D.currencySymbol || '$') + dsum.toFixed(0); }
                                         }
                                     }
                                 }
@@ -579,6 +573,46 @@
                         colors: ['#f59e0b', '#22c55e'],
                         legend: { position: 'bottom' },
                         dataLabels: { enabled: true }
+                    }).render();
+                }
+            }
+
+            /* Project status analytics */
+            var projStatusEl = document.querySelector('#project-status-chart');
+            if (projStatusEl) {
+                var psc = D.projectStatusCounts || {};
+                var psLabels = ['Planned', 'Active', 'On Hold', 'Completed', 'Closed'];
+                var psValues = psLabels.map(function(k) { return Number(psc[k] || 0); });
+                var psTotal = psValues.reduce(function(a, b) { return a + b; }, 0);
+                if (psTotal < 1) {
+                    projStatusEl.innerHTML = '<p class="text-muted text-center py-5 mb-0">No projects available for status analytics.</p>';
+                } else {
+                    var psLinks = [
+                        '{{ url_for("projects_list", status="Planned") }}',
+                        '{{ url_for("projects_list", status="Active") }}',
+                        '{{ url_for("projects_list", status="On Hold") }}',
+                        '{{ url_for("projects_list", status="Completed") }}',
+                        '{{ url_for("projects_list", status="Closed") }}'
+                    ];
+                    new ApexCharts(projStatusEl, {
+                        series: [{ name: 'Projects', data: psValues }],
+                        chart: {
+                            type: 'bar',
+                            height: 280,
+                            toolbar: { show: false },
+                            events: {
+                                dataPointSelection: function(event, chartContext, config) {
+                                    var i = config.dataPointIndex;
+                                    if (psLinks[i]) window.location.href = psLinks[i];
+                                }
+                            }
+                        },
+                        plotOptions: { bar: { borderRadius: 4, columnWidth: '45%' } },
+                        dataLabels: { enabled: true },
+                        xaxis: { categories: psLabels },
+                        yaxis: { labels: { formatter: function(v) { return Number(v).toFixed(0); } } },
+                        grid: { borderColor: '#e9ecef' },
+                        colors: ['#64748b', '#22c55e', '#f59e0b', '#0ea5e9', '#475569']
                     }).render();
                 }
             }

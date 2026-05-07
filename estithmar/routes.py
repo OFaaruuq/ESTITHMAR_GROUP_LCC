@@ -5,7 +5,7 @@ import io
 import json
 import os
 import secrets
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from collections import Counter, defaultdict
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 from dateutil.relativedelta import relativedelta
 from flask import (
     Response,
+    current_app,
     flash,
     has_request_context,
     jsonify,
@@ -52,7 +53,11 @@ from estithmar.services.member_notify import (
     notify_member_payment,
     notify_member_profit_share,
 )
-from estithmar.services.agent_notify import notify_agent_on_member_payment, send_kpi_to_all_active_agents
+from estithmar.services.agent_notify import (
+    notify_agent_on_member_payment,
+    send_agent_portfolio_email,
+    send_kpi_to_all_active_agents,
+)
 from estithmar.services.email_html import try_render_transactional
 from estithmar.services.notifications import (
     mail_configured,
@@ -1093,6 +1098,7 @@ def register_routes(app):
             "brand_logo_dark_lg": _u(dk, "assets/images/logo-dark.png"),
             "app_display_name": app_name,
             "app_footer_tagline": footer_right,
+            "mail_configured": mail_configured,
         }
 
     def members_scope():
@@ -1191,7 +1197,25 @@ def register_routes(app):
         qtext = (request.args.get("q") or "").strip()
         date_from = _parse_date(request.args.get("date_from"))
         date_to = _parse_date(request.args.get("date_to"))
+        over_budget = (request.args.get("over_budget") or "").strip().lower() in {"1", "true", "yes", "on"}
+        no_investment = (request.args.get("no_investment") or "").strip().lower() in {"1", "true", "yes", "on"}
+        ending_soon_raw = (request.args.get("ending_soon") or "").strip()
+        ending_soon_days = None
+        if ending_soon_raw:
+            try:
+                ending_soon_days = max(1, min(365, int(ending_soon_raw)))
+            except ValueError:
+                ending_soon_days = 30
         query = Project.query
+        inv_totals = (
+            db.session.query(
+                Investment.project_id.label("project_id"),
+                func.coalesce(func.sum(Investment.total_amount_invested), 0).label("invested_total"),
+            )
+            .group_by(Investment.project_id)
+            .subquery()
+        )
+        query = query.outerjoin(inv_totals, inv_totals.c.project_id == Project.id)
         cat_keys = {k for k, _ in PROJECT_CATEGORIES}
         st_keys = {k for k, _ in PROJECT_STATUSES}
         if category in cat_keys:
@@ -1212,6 +1236,21 @@ def register_routes(app):
             query = query.filter(or_(Project.start_date.is_(None), Project.start_date >= date_from))
         if date_to:
             query = query.filter(or_(Project.start_date.is_(None), Project.start_date <= date_to))
+        if over_budget:
+            query = query.filter(
+                Project.total_budget.isnot(None),
+                func.coalesce(inv_totals.c.invested_total, 0) > Project.total_budget,
+            )
+        if no_investment:
+            query = query.filter(func.coalesce(inv_totals.c.invested_total, 0) <= 0)
+        if ending_soon_days is not None:
+            today_d = date.today()
+            query = query.filter(
+                Project.end_date.isnot(None),
+                Project.end_date >= today_d,
+                Project.end_date <= (today_d + timedelta(days=ending_soon_days)),
+                Project.status.notin_(["Closed", "Completed"]),
+            )
         mpk = _member_scoped_member_pk()
         if mpk is not None:
             pids = _member_project_ids_for_portal()
@@ -1979,6 +2018,38 @@ def register_routes(app):
                 qai = qai.filter(Member.id.in_(mids))
             active_investors_count = int(qai.scalar() or 0)
 
+        scoped_projects = Project.query
+        if mids is not None:
+            inv_q = (
+                db.session.query(func.distinct(Investment.project_id))
+                .join(ShareSubscription, ShareSubscription.investment_id == Investment.id)
+                .filter(ShareSubscription.member_id.in_(mids), Investment.project_id.isnot(None))
+            )
+            scoped_project_ids = [int(r[0]) for r in inv_q.all() if r and r[0] is not None]
+            if scoped_project_ids:
+                scoped_projects = scoped_projects.filter(Project.id.in_(scoped_project_ids))
+            else:
+                scoped_projects = scoped_projects.filter(Project.id == -1)
+        scoped_projects_rows = scoped_projects.all()
+        total_projects = len(scoped_projects_rows)
+        project_status_counts = dict(Counter((p.status or "Planned") for p in scoped_projects_rows))
+        project_sum_budget = sum((p.total_budget or Decimal("0") for p in scoped_projects_rows), Decimal("0"))
+        project_sum_invested = sum((p.total_investment_received() for p in scoped_projects_rows), Decimal("0"))
+        project_budget_headroom_total = max(project_sum_budget - project_sum_invested, Decimal("0"))
+        project_over_budget_count = 0
+        project_ending_soon_count = 0
+        project_no_investment_count = 0
+        today_d = date.today()
+        soon_cutoff = today_d + timedelta(days=30)
+        for p in scoped_projects_rows:
+            inv_total = p.total_investment_received()
+            if p.total_budget is not None and inv_total > (p.total_budget or Decimal("0")):
+                project_over_budget_count += 1
+            if p.end_date and today_d <= p.end_date <= soon_cutoff and (p.status or "") not in {"Closed", "Completed"}:
+                project_ending_soon_count += 1
+            if inv_total <= Decimal("0"):
+                project_no_investment_count += 1
+
         ta_int = int(total_agents) if total_agents else 0
         avg_members_per_agent = (
             (Decimal(str(total_members)) / Decimal(str(ta_int))).quantize(Decimal("0.01")) if ta_int else Decimal("0")
@@ -2108,6 +2179,13 @@ def register_routes(app):
             business_kpi_bar=business_kpi_bar,
             business_kpi_inv_donut=business_kpi_inv_donut,
             business_kpi_cert_donut=business_kpi_cert_donut,
+            project_status_counts=project_status_counts,
+            project_sum_budget=project_sum_budget,
+            project_sum_invested=project_sum_invested,
+            project_budget_headroom_total=project_budget_headroom_total,
+            project_over_budget_count=project_over_budget_count,
+            project_ending_soon_count=project_ending_soon_count,
+            project_no_investment_count=project_no_investment_count,
             members_region_map=members_region_map,
             dashboard_chart_links=dashboard_chart_links,
         )
@@ -2414,7 +2492,61 @@ def register_routes(app):
             settings=settings,
             currency_code=cur,
             member_kinds=MEMBER_KINDS,
+            agent_report_mail_ready=mail_configured(),
         )
+
+    @app.route("/agents/<int:id>/send-report", methods=["POST"])
+    @permission_required(Permission.AGENTS_SEND_REPORT)
+    def agents_send_report(id):
+        r = forbid_agent()
+        if r:
+            return r
+        a = Agent.query.get_or_404(id)
+
+        def redirect_after():
+            nxt = (request.form.get("next") or "").strip()
+            if nxt:
+                parsed = urlparse(nxt)
+                if not parsed.netloc and parsed.path.startswith("/"):
+                    return redirect(nxt)
+            return redirect(url_for("agents_profile", id=id))
+
+        if not mail_configured():
+            flash(
+                "Email is not configured. Set SMTP under Settings → Email & notifications.",
+                "danger",
+            )
+            return redirect_after()
+        em = (a.email or "").strip()
+        if not em or "@" not in em:
+            flash(
+                "This agent has no valid email address. Edit the agent and add an email first.",
+                "warning",
+            )
+            return redirect_after()
+        note = (request.form.get("report_note") or "").strip()[:500]
+        extra = (
+            "Your office sent you this portfolio report (KPI summary)."
+            + (f"\n\nNote from office:\n{note}" if note else "")
+        )
+        ok = send_agent_portfolio_email(
+            a, trigger="manual", extra_lead=extra, force=True
+        )
+        if ok:
+            flash(f"Portfolio report emailed to {em}.", "success")
+            log_audit(
+                "agent_individual_report_sent",
+                "Agent",
+                a.id,
+                f"to={em[:80]}",
+            )
+            db.session.commit()
+        else:
+            flash(
+                "The report could not be sent. Check logs and SMTP, and ensure the agent has KPI data.",
+                "danger",
+            )
+        return redirect_after()
 
     @app.route("/agents/<int:id>/edit", methods=["GET", "POST"])
     @page_view_permission(Permission.AGENTS_EDIT, allow_member=False)
@@ -3744,6 +3876,64 @@ def register_routes(app):
                 flash("Installment row cancelled.", "warning")
                 return redirect(url_for("subscriptions_installments", id=sub.id))
 
+            if action == "rebalance_due":
+                active_rows = [
+                    x
+                    for x in sub.installments.order_by(InstallmentPlan.sequence_no.asc()).all()
+                    if x.status != "Cancelled"
+                ]
+                if not active_rows:
+                    flash("No active installment rows to rebalance.", "warning")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+                target_total = (sub.subscribed_amount or Decimal("0")).quantize(Decimal("0.01"))
+                locked_rows: list[InstallmentPlan] = []
+                adjustable_rows: list[InstallmentPlan] = []
+                for row in active_rows:
+                    paid = (row.paid_amount or Decimal("0")).quantize(Decimal("0.01"))
+                    if row.status == "Fully Paid":
+                        # Preserve fully paid rows exactly as currently planned.
+                        row.due_amount = max((row.due_amount or Decimal("0")).quantize(Decimal("0.01")), paid)
+                        locked_rows.append(row)
+                    else:
+                        # For pending/partial rows, never let due drop below already-paid.
+                        row.due_amount = paid
+                        adjustable_rows.append(row)
+                locked_total = sum(
+                    ((r.due_amount or Decimal("0")) for r in locked_rows),
+                    Decimal("0"),
+                ).quantize(Decimal("0.01"))
+                adjustable_base = sum(
+                    ((r.due_amount or Decimal("0")) for r in adjustable_rows),
+                    Decimal("0"),
+                ).quantize(Decimal("0.01"))
+                alloc_total = (target_total - locked_total - adjustable_base).quantize(Decimal("0.01"))
+                if alloc_total < Decimal("0"):
+                    flash(
+                        "Cannot auto-correct: paid/locked installment rows already exceed the subscription amount. "
+                        "Please review rows manually.",
+                        "danger",
+                    )
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+                if adjustable_rows:
+                    base = (alloc_total / Decimal(str(len(adjustable_rows)))).quantize(Decimal("0.01"))
+                    running = Decimal("0")
+                    for idx, row in enumerate(adjustable_rows, start=1):
+                        add_amt = base
+                        if idx == len(adjustable_rows):
+                            add_amt = (alloc_total - running).quantize(Decimal("0.01"))
+                        row.due_amount = ((row.due_amount or Decimal("0")) + add_amt).quantize(Decimal("0.01"))
+                        running += add_amt
+                recompute_installment_statuses(sub.id, commit=False)
+                log_audit(
+                    "installments_rebalanced",
+                    "ShareSubscription",
+                    sub.id,
+                    f"target_total={target_total} rows={len(active_rows)}",
+                )
+                db.session.commit()
+                flash("Installment due amounts auto-corrected successfully.", "success")
+                return redirect(url_for("subscriptions_installments", id=sub.id))
+
             flash("Unsupported action.", "danger")
             return redirect(url_for("subscriptions_installments", id=sub.id))
 
@@ -4298,6 +4488,91 @@ def register_routes(app):
             member_sub_outstanding=member_sub_outstanding,
         )
 
+    @app.route("/contributions/<int:id>/receipt/email-pdf", methods=["POST"])
+    def contributions_receipt_email_pdf(id):
+        from estithmar.services.contribution_receipt_email import send_contribution_receipt_pdf_to_member
+        from estithmar.services.receipt_pdf import build_contribution_receipt_pdf_bytes
+
+        if not current_user.is_authenticated:
+            return redirect(url_for("login", next=request.url))
+        if getattr(current_user, "role", None) != "member":
+            if not (
+                user_has_permission(current_user, Permission.CONTRIBUTIONS_RECEIPT)
+                or user_has_permission(current_user, Permission.INVOICES_VIEW)
+            ):
+                flash("You do not have permission for this action.", "danger")
+                return redirect(url_for("dashboard"))
+
+        c = (
+            Contribution.query.options(
+                joinedload(Contribution.member).joinedload(Member.agent),
+                joinedload(Contribution.subscription),
+                joinedload(Contribution.verified_by),
+                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
+                joinedload(Contribution.payment_mobile_provider),
+            )
+            .get_or_404(id)
+        )
+        if current_user.role == "agent" and current_user.agent_id and c.member.agent_id != current_user.agent_id:
+            flash("Access denied.", "danger")
+            return redirect(url_for("contributions_list"))
+        if current_user.role == "member" and current_user.member_id and c.member_id != current_user.member_id:
+            flash("Access denied.", "danger")
+            return redirect(url_for("contributions_list"))
+        mem = c.member
+        if not mem or not (mem.email and str(mem.email).strip()):
+            flash("This member has no email address on file. Add an email on the member profile first.", "warning")
+            return _receipt_email_redirect(c.id)
+        if not mail_configured():
+            flash("Email is not configured. Set up SMTP under Settings → Notifications.", "danger")
+            return _receipt_email_redirect(c.id)
+        receipt_schedule = None
+        sub = c.subscription if c.subscription_id else None
+        if sub:
+            receipt_schedule = subscription_payment_running_rows(sub)
+        settings = get_or_create_settings()
+        extra = settings.get_extra()
+        member_sub_outstanding = Decimal("0")
+        if sub is None and c.member:
+            for srow in c.member.subscriptions.filter(ShareSubscription.status != "Cancelled").all():
+                member_sub_outstanding += srow.outstanding_balance()
+        receipt_url = url_for("contributions_receipt", id=c.id, _external=True)
+        try:
+            pdf_bytes = build_contribution_receipt_pdf_bytes(
+                c=c,
+                receipt_schedule=receipt_schedule,
+                subscription=sub,
+                settings=settings,
+                extra=extra,
+                receipt_url=receipt_url,
+                member_sub_outstanding=member_sub_outstanding,
+            )
+        except Exception as exc:
+            current_app.logger.exception("Receipt PDF generation failed")
+            flash(f"Could not generate PDF: {exc}", "danger")
+            return _receipt_email_redirect(c.id)
+        fn_safe = secure_filename(str(c.receipt_no or f"id-{c.id}")) or f"id-{c.id}"
+        pdf_filename = f"estithmar-receipt-{fn_safe}.pdf"
+        ok, err = send_contribution_receipt_pdf_to_member(
+            contribution=c,
+            member=mem,
+            pdf_bytes=pdf_bytes,
+            pdf_filename=pdf_filename,
+        )
+        if ok:
+            flash(f"Official receipt PDF emailed to {mem.email.strip()}.", "success")
+        else:
+            flash(f"Email could not be sent: {err or 'unknown error'}", "danger")
+        return _receipt_email_redirect(c.id)
+
+    def _receipt_email_redirect(contribution_id: int):
+        rt = (request.form.get("return_to") or "receipt").strip().lower()
+        if rt == "invoice":
+            return redirect(url_for("invoice_detail", id=contribution_id))
+        if rt == "invoices":
+            return redirect(url_for("invoices_list"))
+        return redirect(url_for("contributions_receipt", id=contribution_id))
+
     @app.route("/contributions/<int:id>/verify", methods=["POST"])
     @permission_required(Permission.PAYMENTS_VERIFY)
     def contributions_verify(id):
@@ -4522,6 +4797,9 @@ def register_routes(app):
         date_from = _parse_date(request.args.get("date_from"))
         date_to = _parse_date(request.args.get("date_to"))
         qtext = (request.args.get("q") or "").strip()
+        over_budget = (request.args.get("over_budget") or "").strip().lower() in {"1", "true", "yes", "on"}
+        no_investment = (request.args.get("no_investment") or "").strip().lower() in {"1", "true", "yes", "on"}
+        ending_soon = (request.args.get("ending_soon") or "").strip()
         cat_map = dict(PROJECT_CATEGORIES)
         return render_template(
             "projects/list.html",
@@ -4549,6 +4827,9 @@ def register_routes(app):
             date_from=date_from,
             date_to=date_to,
             q=qtext,
+            over_budget=over_budget,
+            no_investment=no_investment,
+            ending_soon=ending_soon,
         )
 
     @app.route("/projects/new", methods=["GET", "POST"])

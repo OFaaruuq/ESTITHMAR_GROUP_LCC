@@ -1,0 +1,222 @@
+.receipt-shell { max-width: 760px; margin-left: auto; margin-right: auto; }
+.receipt-card {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0,0,0,.08);
+  box-shadow: 0 0.125rem 0.5rem rgba(0,0,0,.06);
+  overflow: hidden;
+}
+.receipt-accent { height: 5px; background: linear-gradient(90deg, var(--bs-primary), #5b8cff); }
+.receipt-no-box {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  letter-spacing: 0.02em;
+  background: var(--bs-light);
+  border: 1px dashed rgba(0,0,0,.12);
+  border-radius: 0.375rem;
+  padding: 0.75rem 1rem;
+}
+.amount-panel {
+  background: rgba(13, 110, 253, 0.07);
+  border-left: 4px solid var(--bs-primary);
+  border-radius: 0.375rem;
+  padding: 1rem 1.25rem;
+}
+.status-pill-verified {
+  border: 2px solid #198754;
+  color: #146c43;
+  background: rgba(25, 135, 84, 0.08);
+}
+.status-pill-pending {
+  border: 2px solid #6c757d;
+  color: #495057;
+  background: rgba(108, 117, 125, 0.08);
+}
+.receipt-stamp {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.25rem;
+  border: 2px solid currentColor;
+}
+.receipt-brand-logo {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 150px;
+  height: 100px;
+  object-fit: contain;
+  object-position: center;
+}
+@media print {
+  @page {
+    margin: 10mm 12mm;
+    size: A4 portrait;
+  }
+  html, body {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  #layout-wrapper {
+    display: block !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  #page-topbar,
+  .vertical-menu,
+  .footer,
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+  }
+  .main-content {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  .page-content {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .page-content > .container-fluid {
+    max-width: none !important;
+    width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin: 0 !important;
+  }
+  .receipt-shell {
+    max-width: none !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  .receipt-card {
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    border-radius: 0.5rem !important;
+    box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.06) !important;
+    max-width: 760px !important;
+    width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    background: #fff !important;
+    color: inherit !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt-card .card-body {
+    padding: 1.5rem 1.75rem !important;
+  }
+  .receipt-accent {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt-brand-logo {
+    width: 150px !important;
+    height: 100px !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+  .receipt-card .amount-panel,
+  .receipt-card .receipt-no-box,
+  .receipt-card .status-pill-verified,
+  .receipt-card .status-pill-pending,
+  .receipt-card .progress,
+  .receipt-card .progress-bar,
+  .receipt-card .table,
+  .receipt-card .table-light,
+  .receipt-card .table-primary,
+  .receipt-card .bg-light,
+  .receipt-card .badge,
+  .receipt-card .border,
+  .receipt-card .border-secondary,
+  .receipt-card .receipt-stamp {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt-card .text-primary {
+    color: var(--bs-primary) !important;
+  }
+  .receipt-primary-row,
+  .receipt-subscription-stats,
+  .receipt-subscription-intro,
+  .receipt-general-outstanding {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  .receipt-primary-row {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    --bs-gutter-x: 1rem;
+    --bs-gutter-y: 0;
+  }
+  .receipt-primary-row > [class*="col-"] {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+    width: 50% !important;
+    padding-left: calc(var(--bs-gutter-x) * 0.5) !important;
+    padding-right: calc(var(--bs-gutter-x) * 0.5) !important;
+  }
+  .receipt-subscription-stats {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+  }
+  .receipt-subscription-stats > [class*="col-"] {
+    flex: 0 0 33.333% !important;
+    max-width: 33.333% !important;
+    width: 33.333% !important;
+    padding-left: calc(var(--bs-gutter-x) * 0.5) !important;
+    padding-right: calc(var(--bs-gutter-x) * 0.5) !important;
+  }
+  .receipt-subscription-intro {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+  }
+  .receipt-subscription-intro > [class*="col-"] {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+    width: 50% !important;
+  }
+  .receipt-general-outstanding {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+  }
+  .receipt-general-outstanding > [class*="col-"] {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+    width: 50% !important;
+  }
+  .receipt-payment-table-wrap {
+    overflow: visible !important;
+  }
+  .receipt-payment-table thead {
+    display: table-header-group;
+  }
+  .receipt-payment-table tfoot {
+    display: table-footer-group;
+  }
+  .receipt-no-box,
+  .receipt-card .amount-panel {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  a[href]:after { content: none !important; }
+}
