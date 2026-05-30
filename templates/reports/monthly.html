@@ -2,6 +2,20 @@
 {% block title %}Monthly report{% endblock %}
 {% block page_heading %}Monthly contribution report{% endblock %}
 {% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active">Monthly contributions</li>
+    </ol>
+</nav>
+
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+    <p class="text-muted small mb-0">Period: {{ start }} — {{ end }}</p>
+    {% if has_permission('export.contributions') %}
+    <a class="btn btn-soft-primary btn-sm" href="{{ export_url }}">Export Excel</a>
+    {% endif %}
+</div>
+
 <form method="get" class="row g-2 mb-3 align-items-end flex-wrap">
     <div class="col-auto">
         <label class="form-label small mb-0">Year</label>
@@ -34,8 +48,8 @@
         <button type="submit" class="btn btn-primary">Show</button>
     </div>
 </form>
-<p class="text-muted">Period: {{ start }} — {{ end }}</p>
-<p><strong>Total for month:</strong> {{ total|money }} USD</p>
+
+<p><strong>Total for month:</strong> {{ total|money }} {{ currency_code }}</p>
 <div class="card">
     <div class="card-body p-0">
         <div class="table-responsive">

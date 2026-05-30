@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Overdue members{% endblock %}
+{% block page_heading %}Overdue members — collection follow-up{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
+        {% if current_user.role != 'agent' %}
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        {% endif %}
+        <li class="breadcrumb-item active">Overdue members</li>
+    </ol>
+</nav>
+
+<div class="alert alert-info border-0 mb-3">
+    <strong>Call these members</strong> to collect overdue installment payments.
+    {% if current_user.role == 'agent' %}
+    This list shows only members assigned to you.
+    {% elif filter_agent %}
+    Filtered to agent: <strong>{{ filter_agent.full_name }}</strong> ({{ filter_agent.agent_id }}).
+    {% endif %}
+    As of <strong>{{ report_date }}</strong>.
+    {% if has_permission('export.installments') or has_permission('reports.installments') %}
+    <span class="ms-2"><a class="btn btn-soft-primary btn-sm" href="{{ export_url }}">Export Excel</a></span>
+    {% endif %}
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card border-danger border-opacity-25 h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Members to call</p>
+                <p class="mb-0 fs-4 fw-bold text-danger">{{ summary.member_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Overdue installment rows</p>
+                <p class="mb-0 fs-4 fw-bold">{{ summary.overdue_row_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <p class="text-muted small mb-1">Total overdue balance</p>
+                <p class="mb-0 fs-4 fw-bold">{{ settings.currency_symbol }}{{ summary.overdue_balance|money }} {{ currency_code }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if staff_agents %}
+<div class="card mb-3" style="max-width:480px">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col">
+                <label class="form-label small mb-0">Filter by agent</label>
+                <select name="agent_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">All agents</option>
+                    {% for ag in staff_agents %}
+                    <option value="{{ ag.id }}" {% if filter_agent and filter_agent.id == ag.id %}selected{% endif %}>{{ ag.full_name }} ({{ ag.agent_id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span>Overdue member list</span>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('reports_installments') }}" class="btn btn-sm btn-outline-secondary">Installment report</a>
+            <a href="{{ url_for('subscriptions_list', overdue=1) }}" class="btn btn-sm btn-outline-primary">Overdue subscriptions</a>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Member</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                        <th>Subscriptions</th>
+                        <th class="text-end">Overdue rows</th>
+                        <th class="text-end">Days late</th>
+                        <th class="text-end">Balance due</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in members %}
+                    {% set m = item.member %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('members_profile', id=m.id) }}" class="fw-semibold">{{ m.full_name or m.member_id_display }}</a>
+                            <div class="small text-muted">{{ m.member_id_display }}</div>
+                        </td>
+                        <td>
+                            {% if m.phone %}
+                            <a href="tel:{{ m.phone }}">{{ m.phone }}</a>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if m.email %}
+                            <a href="mailto:{{ m.email }}">{{ m.email }}</a>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                        <td class="small">
+                            {% for sub in item.subscriptions %}
+                            <a href="{{ url_for('subscriptions_profile', id=sub.id) }}">{{ sub.subscription_no }}</a>{% if not loop.last %}, {% endif %}
+                            {% else %}—{% endfor %}
+                        </td>
+                        <td class="text-end">{{ item.overdue_row_count }}</td>
+                        <td class="text-end"><span class="badge text-bg-danger">{{ item.max_days_late }}d</span></td>
+                        <td class="text-end fw-bold text-danger">{{ settings.currency_symbol }}{{ item.overdue_balance|money }}</td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% if m.phone %}<a class="btn btn-sm btn-success" href="tel:{{ m.phone }}"><i class="ri-phone-line"></i> Call</a>{% endif %}
+                                <a class="btn btn-sm btn-primary" href="{{ url_for('contributions_new', preselect=m.id) }}"><i class="ri-hand-coin-line"></i> Record payment</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-muted p-4 text-center">No overdue members{% if current_user.role == 'agent' %} in your portfolio{% endif %} right now.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

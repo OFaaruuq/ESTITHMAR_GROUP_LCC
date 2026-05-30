@@ -2,6 +2,19 @@
 {% block title %}Profit summary{% endblock %}
 {% block page_heading %}Profit generated vs distributed{% endblock %}
 {% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active">Profit summary</li>
+    </ol>
+</nav>
+
+{% if has_permission('export.profit') %}
+<div class="mb-3 text-end">
+    <a class="btn btn-soft-primary btn-sm" href="{{ export_url }}">Export Excel</a>
+</div>
+{% endif %}
+
 <div class="card">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -20,9 +33,9 @@
                     <tr>
                         <td>{{ inv.name }}</td>
                         <td>{{ inv.status }}</td>
-                        <td>{{ inv.profit_generated|money }}</td>
-                        <td>{{ distributed|money }}</td>
-                        <td>{{ undistributed|money }}</td>
+                        <td>{{ inv.profit_generated|money }} {{ currency_code }}</td>
+                        <td>{{ distributed|money }} {{ currency_code }}</td>
+                        <td>{{ undistributed|money }} {{ currency_code }}</td>
                     </tr>
                     {% else %}
                     <tr><td colspan="5" class="text-muted p-3">No investments found.</td></tr>

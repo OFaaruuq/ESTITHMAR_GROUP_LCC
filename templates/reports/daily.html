@@ -2,6 +2,13 @@
 {% block title %}Daily collections{% endblock %}
 {% block page_heading %}Daily collection report{% endblock %}
 {% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item active">Daily collections</li>
+    </ol>
+</nav>
+
 <div class="card mb-3">
     <div class="card-body">
         <form method="get" class="row g-2 align-items-end">
@@ -12,6 +19,11 @@
             <div class="col-auto">
                 <button type="submit" class="btn btn-primary">Run</button>
             </div>
+            {% if has_permission('export.contributions') %}
+            <div class="col-auto ms-auto">
+                <a class="btn btn-soft-primary btn-sm" href="{{ export_url }}">Export Excel</a>
+            </div>
+            {% endif %}
         </form>
     </div>
 </div>
@@ -46,7 +58,7 @@
                 </tbody>
             </table>
         </div>
-        <div class="p-3 border-top"><strong>Total:</strong> {{ total|money }} USD</div>
+        <div class="p-3 border-top"><strong>Total:</strong> {{ total|money }} {{ currency_code }}</div>
     </div>
 </div>
 {% endblock %}

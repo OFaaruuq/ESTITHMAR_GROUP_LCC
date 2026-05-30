@@ -148,6 +148,14 @@
                     </a>
                 </li>
                 {% endif %}
+                {% if current_user.role != 'member' and has_permission('reports.installments') %}
+                <li>
+                    <a href="{{ url_for('collections_overdue_members') }}" class="waves-effect">
+                        <i class="ri-phone-line"></i>
+                        <span>Overdue members</span>
+                    </a>
+                </li>
+                {% endif %}
                 {% if has_permission('settings.view') or has_permission('settings.notifications') or has_permission('settings.payment_methods') or has_permission('settings.database_backup') or has_permission('accounting.settings') %}
                 <li>
                     <a href="javascript:void(0);" class="has-arrow waves-effect">

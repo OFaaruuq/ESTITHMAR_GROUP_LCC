@@ -19,6 +19,7 @@ from flask import current_app, has_request_context
 
 from estithmar import db
 from estithmar.models import NotificationDeliveryLog, ReportSchedule, get_or_create_settings
+from estithmar.services.report_data import build_scheduled_report_summary
 from estithmar.services.email_html import (
     ESTITHMAR_EMAIL_LOGO_CID,
     audience_for_role_label,
@@ -439,25 +440,20 @@ def run_due_report_schedules(now: datetime | None = None) -> dict[str, int]:
             failed += 1
             continue
         subject = f"Estithmar scheduled report — {row.name}"
-        body = (
-            f"Scheduled report: {row.name}\n"
-            f"Report key: {row.report_key}\n"
-            f"Run time (UTC): {run_at}\n"
-            "Open Reports hub in Estithmar to review current dashboard values."
-        )
+        intro, detail_rows, cta_url = build_scheduled_report_summary(row.report_key or "")
+        body_lines = [f"Scheduled report: {row.name}", f"Report key: {row.report_key}", ""]
+        for label, value in detail_rows:
+            body_lines.append(f"{label}: {value}")
+        body_lines.append("")
+        body_lines.append("This is an automated message from Estithmar.")
+        body = "\n".join(body_lines)
         report_html = try_render_transactional(
             audience="Team",
             title=f"Scheduled report: {row.name}",
-            intro=(
-                f"Your saved schedule ran at {run_at} (UTC).\n\n"
-                "Open the reporting area in Estithmar to view the current figures for this report key."
-            ),
-            detail_rows=[
-                ("Report key", str(row.report_key)),
-                ("Run time (UTC)", str(run_at)),
-            ],
-            cta_url=None,
-            cta_label=None,
+            intro=intro,
+            detail_rows=detail_rows,
+            cta_url=cta_url,
+            cta_label="Open report" if cta_url else None,
         )
         ok_all = True
         err_msg = None

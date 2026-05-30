@@ -50,7 +50,12 @@
                 <div class="col-md-4">
                     <label class="form-label">Reminder cooldown (days)</label>
                     <input type="number" min="1" name="installment_reminder_cooldown_days" class="form-control" value="{{ extra.get('installment_reminder_cooldown_days', 1) }}">
-                    <div class="form-text">Minimum days between duplicate reminders for the same installment.</div>
+                    <div class="form-text">Minimum days between duplicate per-row reminders.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Monthly reminder cooldown (days)</label>
+                    <input type="number" min="1" name="installment_monthly_reminder_cooldown_days" class="form-control" value="{{ extra.get('installment_monthly_reminder_cooldown_days', 28) }}">
+                    <div class="form-text">Minimum days between monthly payment emails to the same member.</div>
                 </div>
                 <div class="col-12">
                     <div class="form-check">
@@ -87,9 +92,15 @@
             <input type="hidden" name="action" value="run_reminders">
             <button type="submit" class="btn btn-outline-primary btn-sm">Send due/overdue reminders now</button>
         </form>
+        <form method="post" class="d-inline">
+            <input type="hidden" name="action" value="run_monthly_reminders">
+            <button type="submit" class="btn btn-outline-success btn-sm">Send monthly payment reminders now</button>
+        </form>
     </div>
     <div class="card-footer small text-muted">
-        Schedule automated reminders with <code>flask installments-remind</code> via Windows Task Scheduler or cron.
+        Schedule automated reminders with Task Scheduler or cron:<br>
+        <code>flask installments-remind</code> — due soon &amp; overdue (per installment row)<br>
+        <code>flask installments-monthly-remind</code> — monthly summary with balance to pay (run e.g. 1st of each month)
     </div>
 </div>
 {% endblock %}

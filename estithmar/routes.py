@@ -58,6 +58,11 @@ from estithmar.services.agent_notify import (
     send_agent_portfolio_email,
     send_kpi_to_all_active_agents,
 )
+from estithmar.services.agent_collections import collect_agent_overdue_members, summarize_agent_overdue
+from estithmar.services.agent_overdue_notify import (
+    run_agent_overdue_reminders,
+    send_overdue_digest_to_all_agents,
+)
 from estithmar.services.email_html import try_render_transactional
 from estithmar.services.notifications import (
     mail_configured,
@@ -163,7 +168,12 @@ from estithmar.services import (
     unallocate_contribution_from_installments,
     validate_schedule_totals,
 )
-from estithmar.services.installment_notify import run_installment_reminders
+from estithmar.services.installment_notify import run_installment_reminders, run_monthly_member_installment_reminders
+from estithmar.services.report_data import (
+    daily_contribution_rows,
+    members_financial_rows,
+    monthly_contribution_rows,
+)
 from estithmar.services.certificates import format_certificate_share_quantity
 from estithmar.country_choices import get_agent_country_choices, get_agent_country_value_set, get_region_choices_for_country
 from estithmar.dashboard_geo import build_members_region_map_data
@@ -6264,6 +6274,25 @@ def register_routes(app):
                         "info",
                     )
                 return redirect(url_for("settings_notifications"))
+            if action == "email_all_agents_overdue":
+                out = send_overdue_digest_to_all_agents(force=True)
+                if out.get("aborted"):
+                    flash("SMTP is not configured.", "warning")
+                else:
+                    flash(
+                        f"Agent overdue digests: sent {out.get('sent',0)}, no overdue members: {out.get('empty',0)}, "
+                        f"no email: {out.get('skipped',0)}, failures: {out.get('failed',0)}.",
+                        "info",
+                    )
+                return redirect(url_for("settings_notifications"))
+            if action == "run_agent_overdue_remind":
+                out = run_agent_overdue_reminders(force=False)
+                flash(
+                    f"Agent overdue reminders: sent {out.get('sent',0)}, skipped (cooldown/no email) {out.get('skipped',0)}, "
+                    f"no overdue {out.get('empty',0)}, failed {out.get('failed',0)}.",
+                    "info",
+                )
+                return redirect(url_for("settings_notifications"))
 
             ex["smtp_host"] = (request.form.get("smtp_host") or "").strip()
             pport = (request.form.get("smtp_port") or "").strip()
@@ -6296,9 +6325,17 @@ def register_routes(app):
             ex["notify_member_certificate"] = request.form.get("notify_member_certificate") == "1"
             ex["notify_member_installment_overdue"] = request.form.get("notify_member_installment_overdue") == "1"
             ex["notify_member_installment_upcoming"] = request.form.get("notify_member_installment_upcoming") == "1"
+            ex["notify_member_installment_monthly"] = request.form.get("notify_member_installment_monthly") == "1"
             ex["notify_members_whatsapp"] = request.form.get("notify_members_whatsapp") == "1"
             ex["notify_agents_enabled"] = request.form.get("notify_agents_enabled") == "1"
             ex["notify_agent_kpi_on_payment"] = request.form.get("notify_agent_kpi_on_payment") == "1"
+            ex["notify_agent_overdue_digest"] = request.form.get("notify_agent_overdue_digest") == "1"
+            try:
+                ex["agent_overdue_cooldown_days"] = max(
+                    1, int(request.form.get("agent_overdue_cooldown_days") or 1)
+                )
+            except (TypeError, ValueError):
+                ex["agent_overdue_cooldown_days"] = 1
             ex["require_login_otp"] = request.form.get("require_login_otp") == "1"
 
             s.set_extra(ex)
@@ -6423,6 +6460,14 @@ def register_routes(app):
                     "info",
                 )
                 return redirect(url_for("settings_installments"))
+            if act == "run_monthly_reminders":
+                out = run_monthly_member_installment_reminders(force=True)
+                flash(
+                    f"Monthly member reminders — sent: {out.get('sent', 0)}, skipped: {out.get('skipped', 0)}, "
+                    f"no balance due: {out.get('empty', 0)}, failed: {out.get('failed', 0)}.",
+                    "info",
+                )
+                return redirect(url_for("settings_installments"))
             if act == "recompute_all":
                 n = recompute_all_active_installment_statuses(commit=True)
                 flash(f"Recomputed installment statuses for {n} subscription(s).", "success")
@@ -6442,6 +6487,9 @@ def register_routes(app):
             ex["installment_late_fee_fixed"] = str(_parse_late_fee_fixed(request.form.get("installment_late_fee_fixed")))
             ex["installment_reminder_cooldown_days"] = max(
                 1, request.form.get("installment_reminder_cooldown_days", type=int) or 1
+            )
+            ex["installment_monthly_reminder_cooldown_days"] = max(
+                1, request.form.get("installment_monthly_reminder_cooldown_days", type=int) or 28
             )
             s.set_extra(ex)
             db.session.commit()
@@ -7459,28 +7507,28 @@ def register_routes(app):
 
     @app.route("/reports/monthly")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_MONTHLY)
     def reports_monthly():
         y = request.args.get("year", type=int) or datetime.utcnow().year
         m = request.args.get("month", type=int) or datetime.utcnow().month
         agent_id = request.args.get("agent_id", type=int)
-        start = date(y, m, 1)
-        end = start + relativedelta(months=1) - relativedelta(days=1)
-        q = Contribution.query.filter(Contribution.date >= start, Contribution.date <= end).join(Member)
-        if agent_id:
-            q = q.filter(Member.agent_id == agent_id)
+        scope_agent_id = None
         if current_user.role == "agent" and current_user.agent_id:
-            q = q.filter(Member.agent_id == current_user.agent_id)
-        rows = (
-            q.options(
-                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
-                joinedload(Contribution.payment_mobile_provider),
-            )
-            .order_by(Contribution.date.desc())
-            .all()
+            scope_agent_id = current_user.agent_id
+            agent_id = None
+        rows, total, start, end = monthly_contribution_rows(
+            year=y,
+            month=m,
+            agent_id=agent_id,
+            scope_agent_id=scope_agent_id,
         )
-        total = sum((r.amount for r in rows), Decimal("0"))
-        agents = Agent.query.filter_by(status="Active").order_by(Agent.full_name).all()
+        agents = []
+        if current_user.role != "agent":
+            agents = Agent.query.filter_by(status="Active").order_by(Agent.full_name).all()
+        settings = get_or_create_settings()
+        export_qs = {"year": y, "month": m}
+        if agent_id:
+            export_qs["agent_id"] = agent_id
         return render_template(
             "reports/monthly.html",
             rows=rows,
@@ -7491,11 +7539,14 @@ def register_routes(app):
             end=end,
             agent_id=agent_id,
             agents=agents,
+            settings=settings,
+            currency_code=settings.currency_code or "USD",
+            export_url=url_for("export_monthly_xlsx", **export_qs),
         )
 
     @app.route("/reports/member/<int:member_id>")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_MEMBER)
     def reports_member_contrib(member_id):
         m = members_scope().filter_by(id=member_id).first_or_404()
         rows = (
@@ -7506,11 +7557,18 @@ def register_routes(app):
             )
             .all()
         )
-        return render_template("reports/member_contrib.html", member=m, rows=rows)
+        settings = get_or_create_settings()
+        return render_template(
+            "reports/member_contrib.html",
+            member=m,
+            rows=rows,
+            settings=settings,
+            currency_code=settings.currency_code or "USD",
+        )
 
     @app.route("/reports/agents")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_AGENTS)
     def reports_agents():
         r = forbid_agent()
         if r:
@@ -7545,7 +7603,7 @@ def register_routes(app):
 
     @app.route("/reports/agents/geography")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_GEOGRAPHY)
     def reports_agents_geography():
         """Roll up agents by country and region — collections & member counts (§4.3)."""
         r = forbid_agent()
@@ -7609,6 +7667,58 @@ def register_routes(app):
                 "volume": total_volume,
                 "share_value": total_share,
             },
+        )
+
+    @app.route("/collections/overdue-members")
+    @page_view_permission(Permission.REPORTS_INSTALLMENTS, allow_member=False)
+    def collections_overdue_members():
+        if current_user.role == "member":
+            flash("This page is for staff and agents.", "warning")
+            return redirect(url_for("dashboard"))
+        if not (
+            user_has_permission(current_user, Permission.REPORTS_HUB)
+            or user_has_permission(current_user, Permission.REPORTS_INSTALLMENTS)
+        ):
+            flash("You do not have permission to view this page.", "warning")
+            return redirect(url_for("dashboard"))
+
+        today = date.today()
+        filter_agent = None
+        agent_filter_id = None
+        if current_user.role == "agent" and current_user.agent_id:
+            agent_filter_id = current_user.agent_id
+            filter_agent = db.session.get(Agent, current_user.agent_id)
+        elif current_user.role != "agent":
+            aid = request.args.get("agent_id", type=int)
+            if aid:
+                filter_agent = db.session.get(Agent, aid)
+                if filter_agent:
+                    agent_filter_id = filter_agent.id
+
+        members = collect_agent_overdue_members(agent_filter_id, as_of=today, recompute=True)
+        summary = summarize_agent_overdue(agent_filter_id, as_of=today)
+        settings = get_or_create_settings()
+        staff_agents = []
+        if current_user.role != "agent":
+            staff_agents = (
+                Agent.query.filter(Agent.status == "Active")
+                .order_by(Agent.full_name.asc())
+                .all()
+            )
+
+        return render_template(
+            "collections/overdue_members.html",
+            members=members,
+            summary=summary,
+            filter_agent=filter_agent,
+            staff_agents=staff_agents,
+            settings=settings,
+            currency_code=settings.currency_code or "USD",
+            report_date=today,
+            export_url=url_for(
+                "export_overdue_members_xlsx",
+                **({"agent_id": agent_filter_id} if agent_filter_id else {}),
+            ),
         )
 
     @app.route("/reports/installments")
@@ -7685,58 +7795,22 @@ def register_routes(app):
 
     @app.route("/reports/members-financial")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_MEMBERS_FINANCIAL)
     def reports_members_financial():
         """Per-member subscribed, paid, outstanding, confirmed value/units, profit — doc §15.1 summary columns."""
         st = request.args.get("status", "").strip()
         only_outstanding = request.args.get("outstanding", "").strip().lower() in {"1", "true", "yes"}
-        q = members_scope().options(joinedload(Member.agent))
-        if st in ("Active", "Inactive"):
-            q = q.filter(Member.status == st)
-        members = q.order_by(Member.member_id.asc()).all()
-        rows: list[dict] = []
-        agg = {
-            "subscribed": Decimal("0"),
-            "paid": Decimal("0"),
-            "outstanding": Decimal("0"),
-            "confirmed_value": Decimal("0"),
-            "confirmed_units": Decimal("0"),
-            "profit": Decimal("0"),
-        }
-        for m in members:
-            subs = m.subscriptions.filter(ShareSubscription.status != "Cancelled").all()
-            t_sub = sum((s.subscribed_amount or Decimal("0") for s in subs), Decimal("0"))
-            t_paid = sum((s.paid_total() for s in subs), Decimal("0"))
-            out = sum((s.outstanding_balance() for s in subs), Decimal("0"))
-            conf_v = sum(
-                (s.subscribed_amount or Decimal("0") for s in subs if s.status == "Fully Paid"),
-                Decimal("0"),
-            )
-            conf_u = sum(
-                (s.share_units_subscribed or Decimal("0") for s in subs if s.status == "Fully Paid"),
-                Decimal("0"),
-            )
-            if only_outstanding and out <= 0:
-                continue
-            pt = m.lifetime_profit_received()
-            rows.append(
-                {
-                    "member": m,
-                    "subscribed": t_sub,
-                    "paid": t_paid,
-                    "outstanding": out,
-                    "confirmed_value": conf_v,
-                    "confirmed_units": conf_u,
-                    "profit": pt,
-                }
-            )
-            agg["subscribed"] += t_sub
-            agg["paid"] += t_paid
-            agg["outstanding"] += out
-            agg["confirmed_value"] += conf_v
-            agg["confirmed_units"] += conf_u
-            agg["profit"] += pt
+        rows, agg = members_financial_rows(
+            member_query=members_scope(),
+            status_filter=st,
+            only_outstanding=only_outstanding,
+        )
         settings = get_or_create_settings()
+        export_qs: dict = {}
+        if st:
+            export_qs["status"] = st
+        if only_outstanding:
+            export_qs["outstanding"] = "1"
         return render_template(
             "reports/members_financial.html",
             rows=rows,
@@ -7745,11 +7819,12 @@ def register_routes(app):
             currency_code=settings.currency_code or "USD",
             status_filter=st,
             only_outstanding=only_outstanding,
+            export_url=url_for("export_members_financial_xlsx", **export_qs),
         )
 
     @app.route("/reports/profit-calculation")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_PROFIT_CALCULATION)
     def reports_profit_calculation():
         """Narrative + hypothetical distribution preview — doc §11 / §15.5 profit calculation summary."""
         r = forbid_agent()
@@ -7782,7 +7857,7 @@ def register_routes(app):
 
     @app.route("/reports/profit-summary")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_PROFIT_SUMMARY)
     def reports_profit_summary():
         r = forbid_agent()
         if r:
@@ -7802,11 +7877,18 @@ def register_routes(app):
             if undistributed < 0:
                 undistributed = Decimal("0")
             out.append((inv, distributed, undistributed))
-        return render_template("reports/profit_summary.html", rows=out)
+        settings = get_or_create_settings()
+        return render_template(
+            "reports/profit_summary.html",
+            rows=out,
+            settings=settings,
+            currency_code=settings.currency_code or "USD",
+            export_url=url_for("export_profit_summary_xlsx"),
+        )
 
     @app.route("/reports/investments/summary")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_INVESTMENTS_SUMMARY)
     def reports_investment_summary():
         r = forbid_agent()
         if r:
@@ -7861,26 +7943,27 @@ def register_routes(app):
 
     @app.route("/reports/daily")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_DAILY)
     def reports_daily():
         d = _parse_date(request.args.get("date")) or date.today()
-        q = Contribution.query.filter(Contribution.date == d).join(Member)
+        scope_agent_id = None
         if current_user.role == "agent" and current_user.agent_id:
-            q = q.filter(Member.agent_id == current_user.agent_id)
-        rows = (
-            q.options(
-                joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
-                joinedload(Contribution.payment_mobile_provider),
-            )
-            .order_by(Contribution.id.desc())
-            .all()
+            scope_agent_id = current_user.agent_id
+        rows, total = daily_contribution_rows(report_date=d, scope_agent_id=scope_agent_id)
+        settings = get_or_create_settings()
+        return render_template(
+            "reports/daily.html",
+            rows=rows,
+            total=total,
+            report_date=d,
+            settings=settings,
+            currency_code=settings.currency_code or "USD",
+            export_url=url_for("export_daily_xlsx", date=d.isoformat()),
         )
-        total = sum((r.amount for r in rows), Decimal("0"))
-        return render_template("reports/daily.html", rows=rows, total=total, report_date=d)
 
     @app.route("/reports/projects/profitability")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_PROJECTS_PROFITABILITY)
     def reports_projects_profitability():
         r = forbid_agent()
         if r:
@@ -7941,7 +8024,7 @@ def register_routes(app):
 
     @app.route("/reports/community-model")
     @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @any_permission_required(Permission.REPORTS_HUB, Permission.REPORTS_COMMUNITY_MODEL)
     def reports_community_model():
         """Community investment model: narrative + pooled collections, share payments, deployment by category, profit basis."""
         mids = _dashboard_scoped_member_ids()
@@ -8279,6 +8362,221 @@ def register_routes(app):
         wb.save(bio)
         return _xlsx_response(bio.getvalue(), "profit_distributions.xlsx")
 
+    @app.route("/export/monthly.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_CONTRIBUTIONS)
+    def export_monthly_xlsx():
+        y = request.args.get("year", type=int) or datetime.utcnow().year
+        m = request.args.get("month", type=int) or datetime.utcnow().month
+        agent_id = request.args.get("agent_id", type=int)
+        scope_agent_id = None
+        if current_user.role == "agent" and current_user.agent_id:
+            scope_agent_id = current_user.agent_id
+            agent_id = None
+        rows, total, start, end = monthly_contribution_rows(
+            year=y,
+            month=m,
+            agent_id=agent_id,
+            scope_agent_id=scope_agent_id,
+        )
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Monthly"
+        headers = ["Receipt", "Member ID", "Member", "Agent", "Amount", "Date", "Payment method", "Verified"]
+        for col, h in enumerate(headers, 1):
+            ws.cell(row=1, column=col, value=h)
+            ws.cell(row=1, column=col).font = Font(bold=True)
+        for row, c in enumerate(rows, 2):
+            ag = c.member.agent.agent_id if c.member and c.member.agent else ""
+            ws.cell(row=row, column=1, value=c.receipt_no)
+            ws.cell(row=row, column=2, value=format_member_public_id(c.member.member_id) if c.member else "")
+            ws.cell(row=row, column=3, value=c.member.full_name if c.member else "")
+            ws.cell(row=row, column=4, value=ag)
+            ws.cell(row=row, column=5, value=float(c.amount or 0))
+            ws.cell(row=row, column=6, value=c.date.isoformat() if c.date else "")
+            ws.cell(row=row, column=7, value=c.payment_display_label())
+            ws.cell(row=row, column=8, value="Yes" if c.verified else "No")
+        ws.append([])
+        ws.append(["Period", f"{start} — {end}", "Total", float(total)])
+        bio = io.BytesIO()
+        wb.save(bio)
+        return _xlsx_response(bio.getvalue(), f"monthly_{y}_{m:02d}.xlsx")
+
+    @app.route("/export/daily.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_CONTRIBUTIONS)
+    def export_daily_xlsx():
+        d = _parse_date(request.args.get("date")) or date.today()
+        scope_agent_id = None
+        if current_user.role == "agent" and current_user.agent_id:
+            scope_agent_id = current_user.agent_id
+        rows, total = daily_contribution_rows(report_date=d, scope_agent_id=scope_agent_id)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Daily"
+        headers = ["Txn", "Receipt", "Member ID", "Member", "Amount", "Payment method", "Verified"]
+        for col, h in enumerate(headers, 1):
+            ws.cell(row=1, column=col, value=h)
+            ws.cell(row=1, column=col).font = Font(bold=True)
+        for row, c in enumerate(rows, 2):
+            ws.cell(row=row, column=1, value=c.id)
+            ws.cell(row=row, column=2, value=c.receipt_no)
+            ws.cell(row=row, column=3, value=format_member_public_id(c.member.member_id) if c.member else "")
+            ws.cell(row=row, column=4, value=c.member.full_name if c.member else "")
+            ws.cell(row=row, column=5, value=float(c.amount or 0))
+            ws.cell(row=row, column=6, value=c.payment_display_label())
+            ws.cell(row=row, column=7, value="Yes" if c.verified else "No")
+        ws.append([])
+        ws.append(["Date", str(d), "Total", float(total)])
+        bio = io.BytesIO()
+        wb.save(bio)
+        return _xlsx_response(bio.getvalue(), f"daily_{d.isoformat()}.xlsx")
+
+    @app.route("/export/members-financial.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_MEMBERS)
+    def export_members_financial_xlsx():
+        st = request.args.get("status", "").strip()
+        only_outstanding = request.args.get("outstanding", "").strip().lower() in {"1", "true", "yes"}
+        rows, agg = members_financial_rows(
+            member_query=members_scope(),
+            status_filter=st,
+            only_outstanding=only_outstanding,
+        )
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Members financial"
+        headers = [
+            "Member ID",
+            "Name",
+            "Status",
+            "Agent",
+            "Subscribed",
+            "Paid",
+            "Outstanding",
+            "Confirmed value",
+            "Confirmed units",
+            "Profit received",
+        ]
+        for col, h in enumerate(headers, 1):
+            ws.cell(row=1, column=col, value=h)
+            ws.cell(row=1, column=col).font = Font(bold=True)
+        for row, r in enumerate(rows, 2):
+            m = r["member"]
+            ws.cell(row=row, column=1, value=format_member_public_id(m.member_id))
+            ws.cell(row=row, column=2, value=m.full_name)
+            ws.cell(row=row, column=3, value=m.status)
+            ws.cell(row=row, column=4, value=m.agent.agent_id if m.agent else "")
+            ws.cell(row=row, column=5, value=float(r["subscribed"]))
+            ws.cell(row=row, column=6, value=float(r["paid"]))
+            ws.cell(row=row, column=7, value=float(r["outstanding"]))
+            ws.cell(row=row, column=8, value=float(r["confirmed_value"]))
+            ws.cell(row=row, column=9, value=float(r["confirmed_units"]))
+            ws.cell(row=row, column=10, value=float(r["profit"]))
+        ws.append([])
+        ws.append(
+            [
+                "Totals",
+                "",
+                "",
+                "",
+                float(agg["subscribed"]),
+                float(agg["paid"]),
+                float(agg["outstanding"]),
+                float(agg["confirmed_value"]),
+                float(agg["confirmed_units"]),
+                float(agg["profit"]),
+            ]
+        )
+        bio = io.BytesIO()
+        wb.save(bio)
+        return _xlsx_response(bio.getvalue(), "members_financial.xlsx")
+
+    @app.route("/export/overdue-members.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @any_permission_required(Permission.EXPORT_INSTALLMENTS, Permission.REPORTS_INSTALLMENTS)
+    def export_overdue_members_xlsx():
+        today = date.today()
+        agent_filter_id = None
+        if current_user.role == "agent" and current_user.agent_id:
+            agent_filter_id = current_user.agent_id
+        elif current_user.role != "agent":
+            aid = request.args.get("agent_id", type=int)
+            if aid:
+                agent_filter_id = aid
+        members = collect_agent_overdue_members(agent_filter_id, as_of=today, recompute=True)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Overdue members"
+        headers = [
+            "Member ID",
+            "Name",
+            "Phone",
+            "Email",
+            "Agent",
+            "Overdue rows",
+            "Max days late",
+            "Overdue balance",
+        ]
+        for col, h in enumerate(headers, 1):
+            ws.cell(row=1, column=col, value=h)
+            ws.cell(row=1, column=col).font = Font(bold=True)
+        for row, entry in enumerate(members, 2):
+            m = entry["member"]
+            ws.cell(row=row, column=1, value=format_member_public_id(m.member_id))
+            ws.cell(row=row, column=2, value=m.full_name)
+            ws.cell(row=row, column=3, value=m.phone or "")
+            ws.cell(row=row, column=4, value=m.email or "")
+            ws.cell(row=row, column=5, value=m.agent.agent_id if m.agent else "")
+            ws.cell(row=row, column=6, value=entry["overdue_row_count"])
+            ws.cell(row=row, column=7, value=entry["max_days_late"])
+            ws.cell(row=row, column=8, value=float(entry["overdue_balance"]))
+        bio = io.BytesIO()
+        wb.save(bio)
+        return _xlsx_response(bio.getvalue(), "overdue_members.xlsx")
+
+    @app.route("/export/profit-summary.xlsx")
+    @role_required(*STAFF_OR_AGENT)
+    @permission_required(Permission.EXPORT_PROFIT)
+    def export_profit_summary_xlsx():
+        r = forbid_agent()
+        if r:
+            return r
+        inv_rows = Investment.query.order_by(Investment.name).all()
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Profit summary"
+        headers = ["Investment", "Status", "Profit generated", "Distributed", "Undistributed"]
+        for col, h in enumerate(headers, 1):
+            ws.cell(row=1, column=col, value=h)
+            ws.cell(row=1, column=col).font = Font(bold=True)
+        total_gen = Decimal("0")
+        total_dist = Decimal("0")
+        total_undist = Decimal("0")
+        for row, inv in enumerate(inv_rows, 2):
+            dist_total = (
+                db.session.query(func.coalesce(func.sum(ProfitDistribution.amount), 0))
+                .filter(ProfitDistribution.investment_id == inv.id)
+                .scalar()
+                or 0
+            )
+            generated = inv.profit_generated or Decimal("0")
+            distributed = Decimal(str(dist_total))
+            undistributed = max(generated - distributed, Decimal("0"))
+            total_gen += generated
+            total_dist += distributed
+            total_undist += undistributed
+            ws.cell(row=row, column=1, value=inv.name)
+            ws.cell(row=row, column=2, value=inv.status)
+            ws.cell(row=row, column=3, value=float(generated))
+            ws.cell(row=row, column=4, value=float(distributed))
+            ws.cell(row=row, column=5, value=float(undistributed))
+        ws.append([])
+        ws.append(["Totals", "", float(total_gen), float(total_dist), float(total_undist)])
+        bio = io.BytesIO()
+        wb.save(bio)
+        return _xlsx_response(bio.getvalue(), "profit_summary.xlsx")
+
     @app.route("/export/installments.xlsx")
     @page_view_permission(Permission.EXPORT_INSTALLMENTS, allow_member=True)
     def export_installments_xlsx():
@@ -8409,6 +8707,9 @@ def register_routes(app):
     @role_required(*STAFF_OR_AGENT)
     @permission_required(Permission.EXPORT_PROJECTS)
     def export_projects_xlsx():
+        r = forbid_agent()
+        if r:
+            return r
         wb = Workbook()
         ws = wb.active
         ws.title = "Projects"
@@ -8466,7 +8767,17 @@ def register_routes(app):
         kind_labels = dict(MEMBER_KINDS)
         headers = ["Member ID", "Name", "Type", "Phone", "Agent", "Status", "Contributions", "Profit"]
         rows_data = []
-        for mem in members_scope().order_by(Member.member_id).all():
+        sort = request.args.get("sort", "join_desc").strip()
+        q = _members_filtered_query().options(joinedload(Member.agent))
+        if sort == "name_asc":
+            q = q.order_by(Member.full_name.asc(), Member.id.asc())
+        elif sort == "name_desc":
+            q = q.order_by(Member.full_name.desc(), Member.id.desc())
+        elif sort == "member_id":
+            q = q.order_by(Member.member_id.asc())
+        else:
+            q = q.order_by(Member.join_date.desc(), Member.id.desc())
+        for mem in q.all():
             mk = getattr(mem, "member_kind", None) or "member"
             rows_data.append(
                 [
@@ -8493,14 +8804,13 @@ def register_routes(app):
     def export_contributions_pdf():
         rows_data = []
         cq = (
-            contributions_scope()
+            _contributions_filtered_query()
             .options(
                 joinedload(Contribution.member).joinedload(Member.agent),
                 joinedload(Contribution.payment_bank_account).joinedload(PaymentBankAccount.bank),
                 joinedload(Contribution.payment_mobile_provider),
             )
-            .order_by(Contribution.date.desc())
-            .limit(500)
+            .order_by(Contribution.date.desc(), Contribution.id.desc())
         )
         for c in cq.all():
             ag = ""

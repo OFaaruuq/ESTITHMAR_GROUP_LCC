@@ -20,19 +20,25 @@
                     <h6 class="text-primary mb-2"><span class="badge bg-primary me-2">1</span>Members report</h6>
                     <ul class="mb-0 small">
                         <li><a href="{{ url_for('members_list') }}"><strong>Member list</strong></a> — search, filters, status</li>
+                        {% if has_permission('reports.hub') or has_permission('reports.members_financial') %}
                         <li><a href="{{ url_for('reports_members_financial') }}"><strong>Members financial summary</strong></a> — subscribed, paid, outstanding, confirmed value/units, profit (per member)</li>
+                        {% endif %}
                         <li>Per-member contribution report: open a member profile → <strong>Contribution report</strong> (transaction list for that member)</li>
+                        {% if has_permission('reports.hub') or has_permission('reports.monthly') %}
                         <li><a href="{{ url_for('reports_monthly') }}">Monthly contribution report</a> — filter by agent when needed</li>
+                        {% endif %}
                     </ul>
                 </div>
             </div>
             <div class="col-md-6">
                 <div class="border rounded p-3 h-100">
                     <h6 class="text-primary mb-2"><span class="badge bg-primary me-2">2</span>Agent performance</h6>
-                    {% if current_user.role != 'agent' %}
+                    {% if current_user.role != 'agent' and (has_permission('reports.hub') or has_permission('reports.agents')) %}
                     <ul class="mb-0 small">
                         <li><a href="{{ url_for('reports_agents') }}"><strong>Agents performance</strong></a> — members count, contribution volume, share value by agent</li>
+                        {% if has_permission('reports.hub') or has_permission('reports.geography') %}
                         <li><a href="{{ url_for('reports_agents_geography') }}"><strong>Agents by geography</strong></a> — rollups by country &amp; region (§4.3)</li>
+                        {% endif %}
                         <li><a href="{{ url_for('agents_list') }}">Agent directory</a></li>
                     </ul>
                     {% else %}
@@ -44,8 +50,12 @@
                 <div class="border rounded p-3 h-100">
                     <h6 class="text-primary mb-2"><span class="badge bg-primary me-2">3</span>Contribution report</h6>
                     <ul class="mb-0 small">
+                        {% if has_permission('reports.hub') or has_permission('reports.monthly') %}
                         <li><a href="{{ url_for('reports_monthly') }}"><strong>Monthly contribution report</strong></a> — by month, optional agent filter</li>
+                        {% endif %}
+                        {% if has_permission('reports.hub') or has_permission('reports.daily') %}
                         <li><a href="{{ url_for('reports_daily') }}">Daily collection report</a></li>
+                        {% endif %}
                         <li><a href="{{ url_for('contributions_list') }}">All contributions</a> — full transaction list with filters</li>
                     </ul>
                 </div>
@@ -55,9 +65,13 @@
                     <h6 class="text-primary mb-2"><span class="badge bg-primary me-2">4</span>Investment report</h6>
                     {% if current_user.role != 'agent' %}
                     <ul class="mb-0 small">
+                        {% if has_permission('reports.hub') or has_permission('reports.investments_summary') %}
                         <li><a href="{{ url_for('reports_investment_summary') }}"><strong>Investment summary</strong></a> — deployed, profit, distributed, status by investment</li>
+                        {% endif %}
                         <li><a href="{{ url_for('investments_list') }}">Investments list</a> — edit links, full detail</li>
+                        {% if has_permission('reports.hub') or has_permission('reports.projects_profitability') %}
                         <li><a href="{{ url_for('reports_projects_profitability') }}">Project profitability</a> — budget vs invested by project</li>
+                        {% endif %}
                     </ul>
                     {% else %}
                     <ul class="mb-0 small">
@@ -72,8 +86,12 @@
                     <ul class="mb-0 small">
                         <li><a href="{{ url_for('profit_history') }}"><strong>Profit distribution history</strong></a> — each member line, batch links (where permitted)</li>
                         {% if current_user.role != 'agent' %}
+                        {% if has_permission('reports.hub') or has_permission('reports.profit_calculation') %}
                         <li><a href="{{ url_for('reports_profit_calculation') }}">Profit calculation summary</a> — formula, settings, hypothetical pool preview by investment</li>
+                        {% endif %}
+                        {% if has_permission('reports.hub') or has_permission('reports.profit_summary') %}
                         <li><a href="{{ url_for('reports_profit_summary') }}">Profit undistributed summary</a> — generated vs distributed by investment</li>
+                        {% endif %}
                         {% else %}
                         <li class="text-muted">Undistributed profit by investment is available to administrators (org-wide totals).</li>
                         {% endif %}
@@ -90,8 +108,13 @@
             <div class="card-header">Additional on-screen reports</div>
             <div class="card-body">
                 <ul class="list-unstyled mb-0">
+                    {% if has_permission('reports.hub') or has_permission('reports.community_model') %}
                     <li><a href="{{ url_for('reports_community_model') }}"><strong>Community investment model</strong></a> — narrative &amp; live metrics</li>
+                    {% endif %}
+                    {% if has_permission('reports.hub') or has_permission('reports.installments') %}
                     <li><a href="{{ url_for('reports_installments') }}">Installment completion / unpaid</a></li>
+                    <li><a href="{{ url_for('collections_overdue_members') }}">Overdue members (agent call list)</a></li>
+                    {% endif %}
                     <li><a href="{{ url_for('projects_list') }}">Projects list</a></li>
                 </ul>
                 <p class="text-muted small mt-2 mb-0">Filters on list pages (date, agent, member) apply where available. Exports respect your role (agents see scoped data).</p>
@@ -102,37 +125,55 @@
         <div class="card">
             <div class="card-header">Export Excel (.xlsx)</div>
             <div class="card-body">
-                <p class="text-muted small mb-2">Aligned with core reports above:</p>
+                <p class="text-muted small mb-2">Aligned with core reports above. Buttons appear only when you have the matching export permission.</p>
+                {% if has_permission('export.members') %}
                 <div class="d-flex flex-wrap gap-1 mb-2">
                     <span class="badge bg-light text-dark border">1 Members</span>
                     <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_members_xlsx') }}">Members report</a>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_members_financial_xlsx') }}">Members financial</a>
                 </div>
-                {% if current_user.role != 'agent' %}
+                {% endif %}
+                {% if current_user.role != 'agent' and has_permission('export.agents') %}
                 <div class="d-flex flex-wrap gap-1 mb-2">
                     <span class="badge bg-light text-dark border">2 Agents</span>
                     <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_agents_xlsx') }}">Agent performance</a>
                 </div>
                 {% endif %}
+                {% if has_permission('export.contributions') %}
                 <div class="d-flex flex-wrap gap-1 mb-2">
                     <span class="badge bg-light text-dark border">3 Contributions</span>
-                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_contributions_xlsx') }}">Contribution report</a>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_contributions_xlsx') }}">All contributions</a>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_monthly_xlsx') }}">Monthly report</a>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_daily_xlsx') }}">Daily report</a>
                 </div>
-                {% if current_user.role != 'agent' %}
+                {% endif %}
+                {% if current_user.role != 'agent' and has_permission('export.investments') %}
                 <div class="d-flex flex-wrap gap-1 mb-2">
                     <span class="badge bg-light text-dark border">4 Investments</span>
                     <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_investments_xlsx') }}">Investment report</a>
                 </div>
                 {% endif %}
+                {% if current_user.role != 'agent' and has_permission('export.profit') %}
                 <div class="d-flex flex-wrap gap-1 mb-2">
                     <span class="badge bg-light text-dark border">5 Profit</span>
-                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('reports_installments') }}">Installment report</a>
-                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_installments_xlsx') }}">Installments (Excel)</a>
-                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_profit_xlsx') }}">Profit report</a>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_profit_xlsx') }}">Distribution lines</a>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_profit_summary_xlsx') }}">Profit summary</a>
                 </div>
+                {% endif %}
+                {% if has_permission('export.installments') or has_permission('reports.installments') %}
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                    <span class="badge bg-light text-dark border">Installments</span>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_installments_xlsx') }}">Schedule (unpaid)</a>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_installments_xlsx', unpaid_only=0) }}">Schedule (full)</a>
+                    <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_overdue_members_xlsx') }}">Overdue members</a>
+                </div>
+                {% endif %}
+                {% if current_user.role != 'agent' and has_permission('export.projects') %}
                 <div class="d-flex flex-wrap gap-1 mb-2">
                     <span class="badge bg-light text-dark border">—</span>
                     <a class="btn btn-soft-primary btn-sm" href="{{ url_for('export_projects_xlsx') }}">Projects export</a>
                 </div>
+                {% endif %}
                 {% if current_user.role == 'admin' %}
                 <div class="d-flex flex-wrap gap-1">
                     <span class="badge bg-light text-dark border">Admin</span>
@@ -144,9 +185,18 @@
         <div class="card mt-3">
             <div class="card-header">Export PDF</div>
             <div class="card-body">
+                {% if has_permission('export.members_pdf') %}
                 <a class="btn btn-soft-secondary btn-sm mb-1" href="{{ url_for('export_members_pdf') }}">Members (PDF)</a>
+                {% endif %}
+                {% if has_permission('export.contributions_pdf') %}
                 <a class="btn btn-soft-secondary btn-sm mb-1" href="{{ url_for('export_contributions_pdf') }}">Contributions (PDF)</a>
+                {% endif %}
+                {% if has_permission('export.installments') or has_permission('reports.installments') %}
                 <a class="btn btn-soft-secondary btn-sm mb-1" href="{{ url_for('export_installments_pdf') }}">Installments (PDF)</a>
+                {% endif %}
+                {% if not has_permission('export.members_pdf') and not has_permission('export.contributions_pdf') and not has_permission('export.installments') and not has_permission('reports.installments') %}
+                <p class="text-muted small mb-0">No PDF export permissions assigned.</p>
+                {% endif %}
             </div>
         </div>
     </div>

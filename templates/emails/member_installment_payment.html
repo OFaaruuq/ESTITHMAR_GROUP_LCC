@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title|e }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table role="presentation" width="100%" style="max-width:640px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="background:linear-gradient(135deg,#0f766e,#0d9488);padding:20px 24px;color:#fff;">
+              {% if logo_src %}<img src="{{ logo_src|e }}" alt="{{ org_name|e }}" width="140" style="max-width:140px;height:auto;display:block;margin-bottom:8px;">{% else %}<p style="margin:0 0 4px;font-size:20px;font-weight:800;">{{ org_name|e }}</p>{% endif %}
+              <p style="margin:0;font-size:13px;opacity:0.95;">{{ title|e }}{% if month_label %} · {{ month_label|e }}{% endif %}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 24px;">
+              {% for line in intro.split('\n') %}{% if line.strip() %}<p style="margin:0 0 10px;color:#334155;line-height:1.55;">{{ line|e }}</p>{% endif %}{% endfor %}
+
+              <table width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;">
+                <tr>
+                  <td style="padding:14px 16px;">
+                    <p style="margin:0;font-size:12px;color:#047857;font-weight:700;text-transform:uppercase;">Total balance to pay</p>
+                    <p style="margin:6px 0 0;font-size:22px;font-weight:800;color:#065f46;">{{ total_balance|e }}</p>
+                    {% if total_this_month %}
+                    <p style="margin:4px 0 0;font-size:13px;color:#0f766e;">Due this month: <strong>{{ total_this_month|e }}</strong></p>
+                    {% endif %}
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;">Your installment schedule</p>
+              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:13px;">
+                <tr style="background:#f8fafc;">
+                  <th align="left" style="padding:8px;border-bottom:1px solid #e2e8f0;">Subscription</th>
+                  <th align="left" style="padding:8px;border-bottom:1px solid #e2e8f0;">Due date</th>
+                  <th align="right" style="padding:8px;border-bottom:1px solid #e2e8f0;">Scheduled</th>
+                  <th align="right" style="padding:8px;border-bottom:1px solid #e2e8f0;">Paid</th>
+                  <th align="right" style="padding:8px;border-bottom:1px solid #e2e8f0;">Balance</th>
+                </tr>
+                {% for item in items %}
+                <tr>
+                  <td style="padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:top;">
+                    {{ item.subscription_no|e }}<br>
+                    <span style="font-size:11px;color:#64748b;">#{{ item.sequence_no|e }}{% if item.is_overdue %} · <span style="color:#b91c1c;font-weight:600;">Overdue</span>{% endif %}</span>
+                  </td>
+                  <td style="padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:top;">{{ item.due_date|e }}</td>
+                  <td align="right" style="padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:top;">{{ item.scheduled_amount|e }}</td>
+                  <td align="right" style="padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:top;">{{ item.paid_amount|e }}</td>
+                  <td align="right" style="padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:top;font-weight:700;color:#b45309;">{{ item.balance_due|e }}</td>
+                </tr>
+                {% endfor %}
+              </table>
+
+              <p style="margin:16px 0 0;font-size:13px;color:#64748b;line-height:1.5;">Please pay on or before each due date to avoid late fees. Contact your agent or the office if you need help recording a payment.</p>
+
+              {% if cta_url and cta_label %}
+              <p style="margin:20px 0 0;text-align:center;">
+                <a href="{{ cta_url|e }}" style="display:inline-block;background:#0d9488;color:#fff !important;padding:12px 24px;border-radius:8px;font-weight:700;text-decoration:none;">{{ cta_label|e }}</a>
+              </p>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center;">
+              Automated payment reminder from {{ org_name|e }}.{% if footer_address %} {{ footer_address|e }}{% endif %}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -617,9 +617,20 @@ class Permission:
     ACCOUNTING_TRIAL_BALANCE_EXPORT = "accounting.trial_balance_export"
     ACCOUNTING_JOURNAL_EXPORT = "accounting.journal_export"
     ACCOUNTING_MANUAL_ENTRY = "accounting.manual_entry"
-    # Reports (hub used as cross-cutting “can open” for report routes)
+    # Reports (hub + per-report keys)
     REPORTS_HUB = "reports.hub"
+    REPORTS_MONTHLY = "reports.monthly"
+    REPORTS_MEMBER = "reports.member"
+    REPORTS_AGENTS = "reports.agents"
+    REPORTS_GEOGRAPHY = "reports.geography"
     REPORTS_INSTALLMENTS = "reports.installments"
+    REPORTS_MEMBERS_FINANCIAL = "reports.members_financial"
+    REPORTS_PROFIT_CALCULATION = "reports.profit_calculation"
+    REPORTS_PROFIT_SUMMARY = "reports.profit_summary"
+    REPORTS_INVESTMENTS_SUMMARY = "reports.investments_summary"
+    REPORTS_DAILY = "reports.daily"
+    REPORTS_PROJECTS_PROFITABILITY = "reports.projects_profitability"
+    REPORTS_COMMUNITY_MODEL = "reports.community_model"
     # Audit
     AUDIT_VIEW = "audit.view"
     AUDIT_EXPORT = "audit.export"
@@ -687,6 +698,8 @@ def default_agent_permission_keys() -> set[str]:
         "system.api_notifications_unread",
     }
     all_reports = {k for k, _, _, _ in PERMISSION_CATALOG if k.startswith("reports.") or k.startswith("export.")}
+    # Agents: scoped member/contribution reports only — not org-wide project/investment exports
+    all_reports -= {"export.projects", "export.investments"}
     return base | all_reports
 
 

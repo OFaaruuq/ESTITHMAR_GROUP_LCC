@@ -2,8 +2,16 @@
 {% block title %}Member contributions{% endblock %}
 {% block page_heading %}Contribution report — {{ member.full_name }}{% endblock %}
 {% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('reports_hub') }}">Reports</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('members_profile', id=member.id) }}">{{ member.member_id_display }}</a></li>
+        <li class="breadcrumb-item active">Contributions</li>
+    </ol>
+</nav>
+
 <p><strong>Member ID:</strong> {{ member.member_id_display }}</p>
-<p><strong>Total contributions:</strong> {{ member.contribution_total()|money }} USD</p>
+<p><strong>Total contributions:</strong> {{ member.contribution_total()|money }} {{ currency_code }}</p>
 <div class="card">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -19,6 +27,8 @@
                         <td>{{ c.amount|money }}</td>
                         <td class="small">{{ c.payment_display_label() }}</td>
                     </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-muted p-3">No contributions recorded.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

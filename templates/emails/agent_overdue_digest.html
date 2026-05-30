@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title|e }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table role="presentation" width="100%" style="max-width:640px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="background:linear-gradient(135deg,#991b1b,#dc2626);padding:20px 24px;color:#fff;">
+              {% if logo_src %}<img src="{{ logo_src|e }}" alt="{{ org_name|e }}" width="140" style="max-width:140px;height:auto;display:block;margin-bottom:8px;">{% else %}<p style="margin:0 0 4px;font-size:20px;font-weight:800;">{{ org_name|e }}</p>{% endif %}
+              <p style="margin:0;font-size:13px;opacity:0.9;">{{ title|e }} · {{ agent_name|e }} ({{ agent_code|e }})</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 24px;">
+              {% for line in intro.split('\n') %}{% if line.strip() %}<p style="margin:0 0 10px;color:#334155;line-height:1.55;">{{ line|e }}</p>{% endif %}{% endfor %}
+              <table width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">
+                <tr>
+                  <td style="padding:14px 16px;">
+                    <p style="margin:0;font-size:12px;color:#991b1b;font-weight:700;text-transform:uppercase;">Summary</p>
+                    <p style="margin:6px 0 0;font-size:18px;font-weight:800;color:#7f1d1d;">{{ member_count|e }} member(s) · {{ overdue_balance|e }}</p>
+                    <p style="margin:4px 0 0;font-size:13px;color:#b91c1c;">{{ overdue_rows|e }} overdue installment row(s)</p>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;">Call list</p>
+              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:13px;">
+                <tr style="background:#f8fafc;">
+                  <th align="left" style="padding:8px;border-bottom:1px solid #e2e8f0;">Member</th>
+                  <th align="left" style="padding:8px;border-bottom:1px solid #e2e8f0;">Contact</th>
+                  <th align="right" style="padding:8px;border-bottom:1px solid #e2e8f0;">Overdue</th>
+                </tr>
+                {% for m in members %}
+                <tr>
+                  <td style="padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:top;">
+                    <strong>{{ m.name|e }}</strong><br>
+                    <span style="color:#64748b;font-size:12px;">{{ m.member_code|e }}</span><br>
+                    <span style="color:#64748b;font-size:11px;">{{ m.subscriptions|e }}</span>
+                  </td>
+                  <td style="padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:top;font-size:12px;">
+                    {{ m.phone|e }}<br>{{ m.email|e }}
+                  </td>
+                  <td align="right" style="padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:top;">
+                    <strong style="color:#b91c1c;">{{ m.balance|e }}</strong><br>
+                    <span style="font-size:11px;color:#64748b;">{{ m.row_count|e }} row(s) · {{ m.days_late|e }}d late</span>
+                  </td>
+                </tr>
+                {% endfor %}
+              </table>
+              {% if cta_url and cta_label %}
+              <p style="margin:20px 0 0;text-align:center;">
+                <a href="{{ cta_url|e }}" style="display:inline-block;background:#dc2626;color:#fff !important;padding:12px 24px;border-radius:8px;font-weight:700;text-decoration:none;">{{ cta_label|e }}</a>
+              </p>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center;">
+              Automated collection reminder from {{ org_name|e }}.{% if footer_address %} {{ footer_address|e }}{% endif %}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -139,6 +139,39 @@ def create_app(config=None):
             f"failed={out.get('failed', 0)}"
         )
 
+    @app.cli.command("agent-overdue-remind")
+    def agent_overdue_remind_cli():
+        """Email each agent their overdue member call list (respects cooldown). Schedule daily via Task Scheduler."""
+        from estithmar.services.agent_overdue_notify import run_agent_overdue_reminders
+
+        out = run_agent_overdue_reminders()
+        print(
+            f"Agent overdue digests: sent={out.get('sent', 0)}, skipped={out.get('skipped', 0)}, "
+            f"empty={out.get('empty', 0)}, failed={out.get('failed', 0)}"
+        )
+
+    @app.cli.command("installments-monthly-remind")
+    def installments_monthly_remind_cli():
+        """Send monthly payment reminder emails to members (installments due this month + balance to pay)."""
+        from estithmar.services.installment_notify import run_monthly_member_installment_reminders
+
+        out = run_monthly_member_installment_reminders()
+        print(
+            f"Monthly member reminders: sent={out.get('sent', 0)}, skipped={out.get('skipped', 0)}, "
+            f"empty={out.get('empty', 0)}, failed={out.get('failed', 0)}"
+        )
+
+    @app.cli.command("reports-run-schedules")
+    def reports_run_schedules_cli():
+        """Run due scheduled report emails (Settings → Notifications). Schedule via cron/Task Scheduler."""
+        from estithmar.services.notifications import run_due_report_schedules
+
+        out = run_due_report_schedules()
+        print(
+            f"Report schedules: due={out.get('due', 0)}, sent={out.get('sent', 0)}, "
+            f"failed={out.get('failed', 0)}"
+        )
+
     @app.cli.command("installments-recompute")
     def installments_recompute_cli():
         """Recompute installment statuses for all active installment subscriptions."""

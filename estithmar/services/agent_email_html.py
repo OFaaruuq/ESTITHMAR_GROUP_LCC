@@ -135,3 +135,80 @@ def try_render_agent_portfolio_html(
     except Exception:
         logger.exception("Failed to render agent_portfolio.html (agent_id=%s)", agent.id)
         return None
+
+
+def build_agent_overdue_digest_context(
+    agent: Agent,
+    members: list[dict],
+    *,
+    summary: dict,
+    sym: str,
+    cur: str,
+    title: str,
+    intro: str,
+    cta_url: str | None,
+    cta_label: str | None,
+) -> dict:
+    b = brand_for_email()
+    rows_out = []
+    for item in members:
+        m = item["member"]
+        subs = ", ".join(s.subscription_no for s in item.get("subscriptions") or [] if s) or "—"
+        rows_out.append(
+            {
+                "name": m.full_name or m.member_id_display,
+                "member_code": m.member_id_display,
+                "phone": (m.phone or "").strip() or "—",
+                "email": (m.email or "").strip() or "—",
+                "balance": _f(sym, cur, item["overdue_balance"]),
+                "row_count": item["overdue_row_count"],
+                "days_late": item["max_days_late"],
+                "subscriptions": subs,
+            }
+        )
+    return {
+        "org_name": b["org_name"],
+        "org_subtitle": b.get("org_subtitle") or "",
+        "footer_address": b.get("footer_address") or "",
+        "logo_src": b.get("logo_src"),
+        "title": title,
+        "intro": intro,
+        "agent_name": agent.full_name,
+        "agent_code": agent.agent_id,
+        "member_count": summary.get("member_count", 0),
+        "overdue_balance": _f(sym, cur, summary.get("overdue_balance", 0)),
+        "overdue_rows": summary.get("overdue_row_count", 0),
+        "members": rows_out,
+        "cta_url": cta_url,
+        "cta_label": cta_label if cta_url else None,
+    }
+
+
+def try_render_agent_overdue_digest_html(
+    agent: Agent,
+    members: list[dict],
+    *,
+    summary: dict,
+    sym: str,
+    cur: str,
+    title: str,
+    intro: str,
+    cta_url: str | None,
+    cta_label: str | None = None,
+) -> str | None:
+    try:
+        ctx = build_agent_overdue_digest_context(
+            agent,
+            members,
+            summary=summary,
+            sym=sym,
+            cur=cur,
+            title=title,
+            intro=intro,
+            cta_url=cta_url,
+            cta_label=cta_label,
+        )
+        return render_template("emails/agent_overdue_digest.html", **ctx)
+    except Exception:
+        logger.exception("Failed to render agent_overdue_digest.html (agent_id=%s)", agent.id)
+        return None

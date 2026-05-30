@@ -34,6 +34,11 @@
                 <button type="submit" class="btn btn-primary">Apply</button>
                 <a href="{{ url_for('reports_members_financial') }}" class="btn btn-outline-secondary">Reset</a>
             </div>
+            {% if has_permission('export.members') %}
+            <div class="col-md-4 col-lg-3 ms-auto text-md-end">
+                <a class="btn btn-soft-primary btn-sm" href="{{ export_url }}">Export Excel</a>
+            </div>
+            {% endif %}
         </form>
     </div>
 </div>

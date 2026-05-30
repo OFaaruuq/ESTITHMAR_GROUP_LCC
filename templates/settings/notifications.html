@@ -167,10 +167,15 @@
                                {{ 'checked' if extra.get('notify_member_installment_overdue', True) else '' }}>
                         <label class="form-check-label" for="nm_inst_od">Installment overdue</label>
                     </div>
-                    <div class="form-check mb-0">
+                    <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="notify_member_installment_upcoming" value="1" id="nm_inst_up"
                                {{ 'checked' if extra.get('notify_member_installment_upcoming', True) else '' }}>
-                        <label class="form-check-label" for="nm_inst_up">Installment due soon (upcoming)</label>
+                        <label class="form-check-label" for="nm_inst_up">Installment due soon (upcoming) — includes scheduled amount and balance to pay</label>
+                    </div>
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" name="notify_member_installment_monthly" value="1" id="nm_inst_mo"
+                               {{ 'checked' if extra.get('notify_member_installment_monthly', True) else '' }}>
+                        <label class="form-check-label" for="nm_inst_mo">Monthly payment reminder — consolidated email with all installments due this month and balance to pay</label>
                     </div>
                 </div>
                 <div class="form-check mt-3">
@@ -191,10 +196,23 @@
                     <label class="form-check-label fw-semibold" for="ag_en">Enable email updates to agents</label>
                 </div>
                 <div class="border rounded p-3 bg-light bg-opacity-50 ms-0 ms-md-2 mt-2">
-                    <div class="form-check mb-0">
+                    <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="notify_agent_kpi_on_payment" value="1" id="ag_pay"
                                {{ 'checked' if extra.get('notify_agent_kpi_on_payment', True) else '' }}>
                         <label class="form-check-label" for="ag_pay">When a member payment is recorded, email the member&rsquo;s agent a payment line plus full portfolio KPIs</label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="notify_agent_overdue_digest" value="1" id="ag_overdue"
+                               {{ 'checked' if extra.get('notify_agent_overdue_digest', True) else '' }}>
+                        <label class="form-check-label" for="ag_overdue">Email each agent a <strong>call list</strong> of their overdue members (name, phone, balance) for collection follow-up</label>
+                    </div>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label small mb-0" for="agent_overdue_cooldown_days">Overdue digest cooldown (days)</label>
+                            <input type="number" min="1" name="agent_overdue_cooldown_days" id="agent_overdue_cooldown_days" class="form-control form-control-sm"
+                                   value="{{ extra.get('agent_overdue_cooldown_days', 1) }}">
+                            <div class="form-text">Minimum days between duplicate overdue emails to the same agent.</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -204,6 +222,21 @@
             <button type="submit" class="btn btn-primary btn-lg px-4"><i class="ri-save-line me-1"></i>Save notification settings</button>
         </div>
     </form>
+
+    <div class="card set-card border-0 mb-4">
+        <div class="card-body p-3 p-md-4">
+            <p class="set-section-title mb-3"><i class="ri-alarm-warning-line me-1"></i> Agent overdue collection emails</p>
+            <p class="small text-muted mb-2">Sends each active agent an email listing <strong>their assigned members</strong> with overdue installments (phone, email, balance). Schedule daily via <code>flask agent-overdue-remind</code> in Task Scheduler.</p>
+            <form method="post" class="d-inline me-2">
+                <input type="hidden" name="action" value="run_agent_overdue_remind">
+                <button type="submit" class="btn btn-outline-danger" {% if not mail_ok %}disabled title="Configure SMTP first"{% endif %}>Send overdue digests now (respects cooldown)</button>
+            </form>
+            <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="email_all_agents_overdue">
+                <button type="submit" class="btn btn-outline-warning" {% if not mail_ok %}disabled title="Configure SMTP first"{% endif %}>Force send to all agents with overdue members</button>
+            </form>
+        </div>
+    </div>
 
     <div class="card set-card border-0 mb-4">
         <div class="card-body p-3 p-md-4">
@@ -244,11 +277,13 @@
                 <div class="col-md-2">
                     <label class="form-label small">Report key</label>
                     <select name="report_key" class="form-select" required>
-                        <option value="reports_monthly">Monthly report</option>
-                        <option value="reports_daily">Daily report</option>
-                        <option value="reports_profit_summary">Profit summary</option>
-                        <option value="reports_investment_summary">Investment summary</option>
-                        <option value="reports_members_financial">Members financial</option>
+                        <option value="reports_monthly">Monthly contributions</option>
+                        <option value="reports_daily">Daily collections</option>
+                        <option value="reports_members_financial">Members financial summary</option>
+                        <option value="reports_profit_summary">Profit summary (undistributed)</option>
+                        <option value="reports_investment_summary">Investment deployment summary</option>
+                        <option value="reports_installments">Installment health</option>
+                        <option value="reports_overdue_members">Overdue members call list</option>
                     </select>
                 </div>
                 <div class="col-md-2">
