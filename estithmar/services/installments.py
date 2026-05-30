@@ -207,6 +207,34 @@ def row_outstanding_balance(row: InstallmentPlan, *, as_of: date | None = None) 
     return bal if bal > 0 else Decimal("0")
 
 
+def installment_row_has_payments(row: InstallmentPlan) -> bool:
+    """True when a row must be preserved during schedule correction (has applied payments)."""
+    if (row.paid_amount or Decimal("0")) > 0:
+        return True
+    return (
+        InstallmentAllocation.query.filter_by(installment_plan_id=row.id).limit(1).first() is not None
+    )
+
+
+def schedule_correction_summary(sub: ShareSubscription) -> dict:
+    """Help UI show which rows are locked vs can be cleared/regenerated."""
+    active = active_installment_rows(sub)
+    locked = [r for r in active if installment_row_has_payments(r)]
+    editable = [r for r in active if not installment_row_has_payments(r)]
+    locked_outstanding = sum((row_outstanding_balance(r) for r in locked), Decimal("0"))
+    sub_outstanding = sub.outstanding_balance()
+    regenerate_pool = max((sub_outstanding - locked_outstanding).quantize(Decimal("0.01")), Decimal("0"))
+    return {
+        "locked_count": len(locked),
+        "editable_count": len(editable),
+        "locked_paid_total": sum((r.paid_amount or Decimal("0") for r in locked), Decimal("0")).quantize(
+            Decimal("0.01")
+        ),
+        "regenerate_pool": regenerate_pool,
+        "can_regenerate_future": regenerate_pool > Decimal("0"),
+    }
+
+
 def is_row_overdue_for_display(row: InstallmentPlan, *, as_of: date | None = None) -> bool:
     if row.status == "Cancelled":
         return False
@@ -443,12 +471,34 @@ def recompute_installment_statuses(
 
 def cancel_unpaid_installment_rows(subscription_id: int, *, commit: bool = False) -> int:
     """Remove mistaken unpaid rows (soft-cancel). Rows with payments are kept."""
+    return cancel_installment_rows_by_ids(subscription_id, None, commit=commit)
+
+
+def cancel_installment_rows_by_ids(
+    subscription_id: int,
+    row_ids: list[int] | None,
+    *,
+    commit: bool = False,
+) -> int:
+    """Soft-cancel installment rows that have no payments. row_ids=None cancels all unpaid rows."""
     sub = db.session.get(ShareSubscription, subscription_id)
     if sub is None:
         return 0
+    deletable = {
+        r.id
+        for r in active_installment_rows(sub)
+        if not installment_row_has_payments(r)
+    }
+    if row_ids is None:
+        targets = deletable
+    else:
+        targets = {int(i) for i in row_ids if int(i) in deletable}
+    if not targets:
+        return 0
     n = 0
-    for row in active_installment_rows(sub):
-        if (row.paid_amount or Decimal("0")) > 0:
+    for rid in targets:
+        row = db.session.get(InstallmentPlan, rid)
+        if row is None or row.subscription_id != subscription_id or row.status == "Cancelled":
             continue
         row.status = "Cancelled"
         n += 1
@@ -457,6 +507,33 @@ def cancel_unpaid_installment_rows(subscription_id: int, *, commit: bool = False
     if commit:
         db.session.commit()
     return n
+
+
+def recorrect_installment_schedule(
+    subscription_id: int,
+    *,
+    installments_count: int,
+    frequency: str = "monthly",
+    start_date: date,
+    custom_days: int = 30,
+    commit: bool = False,
+) -> tuple[int, list[InstallmentPlan]]:
+    """Delete unpaid installment rows and rebuild the schedule; paid rows and amounts are preserved."""
+    sub = db.session.get(ShareSubscription, subscription_id)
+    if sub is None:
+        raise ValueError("Invalid subscription.")
+    removed = sum(
+        1 for r in active_installment_rows(sub) if not installment_row_has_payments(r)
+    )
+    new_rows = regenerate_future_installment_schedule(
+        subscription_id,
+        installments_count=installments_count,
+        frequency=frequency,
+        start_date=start_date,
+        custom_days=custom_days,
+        commit=commit,
+    )
+    return removed, new_rows
 
 
 def shift_installment_due_dates(
@@ -524,8 +601,7 @@ def regenerate_future_installment_schedule(
 
     kept: list[InstallmentPlan] = []
     for row in active_installment_rows(sub):
-        paid = row.paid_amount or Decimal("0")
-        if paid > 0:
+        if installment_row_has_payments(row):
             kept.append(row)
         else:
             row.status = "Cancelled"
@@ -906,7 +982,7 @@ def generate_installment_schedule(
 
     if replace_existing and active_rows:
         for row in active_rows:
-            if (row.paid_amount or Decimal("0")) > 0:
+            if installment_row_has_payments(row):
                 raise ValueError("Cannot replace schedule while rows have payments applied.")
             row.status = "Cancelled"
 

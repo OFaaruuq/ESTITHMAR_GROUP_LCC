@@ -26,7 +26,11 @@
             <p class="text-muted small mb-0" style="max-width: 46rem;">
                 <strong>Overdue</strong> rows are unpaid lines that are past due or marked overdue.
                 <strong>Unpaid</strong> includes every installment row with a positive balance (including future due dates).
-                Open a subscription to record payments and manage installment lines.
+                {% if can_fix_schedule %}
+                To fix a mistaken schedule without affecting payments already recorded, open a subscription → <strong>Installment schedule</strong> → <em>Correct schedule mistakes</em> (regenerate future / clear unpaid rows).
+                {% else %}
+                Open a subscription to record payments and view installment lines.
+                {% endif %}
             </p>
             <p class="text-muted small mb-0 mt-2"><i class="ri-time-line me-1"></i>As of <strong>{{ report_date }}</strong>.</p>
         </div>
@@ -148,7 +152,7 @@
                         <td class="text-end d-none d-md-table-cell text-nowrap">{% if r.late_fee_amount and r.late_fee_amount > 0 %}{{ settings.currency_symbol }}{{ r.late_fee_amount|money }}{% else %}—{% endif %}</td>
                         <td class="text-end fw-semibold text-danger text-nowrap">{{ settings.currency_symbol }}{{ bal|money }} <span class="text-muted small fw-normal">{{ cur }}</span></td>
                         <td class="text-end text-nowrap">
-                            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-primary">{% if current_user.role == 'member' %}View{% else %}Schedule{% endif %}</a>
+                            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-primary">{% if current_user.role == 'member' %}View{% elif can_fix_schedule %}Schedule / fix{% else %}Schedule{% endif %}</a>
                         </td>
                     </tr>
                     {% else %}
@@ -174,7 +178,7 @@
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-sm mb-0">
-                <thead class="table-light"><tr><th>Subscription</th><th class="text-end">Subscribed</th><th class="text-end">Scheduled</th><th class="text-end">Gap</th><th class="text-end">Outstanding</th></tr></thead>
+                <thead class="table-light"><tr><th>Subscription</th><th class="text-end">Subscribed</th><th class="text-end">Scheduled</th><th class="text-end">Gap</th><th class="text-end">Outstanding</th>{% if can_fix_schedule %}<th class="text-end">Actions</th>{% endif %}</tr></thead>
                 <tbody>
                     {% for g in gap_rows %}
                     {% set sub = g.subscription %}
@@ -184,6 +188,9 @@
                         <td class="text-end">{{ settings.currency_symbol }}{{ g.scheduled_due|money }}</td>
                         <td class="text-end {% if g.schedule_gap != 0 %}text-warning fw-semibold{% endif %}">{{ settings.currency_symbol }}{{ g.schedule_gap|money }}</td>
                         <td class="text-end">{{ settings.currency_symbol }}{{ g.outstanding|money }}</td>
+                        {% if can_fix_schedule %}
+                        <td class="text-end"><a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-warning">Correct schedule</a></td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -276,7 +283,7 @@
                         <td class="text-end d-none d-md-table-cell text-nowrap">{% if r.late_fee_amount and r.late_fee_amount > 0 %}{{ settings.currency_symbol }}{{ r.late_fee_amount|money }}{% else %}—{% endif %}</td>
                         <td class="text-end fw-semibold text-nowrap">{{ settings.currency_symbol }}{{ bal|money }} <span class="text-muted small fw-normal">{{ cur }}</span></td>
                         <td class="text-end text-nowrap">
-                            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-primary">{% if current_user.role == 'member' %}View{% else %}Schedule{% endif %}</a>
+                            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-primary">{% if current_user.role == 'member' %}View{% elif can_fix_schedule %}Schedule / fix{% else %}Schedule{% endif %}</a>
                         </td>
                     </tr>
                     {% else %}

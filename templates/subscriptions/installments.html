@@ -121,36 +121,70 @@
 
     <div class="card-header">Correct schedule mistakes</div>
     <div class="card-body border-bottom">
-        <p class="small text-muted mb-3">Use these when dates, amounts, or payment allocation are wrong. Paid rows are preserved where noted.</p>
-        <div class="row g-3">
-            <div class="col-lg-6">
-                <h6 class="small fw-semibold">Regenerate future rows only</h6>
-                <p class="small text-muted">Cancels unpaid rows and creates new ones for the remaining balance. Keeps rows that already have payments.</p>
-                <form method="post" class="row g-2">
-                    <input type="hidden" name="action" value="regenerate_future">
-                    <input type="hidden" name="confirm" value="1">
-                    <div class="col-4">
-                        <input type="number" min="1" max="60" name="installments_count" class="form-control form-control-sm" value="6" title="Count">
+        <div class="alert alert-success border-success border-opacity-25 small mb-3">
+            <strong>Payments are never deleted.</strong> Contribution receipts and amounts already applied to installment rows stay on those rows.
+            You can only remove rows that have <em>no payments</em>, then rebuild the rest of the schedule.
+            Currently: <strong>{{ correction.locked_count }}</strong> row(s) with payments (protected),
+            <strong>{{ correction.editable_count }}</strong> row(s) can be deleted.
+            {% if correction.locked_paid_total > 0 %}
+            Paid on protected rows: {{ settings.currency_symbol }}{{ correction.locked_paid_total|money }} {{ currency_code }}.
+            {% endif %}
+        </div>
+
+        <div class="card border-warning border-opacity-50 mb-3">
+            <div class="card-header bg-warning bg-opacity-10 py-2">
+                <strong class="small">Delete unpaid installments &amp; rebuild schedule</strong>
+                <span class="text-muted small ms-1">— recommended when the whole schedule is wrong</span>
+            </div>
+            <div class="card-body py-3">
+                <p class="small text-muted mb-2">
+                    Removes every installment row with <strong>no payment</strong>, then creates a new schedule for the remaining balance
+                    ({{ settings.currency_symbol }}{{ correction.regenerate_pool|money }} {{ currency_code }}).
+                    Rows that already have payments are left exactly as they are.
+                </p>
+                <form method="post" class="row g-2 align-items-end" id="formRecorrect">
+                    <input type="hidden" name="action" value="recorrect_schedule">
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small mb-0">New installments</label>
+                        <input type="number" min="1" max="60" name="installments_count" class="form-control form-control-sm" value="6">
                     </div>
-                    <div class="col-4">
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small mb-0">Frequency</label>
                         <select name="frequency" class="form-select form-select-sm inst-frequency">
                             <option value="monthly">Monthly</option>
                             <option value="weekly">Weekly</option>
                             <option value="biweekly">Bi-weekly</option>
                             <option value="quarterly">Quarterly</option>
+                            <option value="custom_days">Custom days</option>
                         </select>
                     </div>
-                    <div class="col-4">
-                        <input type="date" name="start_date" class="form-control form-control-sm" title="First due date">
+                    <div class="col-6 col-md-2 wrap-custom-days" hidden>
+                        <label class="form-label small mb-0">Every (days)</label>
+                        <input type="number" min="1" max="365" name="custom_days" class="form-control form-control-sm" value="30">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small mb-0">First due date</label>
+                        <input type="date" name="start_date" class="form-control form-control-sm">
                     </div>
                     <div class="col-12">
-                        <button type="submit" class="btn btn-outline-primary btn-sm" data-confirm="Regenerate future unpaid rows? Paid rows will be kept.">Regenerate future</button>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmRecorrect" required>
+                            <label class="form-check-label small text-danger" for="confirmRecorrect">
+                                I confirm — delete unpaid rows and rebuild; paid amounts stay on paid rows
+                            </label>
+                        </div>
+                        <button type="submit" class="btn btn-warning btn-sm" {% if not correction.can_regenerate_future %}disabled title="No remaining balance to reschedule"{% endif %}>
+                            Delete unpaid &amp; rebuild schedule
+                        </button>
                     </div>
                 </form>
             </div>
+        </div>
+
+        <div class="row g-3">
             <div class="col-lg-6">
-                <h6 class="small fw-semibold">Shift due dates</h6>
-                <p class="small text-muted">Move all pending/partial rows forward or backward (e.g. +7 or -14 days).</p>
+                <h6 class="small fw-semibold">Shift due dates only</h6>
+                <p class="small text-muted">Move pending/partial rows forward or backward without deleting them.</p>
                 <form method="post" class="d-flex flex-wrap gap-2 align-items-end">
                     <input type="hidden" name="action" value="shift_dates">
                     <div>
@@ -162,6 +196,18 @@
                         <label class="form-check-label small" for="onlyUnpaidShift">Skip fully paid</label>
                     </div>
                     <button type="submit" class="btn btn-outline-secondary btn-sm">Shift dates</button>
+                </form>
+            </div>
+            <div class="col-lg-6">
+                <h6 class="small fw-semibold">Delete unpaid only (no rebuild)</h6>
+                <p class="small text-muted">Remove all rows with no payments, then add or auto-generate a new schedule manually.</p>
+                <form method="post" class="d-inline" id="formClearUnpaid">
+                    <input type="hidden" name="action" value="clear_unpaid">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmClearUnpaid" required>
+                        <label class="form-check-label small" for="confirmClearUnpaid">Confirm delete all unpaid rows</label>
+                    </div>
+                    <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Delete ALL unpaid installment rows? Paid rows and payment amounts are kept.">Delete all unpaid rows</button>
                 </form>
             </div>
         </div>
@@ -178,12 +224,7 @@
             <form method="post" class="d-inline" id="formRebuild">
                 <input type="hidden" name="action" value="rebuild_allocations">
                 <input type="hidden" name="confirm" value="1">
-                <button type="submit" class="btn btn-outline-secondary btn-sm" data-confirm="Rebuild all installment allocations from contributions? This resets paid amounts on rows.">Rebuild from contributions</button>
-            </form>
-            <form method="post" class="d-inline" id="formClearUnpaid">
-                <input type="hidden" name="action" value="clear_unpaid">
-                <input type="hidden" name="confirm" value="1">
-                <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Cancel ALL unpaid installment rows? You will need to regenerate the schedule.">Clear unpaid rows</button>
+                <button type="submit" class="btn btn-outline-secondary btn-sm" data-confirm="Rebuild allocations from contributions? This reapplies payments to rows — use only if allocations are wrong.">Rebuild from contributions</button>
             </form>
         </div>
     </div>
@@ -215,19 +256,45 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span>Current installment rows</span>
+        {% if can_manage and correction.editable_count > 0 %}
+        <form method="post" class="d-flex flex-wrap gap-2 align-items-center mb-0" id="formDeleteSelected" onsubmit="return confirm('Delete selected unpaid rows? Paid rows cannot be selected.');">
+            <input type="hidden" name="action" value="cancel_selected">
+            <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmDeleteSelected" required>
+                <label class="form-check-label small" for="confirmDeleteSelected">Confirm</label>
+            </div>
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete selected unpaid</button>
+        </form>
+        {% else %}
         <span class="small text-muted">Sorted by due date</span>
+        {% endif %}
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-sm mb-0">
                 <thead>
-                    <tr><th>#</th><th>Due date</th><th>Due</th><th>Late fee</th><th>Paid</th><th class="text-end">Remain</th><th>Status</th>{% if can_manage %}<th>Actions</th>{% endif %}</tr>
+                    <tr>
+                        {% if can_manage %}<th style="width:2rem"></th>{% endif %}
+                        <th>#</th><th>Due date</th><th>Due</th><th>Late fee</th><th>Paid</th><th class="text-end">Remain</th><th>Status</th>{% if can_manage %}<th>Actions</th>{% endif %}
+                    </tr>
                 </thead>
                 <tbody>
                     {% for r in rows %}
                     {% if r.status != 'Cancelled' or can_manage %}
                     <tr class="{% if installment_row_overdue(r) %}table-danger{% endif %}">
-                        <td>{{ r.sequence_no }}</td>
+                        {% if can_manage %}
+                        <td class="text-center">
+                            {% if r.id not in locked_row_ids and r.status != 'Cancelled' %}
+                            <input type="checkbox" class="form-check-input inst-row-select" name="row_ids" value="{{ r.id }}" form="formDeleteSelected" title="Select to delete (no payments on this row)">
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                        <td>
+                            {{ r.sequence_no }}
+                            {% if r.id in locked_row_ids %}
+                            <span class="badge bg-success-subtle text-success border border-success border-opacity-25 ms-1" title="Has payments — protected from clear/regenerate">Paid</span>
+                            {% endif %}
+                        </td>
                         <td>{{ r.due_date }}</td>
                         <td>{{ settings.currency_symbol }}{{ r.due_amount|money }}</td>
                         <td>
@@ -260,12 +327,14 @@
                                 <button class="btn btn-soft-primary btn-sm" type="submit">Save</button>
                             </form>
                             <a href="{{ url_for('contributions_new', preselect=sub.member_id, subscription_id=sub.id, target_installment_id=r.id) }}" class="btn btn-soft-success btn-sm">Pay</a>
-                            {% if (r.paid_amount or 0) == 0 %}
+                            {% if r.id not in locked_row_ids %}
                             <form method="post" class="d-inline">
                                 <input type="hidden" name="action" value="cancel">
                                 <input type="hidden" name="row_id" value="{{ r.id }}">
                                 <button class="btn btn-soft-danger btn-sm" type="submit" data-confirm="Cancel this installment row?">Cancel</button>
                             </form>
+                            {% else %}
+                            <span class="text-muted small" title="Row has payments">Locked</span>
                             {% endif %}
                             {% if installment_row_overdue(r) and not r.late_fee_waived and r.late_fee_amount and r.late_fee_amount > 0 %}
                             <form method="post" class="d-inline">
@@ -282,7 +351,7 @@
                     </tr>
                     {% endif %}
                     {% else %}
-                    <tr><td colspan="{% if can_manage %}8{% else %}7{% endif %}" class="text-muted p-3">No installment rows defined yet.</td></tr>
+                    <tr><td colspan="{% if can_manage %}9{% else %}7{% endif %}" class="text-muted p-3">No installment rows defined yet.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

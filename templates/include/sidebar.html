@@ -53,11 +53,7 @@
                         <li><a href="{{ url_for('reports_agents_geography') }}">By geography</a></li>
                         {% endif %}
                         {% if has_permission('reports.hub') or has_permission('reports.installments') %}
-                        <li><a href="{{ url_for('collections_overdue_members') }}">Overdue members</a></li>
-                        <li><a href="{{ url_for('reports_installments') }}">Installment report</a></li>
-                        {% endif %}
-                        {% if has_permission('reports.hub') or has_permission('reports.members_financial') %}
-                        <li><a href="{{ url_for('reports_members_financial', outstanding=1) }}">Members with balance due</a></li>
+                        <li><a href="{{ url_for('collections_overdue_members') }}">Overdue call list</a></li>
                         {% endif %}
                     </ul>
                 </li>
@@ -174,11 +170,10 @@
                         <span>Collections</span>
                     </a>
                     <ul class="sub-menu" aria-expanded="false">
-                        <li><a href="{{ url_for('collections_overdue_members') }}">Overdue members</a></li>
-                        <li><a href="{{ url_for('reports_installments') }}">Installment report</a></li>
-                        <li><a href="{{ url_for('subscriptions_list', overdue=1) }}">Overdue subscriptions</a></li>
+                        <li><a href="{{ url_for('collections_overdue_members') }}">Overdue call list</a></li>
+                        <li><a href="{{ url_for('reports_installments') }}">Installment schedule</a></li>
                         {% if has_permission('reports.hub') or has_permission('reports.members_financial') %}
-                        <li><a href="{{ url_for('reports_members_financial', outstanding=1) }}">Members with balance due</a></li>
+                        <li><a href="{{ url_for('reports_members_financial', outstanding=1) }}">Balance due by member</a></li>
                         {% endif %}
                     </ul>
                 </li>

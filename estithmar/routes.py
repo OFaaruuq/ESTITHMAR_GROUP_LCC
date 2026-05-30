@@ -133,13 +133,17 @@ from estithmar.services import (
     available_pool_for_investment,
     cancel_installment_rows_for_subscription,
     cancel_unpaid_installment_rows,
+    cancel_installment_rows_by_ids,
     collect_installment_report_rows,
     create_subscription,
     ensure_installment_schedule_exists,
     ensure_installment_subscription,
     generate_installment_schedule,
     regenerate_future_installment_schedule,
+    recorrect_installment_schedule,
+    schedule_correction_summary,
     schedule_health_warnings,
+    installment_row_has_payments,
     handle_payment_plan_changed_to_full,
     installment_schedule_for_receipt,
     installment_plans_scope_query,
@@ -869,6 +873,8 @@ def _audit_notification_item(log: AuditLog) -> dict | None:
         "installment_cancelled": "Installment cancelled",
         "installments_auto_generated": "Installment schedule generated",
         "installments_regenerated_future": "Future installments regenerated",
+        "installments_recorrected": "Installment schedule recorrected (paid rows kept)",
+        "installments_rows_deleted": "Unpaid installment rows deleted",
         "installments_rebalanced": "Installment amounts corrected",
         "installments_rebuilt_from_contributions": "Installment allocations rebuilt",
         "installments_synced_payments": "Payments synced to schedule",
@@ -3858,16 +3864,17 @@ def register_routes(app):
                         flash("Installment schedule generated.", "success")
                     return redirect(url_for("subscriptions_installments", id=sub.id))
 
-                if action == "regenerate_future":
+                if action in ("regenerate_future", "recorrect_schedule"):
                     if not confirm:
                         raise ValueError(
-                            "Check the confirmation box — this cancels unpaid rows and creates new ones."
+                            "Check the confirmation box — this deletes unpaid rows and rebuilds the schedule. "
+                            "Rows with payments are kept unchanged."
                         )
                     start_date = _parse_date(request.form.get("start_date")) or date.today()
                     installments_count = max(1, min(60, request.form.get("installments_count", type=int) or 1))
                     freq = (request.form.get("frequency") or "monthly").strip().lower()
                     custom_days = max(1, min(365, request.form.get("custom_days", type=int) or 30))
-                    regenerate_future_installment_schedule(
+                    removed, _new_rows = recorrect_installment_schedule(
                         sub.id,
                         installments_count=installments_count,
                         frequency=freq,
@@ -3876,22 +3883,62 @@ def register_routes(app):
                         commit=False,
                     )
                     recompute_subscription_status(sub.id, commit=False)
+                    audit_key = (
+                        "installments_recorrected"
+                        if action == "recorrect_schedule"
+                        else "installments_regenerated_future"
+                    )
                     log_audit(
-                        "installments_regenerated_future",
+                        audit_key,
                         "ShareSubscription",
                         sub.id,
-                        f"count={installments_count} frequency={freq}",
+                        f"removed_unpaid={removed} count={installments_count} frequency={freq}",
                     )
                     db.session.commit()
                     gap_after = subscription_schedule_gap(sub)
+                    paid_kept = schedule_correction_summary(sub)["locked_count"]
                     if abs(gap_after["schedule_gap"]) > Decimal("0.01"):
                         flash(
-                            f"Future rows regenerated. Schedule gap: {gap_after['schedule_gap']} — "
+                            f"Removed {removed} unpaid row(s), kept {paid_kept} row(s) with payments, "
+                            f"and created a new schedule. Gap remaining: {gap_after['schedule_gap']} — "
                             "run Auto-correct due amounts if needed.",
                             "warning",
                         )
                     else:
-                        flash("Future unpaid installments regenerated (paid rows kept).", "success")
+                        flash(
+                            f"Schedule recorrected: {removed} unpaid row(s) removed, "
+                            f"{paid_kept} paid row(s) unchanged, new installments created.",
+                            "success",
+                        )
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "cancel_selected":
+                    if not confirm:
+                        raise ValueError(
+                            "Check Confirm delete — only rows without payments can be removed."
+                        )
+                    raw_ids = request.form.getlist("row_ids")
+                    row_ids = [int(x) for x in raw_ids if str(x).isdigit()]
+                    if not row_ids:
+                        raise ValueError("Select at least one unpaid installment row to delete.")
+                    n = cancel_installment_rows_by_ids(sub.id, row_ids, commit=False)
+                    if n == 0:
+                        raise ValueError(
+                            "No rows deleted — selected rows may already have payments (those cannot be removed)."
+                        )
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installments_rows_deleted",
+                        "ShareSubscription",
+                        sub.id,
+                        f"rows={n} ids={','.join(str(i) for i in row_ids)}",
+                    )
+                    db.session.commit()
+                    flash(
+                        f"Deleted {n} unpaid installment row(s). Paid rows were not changed. "
+                        "Use Delete unpaid & rebuild below to create a new schedule, or add rows manually.",
+                        "success",
+                    )
                     return redirect(url_for("subscriptions_installments", id=sub.id))
 
                 if action == "add":
@@ -3961,7 +4008,7 @@ def register_routes(app):
                     row = InstallmentPlan.query.get(row_id) if row_id else None
                     if not row or row.subscription_id != sub.id:
                         raise ValueError("Invalid installment row.")
-                    if (row.paid_amount or Decimal("0")) > 0:
+                    if installment_row_has_payments(row):
                         raise ValueError("Cannot cancel a row that already has payments applied.")
                     row.status = "Cancelled"
                     recompute_installment_statuses(sub.id, commit=False)
@@ -4050,7 +4097,7 @@ def register_routes(app):
                 if action == "clear_unpaid":
                     if not confirm:
                         raise ValueError(
-                            "Check the confirmation box — this cancels all unpaid installment rows."
+                            "Check Confirm clear — this cancels all unpaid installment rows (paid rows are kept)."
                         )
                     n = cancel_unpaid_installment_rows(sub.id, commit=False)
                     recompute_subscription_status(sub.id, commit=False)
@@ -4061,7 +4108,7 @@ def register_routes(app):
                         f"rows={n}",
                     )
                     db.session.commit()
-                    flash(f"Cancelled {n} unpaid installment row(s). Regenerate or add rows as needed.", "warning")
+                    flash(f"Cancelled {n} unpaid installment row(s). Use Regenerate future to build a new schedule.", "warning")
                     return redirect(url_for("subscriptions_installments", id=sub.id))
 
                 if action == "waive_late_fee":
@@ -4090,6 +4137,10 @@ def register_routes(app):
         adherence = subscription_schedule_adherence(sub)
         schedule_warnings = schedule_health_warnings(sub)
         allocations = allocations_for_subscription(sub.id)
+        correction = schedule_correction_summary(sub)
+        locked_row_ids = {
+            r.id for r in rows if r.status != "Cancelled" and installment_row_has_payments(r)
+        }
         return render_template(
             "subscriptions/installments.html",
             sub=sub,
@@ -4101,6 +4152,8 @@ def register_routes(app):
             gap=gap,
             adherence=adherence,
             schedule_warnings=schedule_warnings,
+            correction=correction,
+            locked_row_ids=locked_row_ids,
         )
 
     @app.route("/api/subscriptions/<int:id>/installment-options")
@@ -7771,6 +7824,9 @@ def register_routes(app):
         export_full_url = url_for("export_installments_xlsx", unpaid_only=0)
         export_pdf_url = url_for("export_installments_pdf")
         export_pdf_full_url = url_for("export_installments_pdf", unpaid_only=0)
+        can_fix_schedule = current_user.role != "member" and user_has_permission(
+            current_user, Permission.SUBSCRIPTIONS_INSTALLMENTS_MANAGE
+        )
         return render_template(
             "reports/installments.html",
             rows=rows,
@@ -7785,6 +7841,7 @@ def register_routes(app):
             export_full_url=export_full_url,
             export_pdf_url=export_pdf_url,
             export_pdf_full_url=export_pdf_full_url,
+            can_fix_schedule=can_fix_schedule,
             totals={
                 "unpaid_count": len(unpaid_rows),
                 "unpaid_balance": unpaid_total,
