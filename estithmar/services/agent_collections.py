@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from estithmar.models import InstallmentPlan, Member, ShareSubscription
+from estithmar.models import Member, ShareSubscription
 from estithmar.services.installments import (
     collect_installment_report_rows,
     installment_plans_scope_query,
@@ -24,11 +24,7 @@ def collect_agent_overdue_members(
         recompute_all_active_installment_statuses(commit=True)
 
     today = as_of or date.today()
-    query = (
-        installment_plans_scope_query()
-        .join(ShareSubscription, InstallmentPlan.subscription_id == ShareSubscription.id)
-        .join(Member, ShareSubscription.member_id == Member.id)
-    )
+    query = installment_plans_scope_query().join(Member, ShareSubscription.member_id == Member.id)
     if agent_id is not None:
         query = query.filter(Member.agent_id == agent_id)
 

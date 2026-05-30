@@ -37,10 +37,29 @@
                 {% endif %}
                 {% if current_user.role not in ('agent', 'member') and nav_can('agents.view') %}
                 <li>
-                    <a href="{{ url_for('agents_list') }}" class="waves-effect">
+                    <a href="javascript:void(0);" class="has-arrow waves-effect" aria-expanded="false">
                         <i class="ri-map-pin-user-line"></i>
                         <span>Agents</span>
                     </a>
+                    <ul class="sub-menu" aria-expanded="false">
+                        <li><a href="{{ url_for('agents_list') }}">Directory</a></li>
+                        {% if has_permission('agents.create') %}
+                        <li><a href="{{ url_for('agents_new') }}">Add agent</a></li>
+                        {% endif %}
+                        {% if has_permission('reports.hub') or has_permission('reports.agents') %}
+                        <li><a href="{{ url_for('reports_agents') }}">Performance</a></li>
+                        {% endif %}
+                        {% if has_permission('reports.hub') or has_permission('reports.geography') %}
+                        <li><a href="{{ url_for('reports_agents_geography') }}">By geography</a></li>
+                        {% endif %}
+                        {% if has_permission('reports.hub') or has_permission('reports.installments') %}
+                        <li><a href="{{ url_for('collections_overdue_members') }}">Overdue members</a></li>
+                        <li><a href="{{ url_for('reports_installments') }}">Installment report</a></li>
+                        {% endif %}
+                        {% if has_permission('reports.hub') or has_permission('reports.members_financial') %}
+                        <li><a href="{{ url_for('reports_members_financial', outstanding=1) }}">Members with balance due</a></li>
+                        {% endif %}
+                    </ul>
                 </li>
                 {% endif %}
                 {% if nav_can('contributions.view') %}
@@ -148,12 +167,20 @@
                     </a>
                 </li>
                 {% endif %}
-                {% if current_user.role != 'member' and has_permission('reports.installments') %}
+                {% if current_user.role == 'agent' and has_permission('reports.installments') %}
                 <li>
-                    <a href="{{ url_for('collections_overdue_members') }}" class="waves-effect">
+                    <a href="javascript:void(0);" class="has-arrow waves-effect" aria-expanded="false">
                         <i class="ri-phone-line"></i>
-                        <span>Overdue members</span>
+                        <span>Collections</span>
                     </a>
+                    <ul class="sub-menu" aria-expanded="false">
+                        <li><a href="{{ url_for('collections_overdue_members') }}">Overdue members</a></li>
+                        <li><a href="{{ url_for('reports_installments') }}">Installment report</a></li>
+                        <li><a href="{{ url_for('subscriptions_list', overdue=1) }}">Overdue subscriptions</a></li>
+                        {% if has_permission('reports.hub') or has_permission('reports.members_financial') %}
+                        <li><a href="{{ url_for('reports_members_financial', outstanding=1) }}">Members with balance due</a></li>
+                        {% endif %}
+                    </ul>
                 </li>
                 {% endif %}
                 {% if has_permission('settings.view') or has_permission('settings.notifications') or has_permission('settings.payment_methods') or has_permission('settings.database_backup') or has_permission('accounting.settings') %}
