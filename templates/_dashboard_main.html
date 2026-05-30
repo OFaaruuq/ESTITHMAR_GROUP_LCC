@@ -227,7 +227,7 @@
                                         </div>
                                         <h4 class="mb-1 {% if installment_overdue_count > 0 %}text-danger{% endif %}">{{ installment_overdue_count|default(0) }}</h4>
                                         <p class="text-muted small mb-1">Overdue · Due {{ installment_due_balance|money }} {{ cur_code }}</p>
-                                        <a class="btn btn-sm btn-soft-danger" href="{{ url_for('subscriptions_list', overdue=1) }}">Follow up overdue</a>
+                                        <a class="btn btn-sm btn-soft-danger" href="{{ url_for('reports_installments') }}">Installment report</a>
                                     </div>
                                 </div>
                             </div>

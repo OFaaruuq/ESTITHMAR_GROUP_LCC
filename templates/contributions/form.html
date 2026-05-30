@@ -88,9 +88,32 @@
                         </select>
                         <div class="form-text">
                             To update subscription <strong>paid amount</strong>, <strong>balance</strong>, and <strong>status</strong>, select the correct subscription.
-                            Unlinked payments do not change share subscription totals.
+                            Unlinked payments do not change share subscription totals or installment schedules.
                         </div>
                     </div>
+
+                    {% if installment_rows %}
+                    <div class="mb-4" id="wrap-target-installment">
+                        <label class="form-label fw-medium" for="target_installment_id">Apply to installment <span class="text-muted fw-normal">(optional)</span></label>
+                        <select name="target_installment_id" id="target_installment_id" class="form-select">
+                            <option value="">Auto-allocate (oldest unpaid first)</option>
+                            {% for ir in installment_rows %}
+                            <option value="{{ ir.id }}" {{ 'selected' if preselect_installment == ir.id else '' }}>
+                                #{{ ir.sequence_no }} · due {{ ir.due_date }} · {{ settings.currency_symbol }}{{ ir.due_amount|money }} · {{ ir.status }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Target a specific installment row, or leave blank for automatic FIFO allocation.</div>
+                    </div>
+                    {% else %}
+                    <div class="mb-4" id="wrap-target-installment" hidden>
+                        <label class="form-label fw-medium" for="target_installment_id">Apply to installment <span class="text-muted fw-normal">(optional)</span></label>
+                        <select name="target_installment_id" id="target_installment_id" class="form-select">
+                            <option value="">Auto-allocate (oldest unpaid first)</option>
+                        </select>
+                        <div class="form-text">Target a specific installment row, or leave blank for automatic FIFO allocation.</div>
+                    </div>
+                    {% endif %}
 
                     <div class="mb-4">
                         <label class="form-label fw-medium" for="amount">Amount <span class="text-danger">*</span></label>
@@ -235,6 +258,40 @@
         r.addEventListener('change', syncPayExtras);
     });
     syncPayExtras();
+
+    var subSel = document.getElementById('subscription_id');
+    var instWrap = document.getElementById('wrap-target-installment');
+    var instSel = document.getElementById('target_installment_id');
+    function loadInstallmentOptions(subId) {
+        if (!instWrap || !instSel) return;
+        if (!subId) {
+            instWrap.hidden = true;
+            instSel.innerHTML = '<option value="">Auto-allocate (oldest unpaid first)</option>';
+            return;
+        }
+        var url = {{ url_for('api_subscription_installment_options', id=0)|tojson }}.replace('/0/', '/' + encodeURIComponent(subId) + '/');
+        fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data || !data.installments || !data.installments.length) {
+                    instWrap.hidden = true;
+                    instSel.innerHTML = '<option value="">Auto-allocate (oldest unpaid first)</option>';
+                    return;
+                }
+                instWrap.hidden = false;
+                var html = '<option value="">Auto-allocate (oldest unpaid first)</option>';
+                data.installments.forEach(function (row) {
+                    html += '<option value="' + row.id + '">#' + row.sequence_no + ' · due ' + (row.due_date || '') +
+                        ' · due ' + row.due_amount + ' · bal ' + (row.balance || '') + ' · ' + row.status + '</option>';
+                });
+                instSel.innerHTML = html;
+            })
+            .catch(function () { instWrap.hidden = true; });
+    }
+    if (subSel) {
+        subSel.addEventListener('change', function () { loadInstallmentOptions(subSel.value); });
+        if (subSel.value) loadInstallmentOptions(subSel.value);
+    }
 })();
 </script>
 {% endblock %}

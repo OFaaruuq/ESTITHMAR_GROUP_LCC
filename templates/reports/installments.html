@@ -34,6 +34,10 @@
             <a href="{{ url_for('subscriptions_list') }}" class="btn btn-sm btn-soft-primary"><i class="ri-stack-line me-1"></i>Subscriptions</a>
             <a href="{{ url_for('contributions_list') }}" class="btn btn-sm btn-outline-primary"><i class="ri-hand-coin-line me-1"></i>Contributions</a>
             <a href="{{ url_for('reports_hub') }}" class="btn btn-sm btn-outline-secondary"><i class="ri-folder-chart-line me-1"></i>Reports hub</a>
+            <a href="{{ export_url }}" class="btn btn-sm btn-success"><i class="ri-file-excel-2-line me-1"></i>Export unpaid (Excel)</a>
+            <a href="{{ export_full_url }}" class="btn btn-sm btn-outline-success"><i class="ri-file-excel-2-line me-1"></i>Full schedule (Excel)</a>
+            <a href="{{ export_pdf_url }}" class="btn btn-sm btn-outline-danger"><i class="ri-file-pdf-line me-1"></i>Export unpaid (PDF)</a>
+            <a href="{{ export_pdf_full_url }}" class="btn btn-sm btn-outline-danger"><i class="ri-file-pdf-line me-1"></i>Full schedule (PDF)</a>
         </div>
     </div>
 </div>
@@ -101,6 +105,8 @@
                         <th scope="col">Member</th>
                         <th class="d-none d-lg-table-cell" scope="col">Investment</th>
                         <th scope="col">Due</th>
+                        <th class="text-end d-none d-md-table-cell" scope="col">Due amt</th>
+                        <th class="text-end d-none d-md-table-cell" scope="col">Late fee</th>
                         <th class="text-end" scope="col">Balance</th>
                         <th class="text-end" scope="col">Actions</th>
                     </tr>
@@ -138,14 +144,16 @@
                             {% endif %}
                             {% endif %}
                         </td>
+                        <td class="text-end d-none d-md-table-cell text-nowrap">{{ settings.currency_symbol }}{{ r.due_amount|money }}</td>
+                        <td class="text-end d-none d-md-table-cell text-nowrap">{% if r.late_fee_amount and r.late_fee_amount > 0 %}{{ settings.currency_symbol }}{{ r.late_fee_amount|money }}{% else %}—{% endif %}</td>
                         <td class="text-end fw-semibold text-danger text-nowrap">{{ settings.currency_symbol }}{{ bal|money }} <span class="text-muted small fw-normal">{{ cur }}</span></td>
                         <td class="text-end text-nowrap">
-                            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-primary">Schedule</a>
+                            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-primary">{% if current_user.role == 'member' %}View{% else %}Schedule{% endif %}</a>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <i class="ri-checkbox-circle-line fs-3 d-block mb-2 text-success"></i>
                             No overdue installments. Great — or no installment plans with balances.
                         </td>
@@ -159,6 +167,56 @@
     <div class="card-footer bg-light py-2 small text-muted" id="inst-overdue-count">Showing <strong id="inst-visible-overdue">{{ overdue_rows|length }}</strong> of {{ overdue_rows|length }} rows.</div>
     {% endif %}
 </div>
+
+{% if gap_rows %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3"><h6 class="mb-0">Schedule gap by subscription</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead class="table-light"><tr><th>Subscription</th><th class="text-end">Subscribed</th><th class="text-end">Scheduled</th><th class="text-end">Gap</th><th class="text-end">Outstanding</th></tr></thead>
+                <tbody>
+                    {% for g in gap_rows %}
+                    {% set sub = g.subscription %}
+                    <tr>
+                        <td><a href="{{ url_for('subscriptions_profile', id=sub.id) }}">{{ sub.subscription_no }}</a></td>
+                        <td class="text-end">{{ settings.currency_symbol }}{{ g.subscribed|money }}</td>
+                        <td class="text-end">{{ settings.currency_symbol }}{{ g.scheduled_due|money }}</td>
+                        <td class="text-end {% if g.schedule_gap != 0 %}text-warning fw-semibold{% endif %}">{{ settings.currency_symbol }}{{ g.schedule_gap|money }}</td>
+                        <td class="text-end">{{ settings.currency_symbol }}{{ g.outstanding|money }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if adherence_rows %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3"><h6 class="mb-0">Schedule adherence by subscription</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead class="table-light"><tr><th>Subscription</th><th class="text-end">Adherence</th><th class="text-end">Overdue</th><th class="text-end">Fully paid rows</th><th class="text-end">Total rows</th></tr></thead>
+                <tbody>
+                    {% for a in adherence_rows %}
+                    {% set sub = a.subscription %}
+                    <tr>
+                        <td><a href="{{ url_for('subscriptions_installments', id=sub.id) }}">{{ sub.subscription_no }}</a></td>
+                        <td class="text-end fw-semibold">{{ a.adherence_pct }}%</td>
+                        <td class="text-end text-danger">{{ a.overdue }}</td>
+                        <td class="text-end">{{ a.fully_paid }}</td>
+                        <td class="text-end">{{ a.total_rows }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="card border-0 shadow-sm border-warning border-opacity-25">
     <div class="card-header bg-white py-3 border-bottom">
@@ -185,6 +243,8 @@
                         <th scope="col">Subscription</th>
                         <th scope="col">Status</th>
                         <th scope="col">Due</th>
+                        <th class="text-end d-none d-md-table-cell" scope="col">Due amt</th>
+                        <th class="text-end d-none d-md-table-cell" scope="col">Late fee</th>
                         <th class="text-end" scope="col">Balance</th>
                         <th class="text-end" scope="col">Actions</th>
                     </tr>
@@ -212,14 +272,16 @@
                             {% endif %}
                         </td>
                         <td class="text-nowrap small">{{ r.due_date }}</td>
+                        <td class="text-end d-none d-md-table-cell text-nowrap">{{ settings.currency_symbol }}{{ r.due_amount|money }}</td>
+                        <td class="text-end d-none d-md-table-cell text-nowrap">{% if r.late_fee_amount and r.late_fee_amount > 0 %}{{ settings.currency_symbol }}{{ r.late_fee_amount|money }}{% else %}—{% endif %}</td>
                         <td class="text-end fw-semibold text-nowrap">{{ settings.currency_symbol }}{{ bal|money }} <span class="text-muted small fw-normal">{{ cur }}</span></td>
                         <td class="text-end text-nowrap">
-                            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-primary">Schedule</a>
+                            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-soft-primary">{% if current_user.role == 'member' %}View{% else %}Schedule{% endif %}</a>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="text-center py-5 text-muted">
+                        <td colspan="8" class="text-center py-5 text-muted">
                             <i class="ri-inbox-line fs-3 d-block mb-2"></i>
                             No unpaid installment rows (or no installment plans in scope).
                         </td>

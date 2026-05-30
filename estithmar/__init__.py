@@ -127,6 +127,43 @@ def create_app(config=None):
             "or run: flask db upgrade"
         )
 
+    @app.cli.command("installments-remind")
+    def installments_remind_cli():
+        """Send installment overdue/upcoming reminders (respects cooldown). Schedule via cron/Task Scheduler."""
+        from estithmar.services.installment_notify import run_installment_reminders
+
+        out = run_installment_reminders()
+        print(
+            f"Installment reminders: overdue={out.get('sent_overdue', 0)}, "
+            f"upcoming={out.get('sent_upcoming', 0)}, skipped={out.get('skipped', 0)}, "
+            f"failed={out.get('failed', 0)}"
+        )
+
+    @app.cli.command("installments-recompute")
+    def installments_recompute_cli():
+        """Recompute installment statuses for all active installment subscriptions."""
+        from estithmar.services.installments import recompute_all_active_installment_statuses
+
+        n = recompute_all_active_installment_statuses(commit=True)
+        print(f"Recomputed installment statuses for {n} subscription(s).")
+
+    @app.cli.command("installments-rebuild-allocations")
+    def installments_rebuild_allocations_cli():
+        """Rebuild installment allocations from contributions for all active installment subs."""
+        from estithmar.models import ShareSubscription
+        from estithmar.services.installments import rebuild_allocations_from_contributions
+
+        subs = ShareSubscription.query.filter(
+            ShareSubscription.payment_plan == "installment",
+            ShareSubscription.status != "Cancelled",
+        ).all()
+        for sub in subs:
+            rebuild_allocations_from_contributions(sub.id, commit=False)
+        from estithmar import db
+
+        db.session.commit()
+        print(f"Rebuilt installment allocations for {len(subs)} subscription(s).")
+
     @app.template_filter("money")
     def money_fmt(v):
         from decimal import Decimal
@@ -211,6 +248,14 @@ def create_app(config=None):
                 from estithmar.schema_ensure import ensure_app_schema
 
                 ensure_app_schema()
+
+                from estithmar.services.installments import migrate_legacy_installment_allocations_if_needed
+
+                try:
+                    migrate_legacy_installment_allocations_if_needed()
+                except Exception as exc:
+                    db.session.rollback()
+                    app.logger.warning("Installment allocation migration skipped: %s", exc)
 
                 init_auth(app)
                 seed_if_empty()

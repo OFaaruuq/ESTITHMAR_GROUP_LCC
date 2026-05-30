@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Installment settings{% endblock %}
+{% block page_heading %}Settings · Installments{% endblock %}
+{% block extra_css %}
+<style>
+.set-shell { max-width: 1120px; margin-left: auto; margin-right: auto; }
+.set-nav-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.set-nav-rail { background: rgba(0,0,0,.04); border: 1px solid rgba(0,0,0,.06); border-radius: 0.5rem; padding: 0.3rem 0.4rem; }
+.set-nav { flex-wrap: nowrap; gap: 0.35rem; }
+.set-nav .nav-link { border-radius: 0.35rem; font-size: 0.8125rem; white-space: nowrap; color: inherit; border: 1px solid transparent; padding: 0.42rem 0.85rem; }
+.set-nav .nav-link:hover { background: rgba(255,255,255,.7); border-color: rgba(0,0,0,.05); }
+.set-nav .nav-link.active { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06); color: #0d6efd; font-weight: 600; border-color: rgba(0,0,0,.08); }
+</style>
+{% endblock %}
+{% block content %}
+{% set settings_nav = 'installments' %}
+<nav aria-label="breadcrumb" class="mb-3 set-shell">
+    <ol class="breadcrumb mb-0 small">
+        <li class="breadcrumb-item"><a href="{{ url_for('settings_page') }}">Settings</a></li>
+        <li class="breadcrumb-item active">Installments</li>
+    </ol>
+</nav>
+
+{% include 'settings/_nav.html' %}
+
+<div class="card mb-4 set-shell" style="max-width:720px">
+    <div class="card-header">Installment rules</div>
+    <div class="card-body">
+        <form method="post">
+            <input type="hidden" name="action" value="save">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Grace period (days)</label>
+                    <input type="number" min="0" name="installment_grace_days" class="form-control" value="{{ extra.get('installment_grace_days', 0) }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Late fee (% of due)</label>
+                    <input type="text" name="installment_late_fee_percent" class="form-control" value="{{ extra.get('installment_late_fee_percent', '0') }}">
+                    <div class="form-text">Takes precedence over fixed fee when &gt; 0.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Late fee (fixed)</label>
+                    <input type="text" name="installment_late_fee_fixed" class="form-control" value="{{ extra.get('installment_late_fee_fixed', '0') }}">
+                    <div class="form-text">Used only when late fee % is zero.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Upcoming reminder (days ahead)</label>
+                    <input type="number" min="0" name="installment_reminder_days_ahead" class="form-control" value="{{ extra.get('installment_reminder_days_ahead', 3) }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Reminder cooldown (days)</label>
+                    <input type="number" min="1" name="installment_reminder_cooldown_days" class="form-control" value="{{ extra.get('installment_reminder_cooldown_days', 1) }}">
+                    <div class="form-text">Minimum days between duplicate reminders for the same installment.</div>
+                </div>
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="installment_allocate_on_verify" value="1" id="allocVerify" {% if extra.get('installment_allocate_on_verify') %}checked{% endif %}>
+                        <label class="form-check-label" for="allocVerify">Allocate payments to installments only when verified</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="installment_require_schedule" value="1" id="requireSchedule" {% if extra.get('installment_require_schedule', True) %}checked{% endif %}>
+                        <label class="form-check-label" for="requireSchedule">Require a schedule before recording payments on installment subscriptions</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="installment_require_full_schedule" value="1" id="requireFullSchedule" {% if extra.get('installment_require_full_schedule', True) %}checked{% endif %}>
+                        <label class="form-check-label" for="requireFullSchedule">Require schedule total to match subscribed amount before confirmation/certificate</label>
+                    </div>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary mt-3">Save settings</button>
+        </form>
+    </div>
+</div>
+
+<div class="card set-shell" style="max-width:720px">
+    <div class="card-header">Bulk actions</div>
+    <div class="card-body d-flex flex-wrap gap-2">
+        <form method="post" class="d-inline">
+            <input type="hidden" name="action" value="recompute_all">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Recompute all installment statuses</button>
+        </form>
+        <form method="post" class="d-inline">
+            <input type="hidden" name="action" value="run_reminders">
+            <button type="submit" class="btn btn-outline-primary btn-sm">Send due/overdue reminders now</button>
+        </form>
+    </div>
+    <div class="card-footer small text-muted">
+        Schedule automated reminders with <code>flask installments-remind</code> via Windows Task Scheduler or cron.
+    </div>
+</div>
+{% endblock %}

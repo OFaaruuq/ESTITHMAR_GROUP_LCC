@@ -101,25 +101,16 @@ def _compute_agent_kpis_for_agent(a: Agent, agent_id: int) -> dict:
     installment_overdue = 0
     installment_due_balance = Decimal("0")
     today = date.today()
+    from estithmar.services.installments import installment_plans_scope_query, summarize_installment_rows
+
     inst_q = (
-        db.session.query(InstallmentPlan)
-        .join(ShareSubscription, InstallmentPlan.subscription_id == ShareSubscription.id)
+        installment_plans_scope_query()
         .join(Member, ShareSubscription.member_id == Member.id)
         .filter(Member.agent_id == agent_id)
     )
-    for row in inst_q:
-        if row.status == "Cancelled":
-            continue
-        bal = (row.due_amount or Decimal("0")) - (row.paid_amount or Decimal("0"))
-        if bal > 0:
-            installment_due_balance += bal
-            is_overdue = row.status == "Overdue" or (
-                row.due_date is not None
-                and row.due_date < today
-                and row.status in {"Pending", "Partially Paid"}
-            )
-            if is_overdue:
-                installment_overdue += 1
+    summary = summarize_installment_rows(inst_q.all(), as_of=today)
+    installment_overdue = summary["overdue_count"]
+    installment_due_balance = summary["due_balance"]
 
     certificates_issued = 0
     pending_certs = 0

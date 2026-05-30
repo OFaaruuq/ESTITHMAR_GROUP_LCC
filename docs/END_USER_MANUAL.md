@@ -8,27 +8,30 @@
 
 ## 1. User roles (who can do what)
 
-| Capability | **Admin** | **Operator** | **Agent** |
-|------------|-----------|----------------|-----------|
-| Dashboard, profile | Yes | Yes | Yes (scoped) |
-| **Members** — list, add, edit, view profiles | All members | All members | **Only “My team”** (members linked to that agent) |
-| **Agents** — directory, create, edit | Yes | Yes | **No** (menu hidden) |
-| **Contributions** — record payments | Scoped | Scoped | **Only own team’s members** |
-| Verify / unverify contributions | Yes | Yes | **No** |
-| **Projects** | Yes | Yes | Yes (see org policy) |
-| **Investments** | Yes | Yes | Yes |
-| Record investment ledger snapshot | Yes | Yes | **No** |
-| Delete investment | Yes | **No** | **No** |
-| **Invoices** | Scoped | Scoped | Scoped |
-| **Subscriptions** (share subscriptions) | Scoped | Scoped | Scoped |
-| Cancel subscription | Yes | Yes | **No** |
-| **Certificates** — issue, revoke, print/PDF | Per permissions | Per permissions | Per permissions |
-| **Profit distribution** (run batches) | Yes | Yes | **No** — sees **Profit history** instead |
-| **Accounting** (full module) | Yes | Yes | **No** |
-| **Reports** — full org reports | Yes | Yes | **Limited** (scoped data; some reports admin-only) |
-| **Settings** (currency, rules, logos, flags) | Yes | **No** | **No** |
-| **User management** (create app users) | Yes | **No** | **No** |
-| **Audit logs** | Yes | **No** | **No** |
+| Capability | **Admin** | **Operator** | **Agent** | **Member** |
+|------------|-----------|----------------|-----------|------------|
+| Dashboard, profile | Yes | Yes | Yes (scoped) | Yes (own data) |
+| **Members** — list, add, edit, view profiles | All members | All members | **Only “My team”** | **Own profile only** |
+| **Agents** — directory, create, edit | Yes | Yes | **No** | **No** |
+| **Contributions** — record payments | Scoped | Scoped | **Only own team’s members** | **No** (view own receipts if enabled) |
+| Verify / unverify contributions | Yes | Yes | **No** | **No** |
+| **Installment schedule** — view | Yes | Yes | Scoped | **Own subscriptions** |
+| **Installment schedule** — manage | Yes | Yes | Per permissions | **No** |
+| **Installment report** | Yes | Yes | Scoped | **Own rows** |
+| **Projects** | Yes | Yes | Yes (see org policy) | **No** |
+| **Investments** | Yes | Yes | Yes | View linked only |
+| Record investment ledger snapshot | Yes | Yes | **No** | **No** |
+| Delete investment | Yes | **No** | **No** | **No** |
+| **Invoices** | Scoped | Scoped | Scoped | **No** |
+| **Subscriptions** (share subscriptions) | Scoped | Scoped | Scoped | **Own only** |
+| Cancel subscription | Yes | Yes | **No** | **No** |
+| **Certificates** — issue, revoke, print/PDF | Per permissions | Per permissions | Per permissions | View own |
+| **Profit distribution** (run batches) | Yes | Yes | **No** | **No** — **Profit history** |
+| **Accounting** (full module) | Yes | Yes | **No** | **No** |
+| **Reports** — full org reports | Yes | Yes | **Limited** (scoped) | **Installments + own data** |
+| **Settings** (currency, rules, logos, flags) | Yes | **No** | **No** | **No** |
+| **User management** (create app users) | Yes | **No** | **No** | **No** |
+| **Audit logs** | Yes | **No** | **No** | **No** |
 
 **Scoping rule:** If your login is an **Agent** user, almost all lists and totals are limited to members (and their transactions) assigned to **your** agent record. **Admin** and **Operator** see the whole organization unless filters are applied.
 
@@ -84,9 +87,26 @@ This is the intended workflow the system supports (also summarized under **Repor
 
 ### Subscriptions (share subscriptions)
 - Defines commitment to shares: full or installment plan, status (Pending → Fully Paid, or Cancelled).
-- **Installments:** schedule and payment allocation.
+- **Installments:** define a due-date schedule, auto-generate rows (weekly, bi-weekly, monthly, quarterly, or custom day interval), allocate payments FIFO or to a specific row, late fees and grace period, overdue reminders.
 - **Link to investment:** align subscription with a specific investment vehicle.
 - **Cancel subscription:** admin/operator only; cannot cancel if already fully paid (use certificate revocation if needed).
+
+#### Installment workflow (operators)
+1. Create subscription with **Installment** payment plan — you are redirected to define the schedule.
+2. **Settings → Installments:** grace days, late fee (% or fixed), allocate-on-verify, require schedule before payments/certificate, reminder days ahead, reminder cooldown, bulk recompute, manual reminder run.
+3. **Subscription → Installments:** auto-generate or add rows; view allocation audit trail (which receipt paid which row); rebalance due amounts or rebuild allocations from contributions.
+4. **Record contribution:** link subscription; optionally pick a target installment (dropdown updates when subscription changes). If **require schedule** is on, payments are blocked until rows exist.
+5. **Verify** contributions when finance confirms funds — if **allocate on verify** is enabled, installment allocation happens at verification (unverify reverses allocation).
+6. **Reports → Installments:** overdue/unpaid/gap/adherence; export Excel or PDF. Members see **My installments** in the sidebar (scoped to their subscriptions).
+
+#### Installment reminders (automation)
+- Configure overdue/upcoming notifications under **Settings → Email & WhatsApp** (member installment toggles).
+- Run manually from **Settings → Installments → Send reminders now**, or schedule: `flask installments-remind` (cron / Windows Task Scheduler).
+- Duplicate reminders are suppressed using a per-row cooldown (Settings → Installments).
+
+#### Members and installments
+- Members can view their schedule and installment report but **cannot** record payments in the app (office/agent records contributions).
+- Overdue counts on dashboard and reports respect **grace period** and **late fees** consistently.
 
 ### Certificates
 - Issue when business rules are met; print or PDF; revoke if invalid.
@@ -105,11 +125,13 @@ This is the intended workflow the system supports (also summarized under **Repor
 
 ### Reports
 - **Core reports** (numbered in the UI): members financial summary, agent performance, monthly/daily contributions, investment summary, profit history and calculation summaries.
-- **Exports:** Excel (.xlsx) for members, contributions, profit, etc.; PDF for members and contributions; agents’ exports may be hidden or scoped.
+- **Installment report:** overdue rows, unpaid balances, schedule gap, adherence; Excel and PDF export.
+- **Exports:** Excel (.xlsx) for members, contributions, profit, installments, etc.; PDF for members, contributions, and installments; agents’ exports may be hidden or scoped.
 - Some reports (e.g. agent rankings, investment summary, profitability, profit calculation) are **not available to agent logins**.
 
 ### Settings (admin only)
 - Currency code/symbol, narrative rules for contributions and profit.
+- **Installments** (Settings → Installments): grace period, late fees, allocate on verify, require schedule, reminder cooldown, bulk recompute, manual reminder run.
 - **Flags** (examples): require agent on member, auto-issue certificate, require verification for certificate, investment-scoped profit, verified-only profit basis, global pool rules, accounting enabled, verified-only pool metrics.
 - Company name/address/signatories for documents; **branding logos** (light/dark).
 

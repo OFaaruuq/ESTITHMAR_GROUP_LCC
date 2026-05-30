@@ -157,6 +157,7 @@ def ensure_app_schema() -> None:
     _ensure_login_otp_challenges_schema(engine, dialect, insp)
     _ensure_payment_options_schema(engine, dialect)
     _ensure_finops_extensions_schema(engine, dialect)
+    _ensure_installment_extensions_schema(engine, dialect, insp)
     _ensure_rbac_schema(engine, dialect, insp)
 
 
@@ -1263,6 +1264,166 @@ def _ensure_finops_extensions_schema(engine, dialect: str) -> None:
                 )
             )
         db.session.execute(text("CREATE INDEX ix_agent_country_regions_country_name ON agent_country_regions (country_name)"))
+        db.session.commit()
+
+
+def _ensure_installment_extensions_schema(engine, dialect: str, insp) -> None:
+    def _has_table(name: str) -> bool:
+        try:
+            return insp.has_table(name)
+        except Exception:
+            return False
+
+    def _has_col(table: str, col: str) -> bool:
+        try:
+            return any(c.get("name") == col for c in insp.get_columns(table))
+        except Exception:
+            return False
+
+    if _has_table("installment_plans") and not _has_col("installment_plans", "late_fee_amount"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    "ALTER TABLE installment_plans ADD COLUMN late_fee_amount NUMERIC(14, 2) NOT NULL DEFAULT 0"
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    "ALTER TABLE installment_plans ADD late_fee_amount DECIMAL(14, 2) NOT NULL CONSTRAINT DF_inst_late_fee DEFAULT 0"
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    "ALTER TABLE installment_plans ADD COLUMN late_fee_amount NUMERIC(14, 2) NOT NULL DEFAULT 0"
+                )
+            )
+        db.session.commit()
+        insp = inspect(engine)
+
+    if _has_table("installment_plans") and not _has_col("installment_plans", "late_fee_waived"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    "ALTER TABLE installment_plans ADD COLUMN late_fee_waived BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    "ALTER TABLE installment_plans ADD late_fee_waived BIT NOT NULL CONSTRAINT DF_inst_late_waived DEFAULT 0"
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    "ALTER TABLE installment_plans ADD COLUMN late_fee_waived BOOLEAN NOT NULL DEFAULT 0"
+                )
+            )
+        db.session.commit()
+        insp = inspect(engine)
+
+    if not _has_table("installment_allocations"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE installment_allocations (
+                        id SERIAL PRIMARY KEY,
+                        contribution_id INTEGER NOT NULL REFERENCES contributions(id) ON DELETE CASCADE,
+                        installment_plan_id INTEGER NOT NULL REFERENCES installment_plans(id) ON DELETE CASCADE,
+                        amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE installment_allocations (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        contribution_id INT NOT NULL,
+                        installment_plan_id INT NOT NULL,
+                        amount DECIMAL(14, 2) NOT NULL CONSTRAINT DF_inst_alloc_amt DEFAULT 0,
+                        created_at DATETIME2 NOT NULL CONSTRAINT DF_inst_alloc_created DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT FK_inst_alloc_contrib FOREIGN KEY (contribution_id) REFERENCES contributions(id) ON DELETE CASCADE,
+                        CONSTRAINT FK_inst_alloc_plan FOREIGN KEY (installment_plan_id) REFERENCES installment_plans(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE installment_allocations (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        contribution_id INTEGER NOT NULL REFERENCES contributions(id) ON DELETE CASCADE,
+                        installment_plan_id INTEGER NOT NULL REFERENCES installment_plans(id) ON DELETE CASCADE,
+                        amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        db.session.execute(
+            text("CREATE INDEX ix_inst_alloc_contrib ON installment_allocations (contribution_id)")
+        )
+        db.session.execute(
+            text("CREATE INDEX ix_inst_alloc_plan ON installment_allocations (installment_plan_id)")
+        )
+        db.session.commit()
+
+    if not _has_table("installment_reminder_logs"):
+        if dialect == "postgresql":
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE installment_reminder_logs (
+                        id SERIAL PRIMARY KEY,
+                        installment_plan_id INTEGER NOT NULL REFERENCES installment_plans(id) ON DELETE CASCADE,
+                        reminder_kind VARCHAR(20) NOT NULL,
+                        sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        elif "mssql" in dialect:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE installment_reminder_logs (
+                        id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                        installment_plan_id INT NOT NULL,
+                        reminder_kind NVARCHAR(20) NOT NULL,
+                        sent_at DATETIME2 NOT NULL CONSTRAINT DF_inst_rem_sent DEFAULT SYSUTCDATETIME(),
+                        CONSTRAINT FK_inst_rem_plan FOREIGN KEY (installment_plan_id) REFERENCES installment_plans(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+            )
+        else:
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE installment_reminder_logs (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        installment_plan_id INTEGER NOT NULL REFERENCES installment_plans(id) ON DELETE CASCADE,
+                        reminder_kind VARCHAR(20) NOT NULL,
+                        sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        db.session.execute(
+            text("CREATE INDEX ix_inst_rem_plan ON installment_reminder_logs (installment_plan_id)")
+        )
+        db.session.execute(
+            text("CREATE INDEX ix_inst_rem_sent ON installment_reminder_logs (sent_at)")
+        )
         db.session.commit()
 
 

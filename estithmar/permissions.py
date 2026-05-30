@@ -113,9 +113,15 @@ PERMISSION_CATALOG: list[tuple[str, str, str, int]] = [
     ),
     (
         "subscriptions.installments",
-        "Subscriptions — installments",
-        "View and manage installment schedules and adjustments.",
+        "Subscriptions — installments (view)",
+        "View installment schedules and payment allocation status.",
         66,
+    ),
+    (
+        "subscriptions.installments_manage",
+        "Subscriptions — installments (manage)",
+        "Create, edit, cancel, and rebalance installment schedules.",
+        67,
     ),
     # Certificates
     ("certificates.view", "Certificates — list", "List issued certificates; filter or search.", 80),
@@ -280,10 +286,16 @@ PERMISSION_CATALOG: list[tuple[str, str, str, int]] = [
         202,
     ),
     (
+        "settings.installments",
+        "Settings — installments",
+        "Grace period, late fees, allocation rules, and reminder defaults.",
+        203,
+    ),
+    (
         "settings.database_backup",
         "Settings — database backup",
         "Run a full database backup to the application’s data backup folder (MSSQL .bak or PostgreSQL dump).",
-        203,
+        204,
     ),
     # Reports (per screen + hub)
     ("reports.hub", "Reports — hub", "Open the main reports index.", 220),
@@ -304,7 +316,7 @@ PERMISSION_CATALOG: list[tuple[str, str, str, int]] = [
     (
         "reports.installments",
         "Reports — installments",
-        "Aging, schedule adherence, and installment gap reports.",
+        "Overdue/unpaid installments, schedule adherence, and schedule gap analysis.",
         225,
     ),
     (
@@ -366,6 +378,12 @@ PERMISSION_CATALOG: list[tuple[str, str, str, int]] = [
         244,
     ),
     ("export.projects", "Export — projects XLSX", "Call the projects XLSX export route.", 245),
+    (
+        "export.installments",
+        "Export — installments XLSX/PDF",
+        "Export installment schedule report to Excel or PDF.",
+        247,
+    ),
     ("export.members_pdf", "Export — members PDF", "Call the members list PDF export.", 246),
     (
         "export.contributions_pdf",
@@ -545,6 +563,7 @@ class Permission:
     SUBSCRIPTIONS_VIEW_DETAIL = "subscriptions.view_detail"
     SUBSCRIPTIONS_EDIT = "subscriptions.edit"
     SUBSCRIPTIONS_INSTALLMENTS = "subscriptions.installments"
+    SUBSCRIPTIONS_INSTALLMENTS_MANAGE = "subscriptions.installments_manage"
     # Certificates
     CERTIFICATES_VIEW = "certificates.view"
     CERTIFICATES_PRINT = "certificates.print"
@@ -579,6 +598,7 @@ class Permission:
     SETTINGS_VIEW = "settings.view"
     SETTINGS_NOTIFICATIONS = "settings.notifications"
     SETTINGS_PAYMENT_METHODS = "settings.payment_methods"
+    SETTINGS_INSTALLMENTS = "settings.installments"
     SETTINGS_DATABASE_BACKUP = "settings.database_backup"
     # Profit
     PROFIT_VIEW = "profit.view"
@@ -599,6 +619,7 @@ class Permission:
     ACCOUNTING_MANUAL_ENTRY = "accounting.manual_entry"
     # Reports (hub used as cross-cutting “can open” for report routes)
     REPORTS_HUB = "reports.hub"
+    REPORTS_INSTALLMENTS = "reports.installments"
     # Audit
     AUDIT_VIEW = "audit.view"
     AUDIT_EXPORT = "audit.export"
@@ -611,6 +632,7 @@ class Permission:
     EXPORT_PROJECTS = "export.projects"
     EXPORT_MEMBERS_PDF = "export.members_pdf"
     EXPORT_CONTRIBUTIONS_PDF = "export.contributions_pdf"
+    EXPORT_INSTALLMENTS = "export.installments"
 
 
 def default_operator_permission_keys() -> set[str]:
@@ -648,6 +670,7 @@ def default_agent_permission_keys() -> set[str]:
         "subscriptions.view_detail",
         "subscriptions.edit",
         "subscriptions.installments",
+        "subscriptions.installments_manage",
         "certificates.view",
         "certificates.print",
         "certificates.pdf",

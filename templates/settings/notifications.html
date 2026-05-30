@@ -16,6 +16,7 @@
 {% endblock %}
 {% block content %}
 
+{% set settings_nav = 'notifications' %}
 <nav aria-label="breadcrumb" class="mb-3 set-shell">
     <ol class="breadcrumb mb-0 small">
         <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Home</a></li>
@@ -24,21 +25,7 @@
     </ol>
 </nav>
 
-<div class="set-shell mb-3 set-nav-wrap">
-    <div class="set-nav-rail d-inline-block w-100">
-        <ul class="nav set-nav d-flex flex-nowrap">
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_page') }}"><i class="ri-settings-3-line me-1"></i>General</a></li>
-            <li class="nav-item"><a class="nav-link active" href="{{ url_for('settings_notifications') }}" aria-current="page"><i class="ri-mail-send-line me-1"></i>Email &amp; WhatsApp</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_payment_methods') }}"><i class="ri-bank-card-line me-1"></i>Payment methods</a></li>
-            {% if has_permission('settings.database_backup') %}
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_database_backup') }}"><i class="ri-database-2-line me-1"></i>Database backup</a></li>
-            {% endif %}
-            {% if current_user.role in ('admin', 'operator', 'finance') %}
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('accounting_settings') }}"><i class="ri-book-2-line me-1"></i>Fiscal &amp; GL</a></li>
-            {% endif %}
-        </ul>
-    </div>
-</div>
+{% include 'settings/_nav.html' %}
 
 <div class="set-shell">
     <div class="alert alert-info border-0 mb-4" role="status">
@@ -170,10 +157,20 @@
                                {{ 'checked' if extra.get('notify_member_profit', True) else '' }}>
                         <label class="form-check-label" for="nm_pr">Profit distribution allocated</label>
                     </div>
-                    <div class="form-check mb-0">
+                    <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="notify_member_certificate" value="1" id="nm_cert"
                                {{ 'checked' if extra.get('notify_member_certificate', True) else '' }}>
                         <label class="form-check-label" for="nm_cert">Share certificate issued</label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="notify_member_installment_overdue" value="1" id="nm_inst_od"
+                               {{ 'checked' if extra.get('notify_member_installment_overdue', True) else '' }}>
+                        <label class="form-check-label" for="nm_inst_od">Installment overdue</label>
+                    </div>
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" name="notify_member_installment_upcoming" value="1" id="nm_inst_up"
+                               {{ 'checked' if extra.get('notify_member_installment_upcoming', True) else '' }}>
+                        <label class="form-check-label" for="nm_inst_up">Installment due soon (upcoming)</label>
                     </div>
                 </div>
                 <div class="form-check mt-3">

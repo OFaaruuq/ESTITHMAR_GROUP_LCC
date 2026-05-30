@@ -33,5 +33,10 @@ def subscription_payment_running_rows(sub: ShareSubscription) -> list[dict]:
 
 
 def max_payment_for_subscription(sub: ShareSubscription) -> Decimal:
-    """Remaining balance that can still be applied (no overpayment)."""
-    return sub.outstanding_balance()
+    """Remaining subscription balance plus any outstanding installment late fees."""
+    base = sub.outstanding_balance()
+    if (sub.payment_plan or "full") != "installment":
+        return base
+    from estithmar.services.installments import installment_late_fee_outstanding
+
+    return (base + installment_late_fee_outstanding(sub)).quantize(Decimal("0.01"))

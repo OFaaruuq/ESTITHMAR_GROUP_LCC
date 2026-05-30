@@ -582,14 +582,62 @@ class InstallmentPlan(db.Model):
     due_date = db.Column(db.Date, nullable=False)
     due_amount = db.Column(db.Numeric(14, 2), nullable=False, default=Decimal("0"))
     paid_amount = db.Column(db.Numeric(14, 2), nullable=False, default=Decimal("0"))
+    late_fee_amount = db.Column(db.Numeric(14, 2), nullable=False, default=Decimal("0"))
+    late_fee_waived = db.Column(db.Boolean, nullable=False, default=False)
     status = db.Column(db.String(20), nullable=False, default="Pending")
     sequence_no = db.Column(db.Integer, nullable=False, default=1)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    def balance(self) -> Decimal:
-        bal = (self.due_amount or Decimal("0")) - (self.paid_amount or Decimal("0"))
-        return bal if bal > 0 else Decimal("0")
+    def balance(self, as_of: date | None = None) -> Decimal:
+        from estithmar.services.installments import row_outstanding_balance
+
+        return row_outstanding_balance(self, as_of=as_of)
+
+    def effective_due_total(self, *, as_of: date | None = None) -> Decimal:
+        from estithmar.services.installments import effective_row_due
+
+        return effective_row_due(self, as_of=as_of)
+
+
+class InstallmentAllocation(db.Model):
+    """Links a contribution amount to a specific installment row (audit trail)."""
+
+    __tablename__ = "installment_allocations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    contribution_id = db.Column(
+        db.Integer, db.ForeignKey("contributions.id"), nullable=False, index=True
+    )
+    installment_plan_id = db.Column(
+        db.Integer, db.ForeignKey("installment_plans.id"), nullable=False, index=True
+    )
+    amount = db.Column(db.Numeric(14, 2), nullable=False, default=Decimal("0"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    contribution = db.relationship(
+        "Contribution",
+        backref=db.backref("installment_allocations", lazy="dynamic", cascade="all, delete-orphan"),
+    )
+    installment_plan = db.relationship(
+        "InstallmentPlan",
+        backref=db.backref("allocations", lazy="dynamic"),
+    )
+
+
+class InstallmentReminderLog(db.Model):
+    """Tracks installment reminder sends to avoid duplicate emails on the same day."""
+
+    __tablename__ = "installment_reminder_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    installment_plan_id = db.Column(
+        db.Integer, db.ForeignKey("installment_plans.id"), nullable=False, index=True
+    )
+    reminder_kind = db.Column(db.String(20), nullable=False)  # overdue | upcoming
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    installment_plan = db.relationship("InstallmentPlan", backref=db.backref("reminder_logs", lazy="dynamic"))
 
 
 class Project(db.Model):

@@ -74,6 +74,9 @@ def issue_certificate(
     recompute_subscription_status(sub.id, commit=False)
     if sub.status != "Fully Paid":
         raise ValueError("Certificate can only be issued when the subscription is fully paid.")
+    from estithmar.services.installments import ensure_installment_schedule_for_certificate
+
+    ensure_installment_schedule_for_certificate(sub)
     if not sub.is_share_confirmed:
         raise ValueError("Subscription must be confirmed (paid equals subscribed) before issuing a certificate.")
     if sub.paid_total() < (sub.subscribed_amount or 0):

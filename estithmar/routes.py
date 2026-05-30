@@ -89,6 +89,7 @@ from estithmar.models import (
     EligibilitySnapshot,
     format_member_public_id,
     InstallmentPlan,
+    InstallmentAllocation,
     Investment,
     InvestmentProfitLog,
     LoginOtpChallenge,
@@ -120,20 +121,49 @@ from estithmar.models import (
     next_receipt_no,
 )
 from estithmar.services import (
+    allocate_contribution_to_installments,
+    allocations_for_subscription,
     apply_significant_amount_to_installments,
     auto_allocate_payment_to_installments,
     available_pool_for_investment,
+    cancel_installment_rows_for_subscription,
+    cancel_unpaid_installment_rows,
+    collect_installment_report_rows,
     create_subscription,
+    ensure_installment_schedule_exists,
+    ensure_installment_subscription,
+    generate_installment_schedule,
+    regenerate_future_installment_schedule,
+    schedule_health_warnings,
+    handle_payment_plan_changed_to_full,
+    installment_schedule_for_receipt,
+    installment_plans_scope_query,
+    installment_schedule_satisfied,
+    is_row_overdue_for_display,
     issue_certificate,
     max_payment_for_subscription,
     maybe_auto_issue_certificate,
+    migrate_legacy_installment_allocations_if_needed,
     project_budget_headroom,
+    rebalance_installment_due_amounts,
+    recompute_all_active_installment_statuses,
     recompute_installment_statuses,
     recompute_subscription_status,
+    rebuild_allocations_from_contributions,
     subscription_payment_running_rows,
+    subscription_schedule_adherence,
+    subscription_schedule_gap,
+    summarize_installment_rows,
+    shift_installment_due_dates,
+    sync_orphan_payments_to_installments,
+    validate_sequence_no,
+    waive_installment_late_fee,
     total_invested_across_investments,
     total_member_contributions_collected,
+    unallocate_contribution_from_installments,
+    validate_schedule_totals,
 )
+from estithmar.services.installment_notify import run_installment_reminders
 from estithmar.services.certificates import format_certificate_share_quantity
 from estithmar.country_choices import get_agent_country_choices, get_agent_country_value_set, get_region_choices_for_country
 from estithmar.dashboard_geo import build_members_region_map_data
@@ -827,6 +857,14 @@ def _audit_notification_item(log: AuditLog) -> dict | None:
         "installment_added": "Installment scheduled",
         "installment_updated": "Installment updated",
         "installment_cancelled": "Installment cancelled",
+        "installments_auto_generated": "Installment schedule generated",
+        "installments_regenerated_future": "Future installments regenerated",
+        "installments_rebalanced": "Installment amounts corrected",
+        "installments_rebuilt_from_contributions": "Installment allocations rebuilt",
+        "installments_synced_payments": "Payments synced to schedule",
+        "installments_dates_shifted": "Installment dates shifted",
+        "installments_cleared_unpaid": "Unpaid installment rows cleared",
+        "installment_late_fee_waived": "Late fee waived",
     }
     title = title_map.get(log.action, log.action.replace("_", " ").title())
     body = (log.details or "").strip()
@@ -1027,6 +1065,7 @@ def register_routes(app):
             "can_verify_payments": can_verify_payments,
             "has_permission": has_permission,
             "nav_can": nav_can,
+            "installment_row_overdue": lambda row: is_row_overdue_for_display(row, as_of=date.today()),
         }
 
     def _allowed_profile_image(filename: str) -> bool:
@@ -1384,15 +1423,19 @@ def register_routes(app):
         if ep in ("api_lookup_agent_regions",):
             flash("This action is not available for your account.", "warning")
             return redirect(url_for("dashboard"))
-        if ep.startswith(("agents_", "users_", "accounting_", "export_")):
+        if ep.startswith(("agents_", "users_", "accounting_", "export_")) and ep not in (
+            "export_installments_xlsx",
+            "export_installments_pdf",
+        ):
             flash("This section is not available for your account.", "warning")
             return redirect(url_for("dashboard"))
-        if ep.startswith("reports_"):
+        if ep.startswith("reports_") and ep != "reports_installments":
             flash("Reports are not available for your account.", "warning")
             return redirect(url_for("dashboard"))
         if ep == "subscriptions_installments" and request.method == "POST":
-            flash("You cannot modify installment plans.", "warning")
-            return redirect(url_for("dashboard"))
+            if not user_has_permission(current_user, Permission.SUBSCRIPTIONS_INSTALLMENTS_MANAGE):
+                flash("You cannot modify installment plans.", "warning")
+                return redirect(url_for("subscriptions_installments", id=request.view_args.get("id")))
 
     @app.before_request
     def _touch_user_presence():
@@ -1942,31 +1985,17 @@ def register_routes(app):
             (s.outstanding_balance() for s in scoped_subscriptions), Decimal("0")
         )
 
-        inst_query = InstallmentPlan.query.join(
-            ShareSubscription, InstallmentPlan.subscription_id == ShareSubscription.id
-        )
+        inst_query = installment_plans_scope_query()
         if mids is not None:
             if mids:
                 inst_query = inst_query.filter(ShareSubscription.member_id.in_(mids))
             else:
                 inst_query = inst_query.filter(InstallmentPlan.id == -1)
         inst_rows = inst_query.all()
-        installment_overdue_count = 0
-        installment_due_balance = Decimal("0")
+        inst_summary = summarize_installment_rows(inst_rows, as_of=date.today())
+        installment_overdue_count = inst_summary["overdue_count"]
+        installment_due_balance = inst_summary["due_balance"]
         today = date.today()
-        for row in inst_rows:
-            if row.status == "Cancelled":
-                continue
-            bal = (row.due_amount or Decimal("0")) - (row.paid_amount or Decimal("0"))
-            if bal > 0:
-                installment_due_balance += bal
-                is_overdue = row.status == "Overdue" or (
-                    row.due_date is not None
-                    and row.due_date < today
-                    and row.status in {"Pending", "Partially Paid"}
-                )
-                if is_overdue:
-                    installment_overdue_count += 1
 
         chart_labels, chart_values = _dashboard_monthly_totals(mids)
         donut_cash, donut_mobile, donut_bank, donut_other = _dashboard_payment_totals(mids)
@@ -3155,18 +3184,16 @@ def register_routes(app):
             st = sub_stats.get(row.subscription_id)
             if st is None:
                 continue
-            st["rows"] += 1
             if row.status != "Cancelled":
-                bal = (row.due_amount or Decimal("0")) - (row.paid_amount or Decimal("0"))
-                if bal > 0:
-                    st["balance"] += bal
-                    is_overdue = row.status == "Overdue" or (
-                        row.due_date is not None
-                        and row.due_date < today
-                        and row.status in {"Pending", "Partially Paid"}
-                    )
-                    if is_overdue:
-                        st["overdue"] += 1
+                st["rows"] += 1
+        for sid in ordered_ids:
+            st = sub_stats.get(sid)
+            if st is None or st["rows"] == 0:
+                continue
+            sub_rows = [r for r in inst_rows if r.subscription_id == sid and r.status != "Cancelled"]
+            sm = summarize_installment_rows(sub_rows, as_of=today)
+            st["overdue"] = sm["overdue_count"]
+            st["balance"] = sm["due_balance"]
 
         filtered_ids = list(ordered_ids)
         if overdue_only:
@@ -3415,6 +3442,9 @@ def register_routes(app):
             except Exception:
                 pass
             flash(f"Subscription created: {sub.subscription_no}", "success")
+            if sub.payment_plan == "installment":
+                flash("Define the installment schedule for this subscription.", "info")
+                return redirect(url_for("subscriptions_installments", id=sub.id))
             return redirect(url_for("subscriptions_profile", id=sub.id))
         return render_template(
             "subscriptions/form.html",
@@ -3577,6 +3607,20 @@ def register_routes(app):
                 "investment_id": investment_id,
             }
             recompute_subscription_status(sub.id, commit=False)
+            if payment_plan == "full" and old_payment_plan == "installment":
+                try:
+                    handle_payment_plan_changed_to_full(sub.id, commit=False)
+                except ValueError as exc:
+                    db.session.rollback()
+                    flash(str(exc), "danger")
+                    return redirect(url_for("subscriptions_edit", id=sub.id))
+            if payment_plan == "installment" and subscribed_amount != Decimal(
+                str(old_values.get("subscribed_amount") or "0")
+            ):
+                try:
+                    rebalance_installment_due_amounts(sub.id, commit=False)
+                except ValueError as exc:
+                    flash(str(exc), "warning")
             db.session.add(
                 SubscriptionAmendment(
                     subscription_id=sub.id,
@@ -3637,9 +3681,16 @@ def register_routes(app):
         if current_user.role == "member" and current_user.member_id:
             q = q.filter(ShareSubscription.member_id == current_user.member_id)
         sub = q.filter(ShareSubscription.id == id).first_or_404()
+        recompute_installment_statuses(sub.id, commit=True)
         installments = (
             sub.installments.order_by(InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()).all()
         )
+        active_installments = [r for r in installments if r.status != "Cancelled"]
+        inst_summary = summarize_installment_rows(installments, as_of=date.today())
+        installment_rows_total = inst_summary["active_count"]
+        installment_overdue_count = inst_summary["overdue_count"]
+        installment_due_balance = inst_summary["due_balance"]
+        today = date.today()
         amendments = (
             SubscriptionAmendment.query.filter_by(subscription_id=sub.id)
             .order_by(SubscriptionAmendment.created_at.desc())
@@ -3656,29 +3707,18 @@ def register_routes(app):
             .order_by(Contribution.date.desc(), Contribution.id.desc())
             .all()
         )
-        installment_rows_total = len(installments)
-        installment_overdue_count = 0
-        installment_due_balance = Decimal("0")
-        today = date.today()
-        for row in installments:
-            if row.status == "Cancelled":
-                continue
-            bal = (row.due_amount or Decimal("0")) - (row.paid_amount or Decimal("0"))
-            if bal > 0:
-                installment_due_balance += bal
-                is_overdue = row.status == "Overdue" or (
-                    row.due_date is not None
-                    and row.due_date < today
-                    and row.status in {"Pending", "Partially Paid"}
-                )
-                if is_overdue:
-                    installment_overdue_count += 1
         investments = Investment.query.order_by(Investment.name).all()
         settings = get_or_create_settings()
         paid_total = sub.paid_total()
         outstanding = sub.outstanding_balance()
         completion_pct = sub.completion_percent()
         currency_code = settings.currency_code or "USD"
+        schedule_confirmation_pending = (
+            sub.payment_plan == "installment"
+            and sub.status == "Fully Paid"
+            and not sub.is_share_confirmed
+            and not installment_schedule_satisfied(sub)
+        )
         return render_template(
             "subscriptions/profile.html",
             sub=sub,
@@ -3688,6 +3728,7 @@ def register_routes(app):
             installment_rows_total=installment_rows_total,
             installment_overdue_count=installment_overdue_count,
             installment_due_balance=installment_due_balance,
+            schedule_confirmation_pending=schedule_confirmation_pending,
             settings=settings,
             currency_code=currency_code,
             paid_total=paid_total,
@@ -3732,6 +3773,7 @@ def register_routes(app):
             return redirect(url_for("subscriptions_profile", id=sub.id))
         sub.status = "Cancelled"
         sub.confirmed_at = None
+        cancel_installment_rows_for_subscription(sub.id, commit=False)
         log_audit("subscription_cancelled", "ShareSubscription", sub.id, f"subscription_no={sub.subscription_no}")
         db.session.commit()
         flash("Share subscription cancelled.", "warning")
@@ -3746,199 +3788,386 @@ def register_routes(app):
         if current_user.role == "member" and current_user.member_id:
             q = q.filter(ShareSubscription.member_id == current_user.member_id)
         sub = q.filter(ShareSubscription.id == id).first_or_404()
+        settings = get_or_create_settings()
+        can_manage = current_user.role != "member" and user_has_permission(
+            current_user, Permission.SUBSCRIPTIONS_INSTALLMENTS_MANAGE
+        )
+
+        try:
+            ensure_installment_subscription(sub)
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            return redirect(url_for("subscriptions_profile", id=sub.id))
+
+        recompute_installment_statuses(sub.id, commit=True)
 
         if request.method == "POST":
+            if not can_manage:
+                flash("You do not have permission to modify installment plans.", "danger")
+                return redirect(url_for("subscriptions_installments", id=sub.id))
             action = request.form.get("action", "").strip()
-            if action == "auto_generate":
-                start_date = _parse_date(request.form.get("start_date")) or date.today()
-                installments_count = max(1, min(36, request.form.get("installments_count", type=int) or 1))
-                freq = (request.form.get("frequency") or "monthly").strip().lower()
-                if freq not in {"monthly", "weekly"}:
-                    freq = "monthly"
-                active_rows = [
-                    x
-                    for x in sub.installments.order_by(InstallmentPlan.sequence_no.asc()).all()
-                    if x.status != "Cancelled"
-                ]
-                if active_rows:
-                    flash("Auto-generate works only when no active installment rows exist.", "warning")
-                    return redirect(url_for("subscriptions_installments", id=sub.id))
-                total = sub.outstanding_balance()
-                if total <= 0:
-                    flash("No outstanding balance left to split into installments.", "warning")
-                    return redirect(url_for("subscriptions_installments", id=sub.id))
-                base = (total / Decimal(str(installments_count))).quantize(Decimal("0.01"))
-                rows = []
-                running = Decimal("0")
-                for i in range(1, installments_count + 1):
-                    due_amount = base
-                    if i == installments_count:
-                        due_amount = (total - running).quantize(Decimal("0.01"))
-                    running += due_amount
-                    due_date = (
-                        start_date + relativedelta(months=i - 1)
-                        if freq == "monthly"
-                        else start_date + timedelta(days=(i - 1) * 7)
-                    )
-                    rows.append(
-                        InstallmentPlan(
-                            subscription_id=sub.id,
-                            due_date=due_date,
-                            due_amount=due_amount,
-                            paid_amount=Decimal("0"),
-                            status="Pending",
-                            sequence_no=i,
+            confirm = request.form.get("confirm") == "1"
+            try:
+                if action == "auto_generate":
+                    replace_existing = request.form.get("replace_existing") == "1"
+                    if replace_existing and not confirm:
+                        raise ValueError(
+                            "Check the confirmation box to replace existing installment rows."
                         )
+                    start_date = _parse_date(request.form.get("start_date")) or date.today()
+                    installments_count = max(1, min(60, request.form.get("installments_count", type=int) or 1))
+                    freq = (request.form.get("frequency") or "monthly").strip().lower()
+                    custom_days = max(1, min(365, request.form.get("custom_days", type=int) or 30))
+                    down_payment = _parse_decimal(request.form.get("down_payment")) or Decimal("0")
+                    generate_installment_schedule(
+                        sub.id,
+                        installments_count=installments_count,
+                        frequency=freq,
+                        start_date=start_date,
+                        down_payment=down_payment,
+                        replace_existing=replace_existing,
+                        custom_days=custom_days,
+                        commit=False,
                     )
-                db.session.add_all(rows)
-                recompute_installment_statuses(sub.id, commit=False)
-                log_audit(
-                    "installments_auto_generated",
-                    "ShareSubscription",
-                    sub.id,
-                    f"count={installments_count} frequency={freq} total={total}",
-                )
-                db.session.commit()
-                flash("Installment schedule generated automatically.", "success")
-                return redirect(url_for("subscriptions_installments", id=sub.id))
-
-            if action == "add":
-                due_date = _parse_date(request.form.get("due_date"))
-                due_amount = _parse_decimal(request.form.get("due_amount"))
-                sequence_no = request.form.get("sequence_no", type=int) or 1
-                if due_date is None or due_amount is None or due_amount <= 0:
-                    flash("Enter valid due date and due amount.", "danger")
-                    return redirect(url_for("subscriptions_installments", id=sub.id))
-                row = InstallmentPlan(
-                    subscription_id=sub.id,
-                    due_date=due_date,
-                    due_amount=due_amount,
-                    paid_amount=Decimal("0"),
-                    status="Pending",
-                    sequence_no=sequence_no,
-                )
-                db.session.add(row)
-                recompute_installment_statuses(sub.id, commit=False)
-                log_audit(
-                    "installment_added",
-                    "InstallmentPlan",
-                    None,
-                    f"subscription_id={sub.id} due={due_amount} date={due_date}",
-                )
-                db.session.commit()
-                flash("Installment row added.", "success")
-                return redirect(url_for("subscriptions_installments", id=sub.id))
-
-            if action == "update":
-                row_id = request.form.get("row_id", type=int)
-                row = InstallmentPlan.query.get(row_id) if row_id else None
-                if not row or row.subscription_id != sub.id:
-                    flash("Invalid installment row.", "danger")
-                    return redirect(url_for("subscriptions_installments", id=sub.id))
-                due_date = _parse_date(request.form.get("due_date"))
-                due_amount = _parse_decimal(request.form.get("due_amount"))
-                paid_amount = _parse_decimal(request.form.get("paid_amount"))
-                sequence_no = request.form.get("sequence_no", type=int) or row.sequence_no
-                if due_date is None or due_amount is None or due_amount <= 0:
-                    flash("Enter valid due date and due amount.", "danger")
-                    return redirect(url_for("subscriptions_installments", id=sub.id))
-                if paid_amount is None or paid_amount < 0:
-                    paid_amount = row.paid_amount or Decimal("0")
-                row.due_date = due_date
-                row.due_amount = due_amount
-                row.paid_amount = paid_amount
-                row.sequence_no = sequence_no
-                recompute_installment_statuses(sub.id, commit=False)
-                log_audit(
-                    "installment_updated",
-                    "InstallmentPlan",
-                    row.id,
-                    f"subscription_id={sub.id} due={due_amount} paid={paid_amount}",
-                )
-                db.session.commit()
-                flash("Installment row updated.", "success")
-                return redirect(url_for("subscriptions_installments", id=sub.id))
-
-            if action == "cancel":
-                row_id = request.form.get("row_id", type=int)
-                row = InstallmentPlan.query.get(row_id) if row_id else None
-                if not row or row.subscription_id != sub.id:
-                    flash("Invalid installment row.", "danger")
-                    return redirect(url_for("subscriptions_installments", id=sub.id))
-                row.status = "Cancelled"
-                log_audit(
-                    "installment_cancelled",
-                    "InstallmentPlan",
-                    row.id,
-                    f"subscription_id={sub.id}",
-                )
-                db.session.commit()
-                flash("Installment row cancelled.", "warning")
-                return redirect(url_for("subscriptions_installments", id=sub.id))
-
-            if action == "rebalance_due":
-                active_rows = [
-                    x
-                    for x in sub.installments.order_by(InstallmentPlan.sequence_no.asc()).all()
-                    if x.status != "Cancelled"
-                ]
-                if not active_rows:
-                    flash("No active installment rows to rebalance.", "warning")
-                    return redirect(url_for("subscriptions_installments", id=sub.id))
-                target_total = (sub.subscribed_amount or Decimal("0")).quantize(Decimal("0.01"))
-                locked_rows: list[InstallmentPlan] = []
-                adjustable_rows: list[InstallmentPlan] = []
-                for row in active_rows:
-                    paid = (row.paid_amount or Decimal("0")).quantize(Decimal("0.01"))
-                    if row.status == "Fully Paid":
-                        # Preserve fully paid rows exactly as currently planned.
-                        row.due_amount = max((row.due_amount or Decimal("0")).quantize(Decimal("0.01")), paid)
-                        locked_rows.append(row)
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installments_auto_generated",
+                        "ShareSubscription",
+                        sub.id,
+                        f"count={installments_count} frequency={freq} replace={replace_existing}",
+                    )
+                    db.session.commit()
+                    gap_after = subscription_schedule_gap(sub)
+                    if abs(gap_after["schedule_gap"]) > Decimal("0.01"):
+                        flash(
+                            f"Schedule generated. Gap remaining: {gap_after['schedule_gap']} — "
+                            "run Auto-correct due amounts if needed.",
+                            "warning",
+                        )
                     else:
-                        # For pending/partial rows, never let due drop below already-paid.
-                        row.due_amount = paid
-                        adjustable_rows.append(row)
-                locked_total = sum(
-                    ((r.due_amount or Decimal("0")) for r in locked_rows),
-                    Decimal("0"),
-                ).quantize(Decimal("0.01"))
-                adjustable_base = sum(
-                    ((r.due_amount or Decimal("0")) for r in adjustable_rows),
-                    Decimal("0"),
-                ).quantize(Decimal("0.01"))
-                alloc_total = (target_total - locked_total - adjustable_base).quantize(Decimal("0.01"))
-                if alloc_total < Decimal("0"):
-                    flash(
-                        "Cannot auto-correct: paid/locked installment rows already exceed the subscription amount. "
-                        "Please review rows manually.",
-                        "danger",
-                    )
+                        flash("Installment schedule generated.", "success")
                     return redirect(url_for("subscriptions_installments", id=sub.id))
-                if adjustable_rows:
-                    base = (alloc_total / Decimal(str(len(adjustable_rows)))).quantize(Decimal("0.01"))
-                    running = Decimal("0")
-                    for idx, row in enumerate(adjustable_rows, start=1):
-                        add_amt = base
-                        if idx == len(adjustable_rows):
-                            add_amt = (alloc_total - running).quantize(Decimal("0.01"))
-                        row.due_amount = ((row.due_amount or Decimal("0")) + add_amt).quantize(Decimal("0.01"))
-                        running += add_amt
-                recompute_installment_statuses(sub.id, commit=False)
-                log_audit(
-                    "installments_rebalanced",
-                    "ShareSubscription",
-                    sub.id,
-                    f"target_total={target_total} rows={len(active_rows)}",
-                )
-                db.session.commit()
-                flash("Installment due amounts auto-corrected successfully.", "success")
-                return redirect(url_for("subscriptions_installments", id=sub.id))
 
-            flash("Unsupported action.", "danger")
+                if action == "regenerate_future":
+                    if not confirm:
+                        raise ValueError(
+                            "Check the confirmation box — this cancels unpaid rows and creates new ones."
+                        )
+                    start_date = _parse_date(request.form.get("start_date")) or date.today()
+                    installments_count = max(1, min(60, request.form.get("installments_count", type=int) or 1))
+                    freq = (request.form.get("frequency") or "monthly").strip().lower()
+                    custom_days = max(1, min(365, request.form.get("custom_days", type=int) or 30))
+                    regenerate_future_installment_schedule(
+                        sub.id,
+                        installments_count=installments_count,
+                        frequency=freq,
+                        start_date=start_date,
+                        custom_days=custom_days,
+                        commit=False,
+                    )
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installments_regenerated_future",
+                        "ShareSubscription",
+                        sub.id,
+                        f"count={installments_count} frequency={freq}",
+                    )
+                    db.session.commit()
+                    gap_after = subscription_schedule_gap(sub)
+                    if abs(gap_after["schedule_gap"]) > Decimal("0.01"):
+                        flash(
+                            f"Future rows regenerated. Schedule gap: {gap_after['schedule_gap']} — "
+                            "run Auto-correct due amounts if needed.",
+                            "warning",
+                        )
+                    else:
+                        flash("Future unpaid installments regenerated (paid rows kept).", "success")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "add":
+                    due_date = _parse_date(request.form.get("due_date"))
+                    due_amount = _parse_decimal(request.form.get("due_amount"))
+                    sequence_no = request.form.get("sequence_no", type=int) or 1
+                    if due_date is None or due_amount is None or due_amount <= 0:
+                        raise ValueError("Enter valid due date and due amount.")
+                    validate_sequence_no(sub, sequence_no)
+                    validate_schedule_totals(sub, extra_due=due_amount)
+                    row = InstallmentPlan(
+                        subscription_id=sub.id,
+                        due_date=due_date,
+                        due_amount=due_amount,
+                        paid_amount=Decimal("0"),
+                        status="Pending",
+                        sequence_no=sequence_no,
+                    )
+                    db.session.add(row)
+                    recompute_installment_statuses(sub.id, commit=False)
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installment_added",
+                        "InstallmentPlan",
+                        None,
+                        f"subscription_id={sub.id} due={due_amount} date={due_date}",
+                    )
+                    db.session.commit()
+                    flash("Installment row added.", "success")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "update":
+                    row_id = request.form.get("row_id", type=int)
+                    row = InstallmentPlan.query.get(row_id) if row_id else None
+                    if not row or row.subscription_id != sub.id:
+                        raise ValueError("Invalid installment row.")
+                    due_date = _parse_date(request.form.get("due_date"))
+                    due_amount = _parse_decimal(request.form.get("due_amount"))
+                    sequence_no = request.form.get("sequence_no", type=int) or row.sequence_no
+                    if due_date is None or due_amount is None or due_amount <= 0:
+                        raise ValueError("Enter valid due date and due amount.")
+                    if (row.paid_amount or Decimal("0")) > due_amount:
+                        raise ValueError("Due amount cannot be less than amount already paid on this row.")
+                    validate_sequence_no(sub, sequence_no, exclude_row_id=row.id)
+                    validate_schedule_totals(
+                        sub,
+                        extra_due=due_amount,
+                        exclude_row_id=row.id,
+                    )
+                    row.due_date = due_date
+                    row.due_amount = due_amount
+                    row.sequence_no = sequence_no
+                    recompute_installment_statuses(sub.id, commit=False)
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installment_updated",
+                        "InstallmentPlan",
+                        row.id,
+                        f"subscription_id={sub.id} due={due_amount}",
+                    )
+                    db.session.commit()
+                    flash("Installment row updated.", "success")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "cancel":
+                    row_id = request.form.get("row_id", type=int)
+                    row = InstallmentPlan.query.get(row_id) if row_id else None
+                    if not row or row.subscription_id != sub.id:
+                        raise ValueError("Invalid installment row.")
+                    if (row.paid_amount or Decimal("0")) > 0:
+                        raise ValueError("Cannot cancel a row that already has payments applied.")
+                    row.status = "Cancelled"
+                    recompute_installment_statuses(sub.id, commit=False)
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installment_cancelled",
+                        "InstallmentPlan",
+                        row.id,
+                        f"subscription_id={sub.id}",
+                    )
+                    db.session.commit()
+                    gap_after = subscription_schedule_gap(sub)
+                    msg = "Installment row cancelled."
+                    if abs(gap_after["schedule_gap"]) > Decimal("0.01"):
+                        msg += f" Schedule gap is now {gap_after['schedule_gap']} — use Auto-correct or add rows."
+                    flash(msg, "warning")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "rebalance_due":
+                    rebalance_installment_due_amounts(sub.id, commit=False)
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installments_rebalanced",
+                        "ShareSubscription",
+                        sub.id,
+                        "auto_correct",
+                    )
+                    db.session.commit()
+                    flash("Installment due amounts auto-corrected to match subscribed amount.", "success")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "rebuild_allocations":
+                    if not confirm:
+                        raise ValueError(
+                            "Check the confirmation box — rebuild resets all installment paid amounts "
+                            "and replays contributions."
+                        )
+                    rebuild_allocations_from_contributions(sub.id, commit=False)
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installments_rebuilt_from_contributions",
+                        "ShareSubscription",
+                        sub.id,
+                        "",
+                    )
+                    db.session.commit()
+                    flash("Installment allocations rebuilt from linked contributions.", "success")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "sync_payments":
+                    adjusted = sync_orphan_payments_to_installments(sub.id, commit=False)
+                    recompute_installment_statuses(sub.id, commit=False)
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installments_synced_payments",
+                        "ShareSubscription",
+                        sub.id,
+                        f"adjusted={adjusted}",
+                    )
+                    db.session.commit()
+                    if adjusted == 0:
+                        flash("Payments already match the installment schedule.", "info")
+                    else:
+                        flash(f"Synced payments to schedule (adjusted {adjusted}).", "success")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "shift_dates":
+                    shift_days = request.form.get("shift_days", type=int)
+                    if shift_days is None or shift_days == 0:
+                        raise ValueError("Enter a non-zero number of days to shift (negative to move earlier).")
+                    only_unpaid = request.form.get("only_unpaid", "1") == "1"
+                    n = shift_installment_due_dates(
+                        sub.id, shift_days, only_unpaid=only_unpaid, commit=False
+                    )
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installments_dates_shifted",
+                        "ShareSubscription",
+                        sub.id,
+                        f"days={shift_days} rows={n}",
+                    )
+                    db.session.commit()
+                    flash(f"Shifted due dates on {n} row(s) by {shift_days} day(s).", "success")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "clear_unpaid":
+                    if not confirm:
+                        raise ValueError(
+                            "Check the confirmation box — this cancels all unpaid installment rows."
+                        )
+                    n = cancel_unpaid_installment_rows(sub.id, commit=False)
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installments_cleared_unpaid",
+                        "ShareSubscription",
+                        sub.id,
+                        f"rows={n}",
+                    )
+                    db.session.commit()
+                    flash(f"Cancelled {n} unpaid installment row(s). Regenerate or add rows as needed.", "warning")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "waive_late_fee":
+                    row_id = request.form.get("row_id", type=int)
+                    waive_installment_late_fee(row_id, sub.id, commit=False)
+                    log_audit(
+                        "installment_late_fee_waived",
+                        "InstallmentPlan",
+                        row_id,
+                        f"subscription_id={sub.id}",
+                    )
+                    db.session.commit()
+                    flash("Late fee waived for this installment row.", "success")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                flash("Unsupported action.", "danger")
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), "danger")
             return redirect(url_for("subscriptions_installments", id=sub.id))
 
-        rows = sub.installments.order_by(InstallmentPlan.sequence_no.asc(), InstallmentPlan.due_date.asc()).all()
-        return render_template("subscriptions/installments.html", sub=sub, rows=rows)
+        rows = sub.installments.order_by(
+            InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()
+        ).all()
+        gap = subscription_schedule_gap(sub)
+        adherence = subscription_schedule_adherence(sub)
+        schedule_warnings = schedule_health_warnings(sub)
+        allocations = allocations_for_subscription(sub.id)
+        return render_template(
+            "subscriptions/installments.html",
+            sub=sub,
+            rows=rows,
+            allocations=allocations,
+            can_manage=can_manage,
+            settings=settings,
+            currency_code=settings.currency_code or "USD",
+            gap=gap,
+            adherence=adherence,
+            schedule_warnings=schedule_warnings,
+        )
+
+    @app.route("/api/subscriptions/<int:id>/installment-options")
+    @permission_required(Permission.CONTRIBUTIONS_CREATE)
+    def api_subscription_installment_options(id):
+        q = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id)
+        if current_user.role == "agent" and current_user.agent_id:
+            q = q.filter(Member.agent_id == current_user.agent_id)
+        sub = q.filter(ShareSubscription.id == id).first_or_404()
+        if (sub.payment_plan or "full") != "installment":
+            return jsonify({"payment_plan": sub.payment_plan or "full", "installments": []})
+        rows = [
+            r
+            for r in sub.installments.order_by(
+                InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()
+            ).all()
+            if r.status != "Cancelled"
+        ]
+        return jsonify(
+            {
+                "subscription_id": sub.id,
+                "payment_plan": sub.payment_plan,
+                "installments": [
+                    {
+                        "id": r.id,
+                        "sequence_no": r.sequence_no,
+                        "due_date": r.due_date.isoformat() if r.due_date else None,
+                        "due_amount": str(r.due_amount or 0),
+                        "status": r.status,
+                        "balance": str(r.balance()),
+                    }
+                    for r in rows
+                ],
+            }
+        )
+
+    @app.route("/api/subscriptions/<int:id>/installments")
+    @permission_required(Permission.SUBSCRIPTIONS_INSTALLMENTS)
+    def api_subscription_installments(id):
+        q = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id)
+        if current_user.role == "agent" and current_user.agent_id:
+            q = q.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            q = q.filter(ShareSubscription.member_id == current_user.member_id)
+        sub = q.filter(ShareSubscription.id == id).first_or_404()
+        recompute_installment_statuses(sub.id, commit=True)
+        rows = sub.installments.order_by(
+            InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()
+        ).all()
+        return jsonify(
+            {
+                "subscription_id": sub.id,
+                "subscription_no": sub.subscription_no,
+                "payment_plan": sub.payment_plan,
+                "gap": {k: str(v) if isinstance(v, Decimal) else v for k, v in subscription_schedule_gap(sub).items() if k != "subscription"},
+                "adherence": {k: str(v) if isinstance(v, Decimal) else v for k, v in subscription_schedule_adherence(sub).items()},
+                "installments": [
+                    {
+                        "id": r.id,
+                        "sequence_no": r.sequence_no,
+                        "due_date": r.due_date.isoformat() if r.due_date else None,
+                        "due_amount": str(r.due_amount or 0),
+                        "late_fee_amount": str(r.late_fee_amount or 0),
+                        "paid_amount": str(r.paid_amount or 0),
+                        "status": r.status,
+                        "balance": str(r.balance()),
+                    }
+                    for r in rows
+                ],
+            }
+        )
+
+    @app.route("/api/installments/recompute", methods=["POST"])
+    @permission_required(Permission.SUBSCRIPTIONS_INSTALLMENTS_MANAGE)
+    def api_installments_recompute():
+        n = recompute_all_active_installment_statuses(commit=True)
+        return jsonify({"recomputed_subscriptions": n})
 
     # --- Certificates ---
     @app.route("/certificates")
@@ -4194,11 +4423,25 @@ def register_routes(app):
 
         def _contrib_form_ctx(members, preselect, preselect_subscription, subscriptions):
             ba, mp = _contribution_payment_form_choices()
+            installment_rows = []
+            preselect_installment = request.values.get("target_installment_id", type=int)
+            if preselect_subscription:
+                sub_for_inst = ShareSubscription.query.get(preselect_subscription)
+                if sub_for_inst and sub_for_inst.payment_plan == "installment":
+                    installment_rows = [
+                        r
+                        for r in sub_for_inst.installments.order_by(
+                            InstallmentPlan.sequence_no.asc()
+                        ).all()
+                        if r.status != "Cancelled"
+                    ]
             return {
                 "members": members,
                 "preselect": preselect,
                 "preselect_subscription": preselect_subscription,
+                "preselect_installment": preselect_installment,
                 "subscriptions": subscriptions,
+                "installment_rows": installment_rows,
                 "settings": app_settings,
                 "today": date.today(),
                 "bank_accounts": ba,
@@ -4344,6 +4587,19 @@ def register_routes(app):
                         "contributions/form.html",
                         **_contrib_form_ctx(members, mem.id, subscription_id, subs),
                     )
+                try:
+                    ensure_installment_schedule_exists(sub)
+                except ValueError as exc:
+                    flash(str(exc), "danger")
+                    subs = (
+                        ShareSubscription.query.filter_by(member_id=mem.id)
+                        .order_by(ShareSubscription.subscription_date.desc())
+                        .all()
+                    )
+                    return render_template(
+                        "contributions/form.html",
+                        **_contrib_form_ctx(members, mem.id, subscription_id, subs),
+                    )
                 max_pay = max_payment_for_subscription(sub)
                 if amount > max_pay:
                     flash(
@@ -4402,8 +4658,19 @@ def register_routes(app):
             db.session.add(c)
             db.session.flush()
             issued_auto = False
+            target_installment_id = request.form.get("target_installment_id", type=int) or None
             if sub is not None:
-                auto_allocate_payment_to_installments(sub.id, amount, payment_date=d, commit=False)
+                leftover, _ = allocate_contribution_to_installments(
+                    c,
+                    target_installment_id=target_installment_id,
+                    commit=False,
+                )
+                if leftover and leftover > Decimal("0.01"):
+                    flash(
+                        f"Payment recorded, but {leftover} could not be allocated to installment rows "
+                        "(schedule may not cover the full subscribed amount). Use Rebuild allocations on the schedule page.",
+                        "warning",
+                    )
                 recompute_subscription_status(sub.id, commit=False)
                 issued_auto = maybe_auto_issue_certificate(
                     sub.id, user_id=current_user.id if current_user.is_authenticated else None
@@ -4468,9 +4735,12 @@ def register_routes(app):
             flash("Access denied.", "danger")
             return redirect(url_for("contributions_list"))
         receipt_schedule = None
+        installment_schedule = None
         sub = c.subscription if c.subscription_id else None
         if sub:
             receipt_schedule = subscription_payment_running_rows(sub)
+            if sub.payment_plan == "installment":
+                installment_schedule = installment_schedule_for_receipt(sub, contribution=c)
         settings = get_or_create_settings()
         extra = settings.get_extra()
         member_sub_outstanding = Decimal("0")
@@ -4481,6 +4751,7 @@ def register_routes(app):
             "contributions/receipt.html",
             c=c,
             receipt_schedule=receipt_schedule,
+            installment_schedule=installment_schedule,
             subscription=sub,
             settings=settings,
             extra=extra,
@@ -4527,9 +4798,12 @@ def register_routes(app):
             flash("Email is not configured. Set up SMTP under Settings → Notifications.", "danger")
             return _receipt_email_redirect(c.id)
         receipt_schedule = None
+        installment_schedule = None
         sub = c.subscription if c.subscription_id else None
         if sub:
             receipt_schedule = subscription_payment_running_rows(sub)
+            if sub.payment_plan == "installment":
+                installment_schedule = installment_schedule_for_receipt(sub, contribution=c)
         settings = get_or_create_settings()
         extra = settings.get_extra()
         member_sub_outstanding = Decimal("0")
@@ -4541,6 +4815,7 @@ def register_routes(app):
             pdf_bytes = build_contribution_receipt_pdf_bytes(
                 c=c,
                 receipt_schedule=receipt_schedule,
+                installment_schedule=installment_schedule,
                 subscription=sub,
                 settings=settings,
                 extra=extra,
@@ -4577,12 +4852,30 @@ def register_routes(app):
     @permission_required(Permission.PAYMENTS_VERIFY)
     def contributions_verify(id):
         c = Contribution.query.get_or_404(id)
+        if current_user.role == "agent" and current_user.agent_id and c.member and c.member.agent_id != current_user.agent_id:
+            flash("Access denied.", "danger")
+            return redirect(request.referrer or url_for("contributions_list"))
+        if current_user.role == "member":
+            flash("Access denied.", "danger")
+            return redirect(request.referrer or url_for("contributions_list"))
         if _is_closed_period(c.date):
             flash("Accounting period is closed for this payment date; cannot verify now.", "danger")
             return redirect(request.referrer or url_for("contributions_list"))
         c.verified = True
         c.verified_at = datetime.utcnow()
         c.verified_by_user_id = current_user.id
+        db.session.flush()
+        if c.subscription_id:
+            sub_for_verify = ShareSubscription.query.get(c.subscription_id)
+            if sub_for_verify:
+                try:
+                    ensure_installment_schedule_exists(sub_for_verify)
+                except ValueError as exc:
+                    db.session.rollback()
+                    flash(str(exc), "danger")
+                    return redirect(request.referrer or url_for("contributions_list"))
+            allocate_contribution_to_installments(c, commit=False)
+            recompute_subscription_status(c.subscription_id, commit=False)
         db.session.commit()
         try:
             post_contribution_verified(id, user_id=current_user.id)
@@ -4599,9 +4892,23 @@ def register_routes(app):
     @any_permission_required(Permission.PAYMENTS_VERIFY, Permission.CONTRIBUTIONS_UNVERIFY)
     def contributions_unverify(id):
         c = Contribution.query.get_or_404(id)
+        if current_user.role == "agent" and current_user.agent_id and c.member and c.member.agent_id != current_user.agent_id:
+            flash("Access denied.", "danger")
+            return redirect(request.referrer or url_for("contributions_list"))
+        if current_user.role == "member":
+            flash("Access denied.", "danger")
+            return redirect(request.referrer or url_for("contributions_list"))
         if _is_closed_period(c.date):
             flash("Accounting period is closed for this payment date; cannot unverify now.", "danger")
             return redirect(request.referrer or url_for("contributions_list"))
+        if c.subscription_id:
+            try:
+                unallocate_contribution_from_installments(c, commit=False)
+                recompute_subscription_status(c.subscription_id, commit=False)
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), "danger")
+                return redirect(request.referrer or url_for("contributions_list"))
         c.verified = False
         c.verified_at = None
         c.verified_by_user_id = None
@@ -4659,9 +4966,7 @@ def register_routes(app):
         db.session.add(rev)
         if c.subscription_id:
             try:
-                apply_significant_amount_to_installments(
-                    c.subscription_id, rev.amount, payment_date=rev.date, commit=False
-                )
+                unallocate_contribution_from_installments(c, commit=False)
             except ValueError as exc:
                 db.session.rollback()
                 flash(str(exc), "danger")
@@ -4716,12 +5021,7 @@ def register_routes(app):
             db.session.rollback()
         if sub_id:
             try:
-                apply_significant_amount_to_installments(
-                    sub_id,
-                    -(c.amount or Decimal("0")),
-                    payment_date=c.date,
-                    commit=False,
-                )
+                unallocate_contribution_from_installments(c, commit=False)
             except ValueError as exc:
                 db.session.rollback()
                 flash(str(exc), "danger")
@@ -5994,6 +6294,8 @@ def register_routes(app):
             ex["notify_member_subscription"] = request.form.get("notify_member_subscription") == "1"
             ex["notify_member_profit"] = request.form.get("notify_member_profit") == "1"
             ex["notify_member_certificate"] = request.form.get("notify_member_certificate") == "1"
+            ex["notify_member_installment_overdue"] = request.form.get("notify_member_installment_overdue") == "1"
+            ex["notify_member_installment_upcoming"] = request.form.get("notify_member_installment_upcoming") == "1"
             ex["notify_members_whatsapp"] = request.form.get("notify_members_whatsapp") == "1"
             ex["notify_agents_enabled"] = request.form.get("notify_agents_enabled") == "1"
             ex["notify_agent_kpi_on_payment"] = request.form.get("notify_agent_kpi_on_payment") == "1"
@@ -6105,6 +6407,48 @@ def register_routes(app):
         return render_template(
             "settings/payment_methods.html", banks_with_accounts=banks_with_accounts, mobiles=mobiles
         )
+
+    @app.route("/settings/installments", methods=["GET", "POST"])
+    @role_required("admin", "operator", "finance")
+    @permission_required(Permission.SETTINGS_INSTALLMENTS)
+    def settings_installments():
+        s = get_or_create_settings()
+        ex = s.get_extra()
+        if request.method == "POST":
+            act = (request.form.get("action") or "save").strip()
+            if act == "run_reminders":
+                out = run_installment_reminders()
+                flash(
+                    f"Reminders sent — overdue: {out.get('sent_overdue', 0)}, upcoming: {out.get('sent_upcoming', 0)}, skipped: {out.get('skipped', 0)}, failed: {out.get('failed', 0)}.",
+                    "info",
+                )
+                return redirect(url_for("settings_installments"))
+            if act == "recompute_all":
+                n = recompute_all_active_installment_statuses(commit=True)
+                flash(f"Recomputed installment statuses for {n} subscription(s).", "success")
+                return redirect(url_for("settings_installments"))
+            ex["installment_grace_days"] = max(0, request.form.get("installment_grace_days", type=int) or 0)
+            ex["installment_reminder_days_ahead"] = max(
+                0, request.form.get("installment_reminder_days_ahead", type=int) or 3
+            )
+            ex["installment_allocate_on_verify"] = request.form.get("installment_allocate_on_verify") == "1"
+            ex["installment_require_schedule"] = request.form.get("installment_require_schedule") == "1"
+            ex["installment_require_full_schedule"] = request.form.get("installment_require_full_schedule") == "1"
+            from estithmar.services.installments import _parse_late_fee_fixed, _parse_late_fee_percent
+
+            ex["installment_late_fee_percent"] = str(
+                _parse_late_fee_percent(request.form.get("installment_late_fee_percent"))
+            )
+            ex["installment_late_fee_fixed"] = str(_parse_late_fee_fixed(request.form.get("installment_late_fee_fixed")))
+            ex["installment_reminder_cooldown_days"] = max(
+                1, request.form.get("installment_reminder_cooldown_days", type=int) or 1
+            )
+            s.set_extra(ex)
+            db.session.commit()
+            log_audit("settings_installments_updated", "AppSettings", s.id, "")
+            flash("Installment settings saved.", "success")
+            return redirect(url_for("settings_installments"))
+        return render_template("settings/installments.html", settings=s, extra=ex)
 
     @app.route("/settings/database-backup", methods=["GET", "POST"])
     @role_required("admin", "operator", "finance")
@@ -7268,11 +7612,21 @@ def register_routes(app):
         )
 
     @app.route("/reports/installments")
-    @role_required(*STAFF_OR_AGENT)
-    @permission_required(Permission.REPORTS_HUB)
+    @page_view_permission(Permission.REPORTS_INSTALLMENTS, allow_member=True)
     def reports_installments():
+        if current_user.role == "member" and not current_user.member_id:
+            flash("Access denied.", "danger")
+            return redirect(url_for("dashboard"))
+        if current_user.role != "member" and not (
+            user_has_permission(current_user, Permission.REPORTS_HUB)
+            or user_has_permission(current_user, Permission.REPORTS_INSTALLMENTS)
+        ):
+            flash("You do not have permission to view this report.", "warning")
+            return redirect(url_for("dashboard"))
+
+        recompute_all_active_installment_statuses(commit=True)
         query = (
-            InstallmentPlan.query.join(ShareSubscription)
+            installment_plans_scope_query()
             .join(Member, ShareSubscription.member_id == Member.id)
             .options(
                 joinedload(InstallmentPlan.subscription).joinedload(ShareSubscription.member),
@@ -7282,31 +7636,45 @@ def register_routes(app):
         )
         if current_user.role == "agent" and current_user.agent_id:
             query = query.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            query = query.filter(ShareSubscription.member_id == current_user.member_id)
         rows = query.all()
         today = date.today()
-        overdue_rows = []
-        unpaid_rows = []
+        overdue_rows, unpaid_rows, gap_rows = collect_installment_report_rows(rows, as_of=today)
+        adherence_rows = []
+        seen_sub_ids: set[int] = set()
         for r in rows:
-            if r.status == "Cancelled":
+            sub = r.subscription
+            if not sub or sub.id in seen_sub_ids:
                 continue
-            bal = (r.due_amount or Decimal("0")) - (r.paid_amount or Decimal("0"))
-            if bal > 0:
-                unpaid_rows.append((r, bal))
-                if r.status == "Overdue" or (
-                    r.due_date is not None and r.due_date < today and r.status in {"Pending", "Partially Paid"}
-                ):
-                    overdue_rows.append((r, bal))
+            seen_sub_ids.add(sub.id)
+            if sub.payment_plan != "installment":
+                continue
+            adh = subscription_schedule_adherence(sub, as_of=today)
+            adh["subscription"] = sub
+            adherence_rows.append(adh)
+
         unpaid_total = sum((b for _, b in unpaid_rows), Decimal("0"))
         overdue_total = sum((b for _, b in overdue_rows), Decimal("0"))
         settings = get_or_create_settings()
+        export_url = url_for("export_installments_xlsx")
+        export_full_url = url_for("export_installments_xlsx", unpaid_only=0)
+        export_pdf_url = url_for("export_installments_pdf")
+        export_pdf_full_url = url_for("export_installments_pdf", unpaid_only=0)
         return render_template(
             "reports/installments.html",
             rows=rows,
             unpaid_rows=unpaid_rows,
             overdue_rows=overdue_rows,
+            gap_rows=gap_rows,
+            adherence_rows=adherence_rows,
             settings=settings,
             currency_code=settings.currency_code or "USD",
             report_date=today,
+            export_url=export_url,
+            export_full_url=export_full_url,
+            export_pdf_url=export_pdf_url,
+            export_pdf_full_url=export_pdf_full_url,
             totals={
                 "unpaid_count": len(unpaid_rows),
                 "unpaid_balance": unpaid_total,
@@ -7910,6 +8278,132 @@ def register_routes(app):
         bio = io.BytesIO()
         wb.save(bio)
         return _xlsx_response(bio.getvalue(), "profit_distributions.xlsx")
+
+    @app.route("/export/installments.xlsx")
+    @page_view_permission(Permission.EXPORT_INSTALLMENTS, allow_member=True)
+    def export_installments_xlsx():
+        if current_user.role != "member" and not (
+            user_has_permission(current_user, Permission.REPORTS_HUB)
+            or user_has_permission(current_user, Permission.REPORTS_INSTALLMENTS)
+            or user_has_permission(current_user, Permission.EXPORT_INSTALLMENTS)
+        ):
+            flash("You do not have permission to export this report.", "warning")
+            return redirect(url_for("reports_installments"))
+        query = (
+            installment_plans_scope_query()
+            .join(Member, ShareSubscription.member_id == Member.id)
+            .options(joinedload(InstallmentPlan.subscription).joinedload(ShareSubscription.member))
+            .order_by(InstallmentPlan.due_date.asc())
+        )
+        if current_user.role == "agent" and current_user.agent_id:
+            query = query.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            query = query.filter(ShareSubscription.member_id == current_user.member_id)
+        rows = query.all()
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Installments"
+        headers = [
+            "Subscription",
+            "Member ID",
+            "Member",
+            "Seq",
+            "Due date",
+            "Due",
+            "Late fee",
+            "Paid",
+            "Balance",
+            "Status",
+        ]
+        for col, h in enumerate(headers, 1):
+            ws.cell(row=1, column=col, value=h)
+            ws.cell(row=1, column=col).font = Font(bold=True)
+        from estithmar.services.installments import effective_row_due, row_late_fee_amount
+
+        today = date.today()
+        unpaid_only = request.args.get("unpaid_only", "1") != "0"
+        row_idx = 1
+        for r in rows:
+            effective = effective_row_due(r, as_of=today, persist=False)
+            bal = effective - (r.paid_amount or Decimal("0"))
+            if unpaid_only and bal <= 0:
+                continue
+            row_idx += 1
+            sub = r.subscription
+            m = sub.member if sub else None
+            fee = row_late_fee_amount(r, as_of=today)
+            ws.cell(row=row_idx, column=1, value=sub.subscription_no if sub else "")
+            ws.cell(row=row_idx, column=2, value=format_member_public_id(m.member_id) if m else "")
+            ws.cell(row=row_idx, column=3, value=m.full_name if m else "")
+            ws.cell(row=row_idx, column=4, value=r.sequence_no)
+            ws.cell(row=row_idx, column=5, value=r.due_date.isoformat() if r.due_date else "")
+            ws.cell(row=row_idx, column=6, value=float(r.due_amount or 0))
+            ws.cell(row=row_idx, column=7, value=float(fee))
+            ws.cell(row=row_idx, column=8, value=float(r.paid_amount or 0))
+            ws.cell(row=row_idx, column=9, value=float(bal))
+            ws.cell(row=row_idx, column=10, value=r.status)
+        bio = io.BytesIO()
+        wb.save(bio)
+        return _xlsx_response(bio.getvalue(), "installments.xlsx")
+
+    @app.route("/export/installments.pdf")
+    @page_view_permission(Permission.EXPORT_INSTALLMENTS, allow_member=True)
+    def export_installments_pdf():
+        if current_user.role != "member" and not (
+            user_has_permission(current_user, Permission.REPORTS_HUB)
+            or user_has_permission(current_user, Permission.REPORTS_INSTALLMENTS)
+            or user_has_permission(current_user, Permission.EXPORT_INSTALLMENTS)
+        ):
+            flash("You do not have permission to export this report.", "warning")
+            return redirect(url_for("reports_installments"))
+        query = (
+            installment_plans_scope_query()
+            .join(Member, ShareSubscription.member_id == Member.id)
+            .options(joinedload(InstallmentPlan.subscription).joinedload(ShareSubscription.member))
+            .order_by(InstallmentPlan.due_date.asc())
+        )
+        if current_user.role == "agent" and current_user.agent_id:
+            query = query.filter(Member.agent_id == current_user.agent_id)
+        if current_user.role == "member" and current_user.member_id:
+            query = query.filter(ShareSubscription.member_id == current_user.member_id)
+        rows = query.all()
+        from estithmar.services.installments import effective_row_due, row_late_fee_amount
+
+        today = date.today()
+        unpaid_only = request.args.get("unpaid_only", "1") != "0"
+        rows_data = []
+        for r in rows:
+            effective = effective_row_due(r, as_of=today, persist=False)
+            bal = effective - (r.paid_amount or Decimal("0"))
+            if unpaid_only and bal <= 0:
+                continue
+            sub = r.subscription
+            m = sub.member if sub else None
+            fee = row_late_fee_amount(r, as_of=today)
+            rows_data.append(
+                [
+                    sub.subscription_no if sub else "",
+                    format_member_public_id(m.member_id) if m else "",
+                    (m.full_name[:30] if m else ""),
+                    str(r.sequence_no),
+                    r.due_date.isoformat() if r.due_date else "",
+                    str(r.due_amount or 0),
+                    str(fee),
+                    str(r.paid_amount or 0),
+                    str(bal),
+                    r.status,
+                ]
+            )
+        pdf_bytes = _pdf_table(
+            "Estithmar — Installments",
+            ["Sub", "Member ID", "Member", "Seq", "Due", "Due amt", "Late fee", "Paid", "Balance", "Status"],
+            rows_data,
+        )
+        return Response(
+            pdf_bytes,
+            mimetype="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=installments.pdf"},
+        )
 
     @app.route("/export/projects.xlsx")
     @role_required(*STAFF_OR_AGENT)

@@ -93,18 +93,22 @@ def recompute_subscription_status(subscription_id: int, *, commit: bool = False)
         sub.status = "Pending"
         sub.confirmed_at = None
     elif target > 0 and paid >= target:
-        # Fully paid: paid matches or reaches subscribed total (overpayment blocked when recording payments).
         sub.status = "Fully Paid"
-        if sub.confirmed_at is None:
-            sub.confirmed_at = datetime.utcnow()
-            db.session.add(
-                AuditLog(
-                    action="subscription_share_confirmed",
-                    entity_type="ShareSubscription",
-                    entity_id=sub.id,
-                    details=f"subscription_no={sub.subscription_no} paid_total={paid} subscribed_amount={target}",
+        from estithmar.services.installments import installment_schedule_satisfied
+
+        if sub.confirmed_at is None and installment_schedule_satisfied(sub):
+            from estithmar.services.installments import schedule_covers_subscription
+
+            if schedule_covers_subscription(sub):
+                sub.confirmed_at = datetime.utcnow()
+                db.session.add(
+                    AuditLog(
+                        action="subscription_share_confirmed",
+                        entity_type="ShareSubscription",
+                        entity_id=sub.id,
+                        details=f"subscription_no={sub.subscription_no} paid_total={paid} subscribed_amount={target}",
+                    )
                 )
-            )
     else:
         sub.status = "Partially Paid"
         sub.confirmed_at = None

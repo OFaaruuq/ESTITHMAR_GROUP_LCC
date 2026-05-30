@@ -2,49 +2,197 @@
 {% block title %}Installments{% endblock %}
 {% block page_heading %}Installment schedule{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h5 class="mb-0">{{ sub.subscription_no }} — {{ sub.member.full_name }}</h5>
-    <a href="{{ url_for('subscriptions_profile', id=sub.id) }}" class="btn btn-soft-secondary btn-sm">Back to subscription</a>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{{ url_for('subscriptions_profile', id=sub.id) }}" class="btn btn-soft-secondary btn-sm">Back to subscription</a>
+        {% if can_manage %}
+        <a href="{{ url_for('contributions_new', preselect=sub.member_id, subscription_id=sub.id) }}" class="btn btn-primary btn-sm"><i class="ri-hand-coin-line me-1"></i>Record payment</a>
+        {% endif %}
+    </div>
 </div>
 
-<div class="card mb-3" style="max-width:720px">
+{% if not can_manage %}
+<div class="alert alert-info border-0 mb-3">
+    <strong>Viewing your installment schedule.</strong> To record a payment, contact your agent or the office.
+    Staff will link payments to the correct installment rows.
+    <div class="mt-2 d-flex flex-wrap gap-2">
+        <a href="{{ url_for('reports_installments') }}" class="btn btn-sm btn-outline-primary">Installment report</a>
+        <a href="{{ url_for('contributions_list') }}" class="btn btn-sm btn-outline-secondary">My payments</a>
+    </div>
+</div>
+{% endif %}
+
+{% if schedule_warnings %}
+<div class="alert alert-warning border-0 mb-3">
+    <strong>Schedule needs attention</strong>
+    <ul class="mb-0 mt-2 small">
+        {% for w in schedule_warnings %}
+        <li>{{ w }}</li>
+        {% endfor %}
+    </ul>
+    {% if can_manage %}
+    <div class="mt-2 d-flex flex-wrap gap-2">
+        {% if gap.schedule_gap and gap.schedule_gap != 0 %}
+        <form method="post" class="d-inline">
+            <input type="hidden" name="action" value="rebalance_due">
+            <button type="submit" class="btn btn-sm btn-warning">Auto-correct due amounts</button>
+        </form>
+        {% endif %}
+        <form method="post" class="d-inline">
+            <input type="hidden" name="action" value="sync_payments">
+            <button type="submit" class="btn btn-sm btn-outline-primary">Sync payments to schedule</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body py-3">
+            <p class="text-muted small mb-1">Schedule gap</p>
+            <p class="mb-0 fw-semibold {% if gap.schedule_gap and gap.schedule_gap != 0 %}text-warning{% endif %}">{{ settings.currency_symbol }}{{ gap.schedule_gap|money }} {{ currency_code }}</p>
+            <p class="small text-muted mb-0">Subscribed {{ settings.currency_symbol }}{{ gap.subscribed|money }} · Scheduled {{ settings.currency_symbol }}{{ gap.scheduled_due|money }}</p>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body py-3">
+            <p class="text-muted small mb-1">Schedule adherence</p>
+            <p class="mb-0 fw-semibold">{{ adherence.adherence_pct }}%</p>
+            <p class="small text-muted mb-0">{{ adherence.overdue }} overdue · {{ adherence.fully_paid }} fully paid</p>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body py-3">
+            <p class="text-muted small mb-1">Outstanding on subscription</p>
+            <p class="mb-0 fw-semibold">{{ settings.currency_symbol }}{{ gap.outstanding|money }} {{ currency_code }}</p>
+            <p class="small text-muted mb-0">Paid on rows {{ settings.currency_symbol }}{{ gap.installment_paid|money }}</p>
+        </div></div>
+    </div>
+</div>
+
+{% if can_manage %}
+<div class="card mb-3" style="max-width:960px">
     <div class="card-header">Auto-generate schedule</div>
     <div class="card-body border-bottom">
-        <form method="post" class="row g-2">
+        <p class="small text-muted">Split the outstanding balance into equal installments. Use <strong>Replace existing</strong> only when no payments have been applied to current rows.</p>
+        <form method="post" class="row g-2" id="formAutoGenerate">
             <input type="hidden" name="action" value="auto_generate">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">Installments</label>
-                <input type="number" min="1" max="36" name="installments_count" class="form-control" value="6">
+                <input type="number" min="1" max="60" name="installments_count" class="form-control" value="6">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">Frequency</label>
-                <select name="frequency" class="form-select">
+                <select name="frequency" class="form-select inst-frequency">
                     <option value="monthly">Monthly</option>
                     <option value="weekly">Weekly</option>
+                    <option value="biweekly">Bi-weekly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="custom_days">Custom interval (days)</option>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-2 wrap-custom-days" hidden>
+                <label class="form-label">Interval (days)</label>
+                <input type="number" min="1" max="365" name="custom_days" class="form-control" value="30">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Down payment</label>
+                <input type="text" name="down_payment" class="form-control" placeholder="0.00" value="0">
+            </div>
+            <div class="col-md-3">
                 <label class="form-label">First due date</label>
                 <input type="date" name="start_date" class="form-control">
             </div>
-            <div class="col-md-2 d-flex align-items-end">
-                <button type="submit" class="btn btn-outline-primary btn-sm w-100">Generate</button>
+            <div class="col-12">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" name="replace_existing" value="1" id="replaceExisting">
+                    <label class="form-check-label small" for="replaceExisting">Replace existing rows (cancels all current rows — requires confirmation)</label>
+                </div>
+                <div class="form-check mb-2" id="wrapReplaceConfirm" hidden>
+                    <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmReplace">
+                    <label class="form-check-label small text-danger" for="confirmReplace">I confirm replacing the entire schedule</label>
+                </div>
+                <button type="submit" class="btn btn-outline-primary btn-sm">Generate</button>
             </div>
         </form>
-        <hr>
-        <form method="post" class="d-flex flex-wrap align-items-center gap-2">
-            <input type="hidden" name="action" value="rebalance_due">
-            <button type="submit" class="btn btn-outline-warning btn-sm">Auto-correct due amounts</button>
-            <span class="text-muted small">
-                Rebalances installment due amounts to match the subscription total while preserving amounts already paid.
-            </span>
-        </form>
     </div>
+
+    <div class="card-header">Correct schedule mistakes</div>
+    <div class="card-body border-bottom">
+        <p class="small text-muted mb-3">Use these when dates, amounts, or payment allocation are wrong. Paid rows are preserved where noted.</p>
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <h6 class="small fw-semibold">Regenerate future rows only</h6>
+                <p class="small text-muted">Cancels unpaid rows and creates new ones for the remaining balance. Keeps rows that already have payments.</p>
+                <form method="post" class="row g-2">
+                    <input type="hidden" name="action" value="regenerate_future">
+                    <input type="hidden" name="confirm" value="1">
+                    <div class="col-4">
+                        <input type="number" min="1" max="60" name="installments_count" class="form-control form-control-sm" value="6" title="Count">
+                    </div>
+                    <div class="col-4">
+                        <select name="frequency" class="form-select form-select-sm inst-frequency">
+                            <option value="monthly">Monthly</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="biweekly">Bi-weekly</option>
+                            <option value="quarterly">Quarterly</option>
+                        </select>
+                    </div>
+                    <div class="col-4">
+                        <input type="date" name="start_date" class="form-control form-control-sm" title="First due date">
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-outline-primary btn-sm" data-confirm="Regenerate future unpaid rows? Paid rows will be kept.">Regenerate future</button>
+                    </div>
+                </form>
+            </div>
+            <div class="col-lg-6">
+                <h6 class="small fw-semibold">Shift due dates</h6>
+                <p class="small text-muted">Move all pending/partial rows forward or backward (e.g. +7 or -14 days).</p>
+                <form method="post" class="d-flex flex-wrap gap-2 align-items-end">
+                    <input type="hidden" name="action" value="shift_dates">
+                    <div>
+                        <label class="form-label small">Days (+ later / − earlier)</label>
+                        <input type="number" name="shift_days" class="form-control form-control-sm" style="width:6rem" value="7">
+                    </div>
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" name="only_unpaid" value="1" id="onlyUnpaidShift" checked>
+                        <label class="form-check-label small" for="onlyUnpaidShift">Skip fully paid</label>
+                    </div>
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Shift dates</button>
+                </form>
+            </div>
+        </div>
+        <hr>
+        <div class="d-flex flex-wrap gap-2">
+            <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="rebalance_due">
+                <button type="submit" class="btn btn-outline-warning btn-sm" title="Redistribute due amounts to match subscribed total">Auto-correct due amounts</button>
+            </form>
+            <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="sync_payments">
+                <button type="submit" class="btn btn-outline-primary btn-sm">Sync payments to schedule</button>
+            </form>
+            <form method="post" class="d-inline" id="formRebuild">
+                <input type="hidden" name="action" value="rebuild_allocations">
+                <input type="hidden" name="confirm" value="1">
+                <button type="submit" class="btn btn-outline-secondary btn-sm" data-confirm="Rebuild all installment allocations from contributions? This resets paid amounts on rows.">Rebuild from contributions</button>
+            </form>
+            <form method="post" class="d-inline" id="formClearUnpaid">
+                <input type="hidden" name="action" value="clear_unpaid">
+                <input type="hidden" name="confirm" value="1">
+                <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Cancel ALL unpaid installment rows? You will need to regenerate the schedule.">Clear unpaid rows</button>
+            </form>
+        </div>
+    </div>
+
     <div class="card-header">Add installment row</div>
     <div class="card-body">
         <form method="post" class="row g-2">
             <input type="hidden" name="action" value="add">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">Sequence</label>
                 <input type="number" min="1" name="sequence_no" class="form-control" value="1">
             </div>
@@ -52,60 +200,151 @@
                 <label class="form-label">Due date</label>
                 <input type="date" name="due_date" class="form-control" required>
             </div>
-            <div class="col-md-5">
-                <label class="form-label">Due amount (USD)</label>
+            <div class="col-md-4">
+                <label class="form-label">Due amount ({{ currency_code }})</label>
                 <input type="text" name="due_amount" class="form-control" required placeholder="0.00">
             </div>
-            <div class="col-12">
-                <button type="submit" class="btn btn-primary btn-sm">Add row</button>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary btn-sm w-100">Add row</button>
             </div>
         </form>
     </div>
 </div>
+{% endif %}
 
 <div class="card">
-    <div class="card-header">Current installment rows</div>
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span>Current installment rows</span>
+        <span class="small text-muted">Sorted by due date</span>
+    </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-sm mb-0">
                 <thead>
-                    <tr><th>#</th><th>Due date</th><th>Due</th><th>Paid</th><th>Status</th><th>Actions</th></tr>
+                    <tr><th>#</th><th>Due date</th><th>Due</th><th>Late fee</th><th>Paid</th><th class="text-end">Remain</th><th>Status</th>{% if can_manage %}<th>Actions</th>{% endif %}</tr>
                 </thead>
                 <tbody>
                     {% for r in rows %}
-                    <tr>
-                        <td style="min-width: 90px;">
-                            <form method="post">
+                    {% if r.status != 'Cancelled' or can_manage %}
+                    <tr class="{% if installment_row_overdue(r) %}table-danger{% endif %}">
+                        <td>{{ r.sequence_no }}</td>
+                        <td>{{ r.due_date }}</td>
+                        <td>{{ settings.currency_symbol }}{{ r.due_amount|money }}</td>
+                        <td>
+                            {% if r.late_fee_waived %}
+                            <span class="text-muted small" title="Waived">waived</span>
+                            {% elif r.late_fee_amount and r.late_fee_amount > 0 %}
+                            {{ settings.currency_symbol }}{{ r.late_fee_amount|money }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>{{ settings.currency_symbol }}{{ r.paid_amount|money }}</td>
+                        <td class="text-end fw-medium {% if r.balance() > 0 %}text-danger{% endif %}">{{ settings.currency_symbol }}{{ r.balance()|money }}</td>
+                        <td>
+                            {% if installment_row_overdue(r) %}
+                            <span class="badge text-bg-danger">Overdue</span>
+                            {% elif r.status == 'Fully Paid' %}
+                            <span class="badge text-bg-success">{{ r.status }}</span>
+                            {% else %}
+                            <span class="badge text-bg-warning text-dark">{{ r.status }}</span>
+                            {% endif %}
+                        </td>
+                        {% if can_manage %}
+                        <td style="min-width:280px">
+                            {% if r.status != 'Cancelled' %}
+                            <form method="post" class="d-inline-flex flex-wrap gap-1 align-items-center">
                                 <input type="hidden" name="action" value="update">
                                 <input type="hidden" name="row_id" value="{{ r.id }}">
-                                <input type="number" min="1" name="sequence_no" class="form-control form-control-sm" value="{{ r.sequence_no }}">
-                        </td>
-                        <td style="min-width: 150px;">
-                                <input type="date" name="due_date" class="form-control form-control-sm" value="{{ r.due_date.isoformat() if r.due_date else '' }}" required>
-                        </td>
-                        <td style="min-width: 130px;">
-                                <input type="text" name="due_amount" class="form-control form-control-sm" value="{{ r.due_amount }}">
-                        </td>
-                        <td style="min-width: 130px;">
-                                <input type="text" name="paid_amount" class="form-control form-control-sm" value="{{ r.paid_amount }}">
-                        </td>
-                        <td>{{ r.status }}</td>
-                        <td style="min-width: 220px;">
+                                <input type="number" min="1" name="sequence_no" class="form-control form-control-sm" value="{{ r.sequence_no }}" style="width:3rem" title="Sequence">
+                                <input type="date" name="due_date" class="form-control form-control-sm" value="{{ r.due_date.isoformat() if r.due_date else '' }}" required style="width:9rem">
+                                <input type="text" name="due_amount" class="form-control form-control-sm" value="{{ r.due_amount }}" style="width:5rem">
                                 <button class="btn btn-soft-primary btn-sm" type="submit">Save</button>
                             </form>
+                            <a href="{{ url_for('contributions_new', preselect=sub.member_id, subscription_id=sub.id, target_installment_id=r.id) }}" class="btn btn-soft-success btn-sm">Pay</a>
+                            {% if (r.paid_amount or 0) == 0 %}
                             <form method="post" class="d-inline">
                                 <input type="hidden" name="action" value="cancel">
                                 <input type="hidden" name="row_id" value="{{ r.id }}">
-                                <button class="btn btn-soft-danger btn-sm" type="submit" {% if r.status == 'Cancelled' %}disabled{% endif %}>Cancel</button>
+                                <button class="btn btn-soft-danger btn-sm" type="submit" data-confirm="Cancel this installment row?">Cancel</button>
                             </form>
+                            {% endif %}
+                            {% if installment_row_overdue(r) and not r.late_fee_waived and r.late_fee_amount and r.late_fee_amount > 0 %}
+                            <form method="post" class="d-inline">
+                                <input type="hidden" name="action" value="waive_late_fee">
+                                <input type="hidden" name="row_id" value="{{ r.id }}">
+                                <button class="btn btn-soft-warning btn-sm" type="submit" title="Forgive late fee">Waive fee</button>
+                            </form>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted small">Cancelled</span>
+                            {% endif %}
                         </td>
+                        {% endif %}
                     </tr>
+                    {% endif %}
                     {% else %}
-                    <tr><td colspan="6" class="text-muted p-3">No installment rows defined yet.</td></tr>
+                    <tr><td colspan="{% if can_manage %}8{% else %}7{% endif %}" class="text-muted p-3">No installment rows defined yet.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
 </div>
+
+{% if allocations %}
+<div class="card mt-3">
+    <div class="card-header">Payment allocation audit trail</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr><th>Date</th><th>Receipt</th><th>Installment #</th><th class="text-end">Amount</th></tr>
+                </thead>
+                <tbody>
+                    {% for a in allocations %}
+                    <tr>
+                        <td>{{ a.contribution_date or a.created_at }}</td>
+                        <td>{% if a.contribution_id %}<a href="{{ url_for('contributions_receipt', id=a.contribution_id) }}">{{ a.receipt_no or ('#' ~ a.contribution_id) }}</a>{% else %}—{% endif %}</td>
+                        <td>#{{ a.sequence_no or '—' }}</td>
+                        <td class="text-end">{{ settings.currency_symbol }}{{ a.amount|money }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+(function () {
+    document.querySelectorAll('.inst-frequency').forEach(function (freq) {
+        var wrap = freq.closest('form, .card-body, div') && freq.closest('.row, form');
+        if (!wrap) return;
+        var customWrap = wrap.querySelector('.wrap-custom-days');
+        if (!customWrap) return;
+        function sync() { customWrap.hidden = freq.value !== 'custom_days'; }
+        freq.addEventListener('change', sync);
+        sync();
+    });
+
+    var replaceCb = document.getElementById('replaceExisting');
+    var confirmWrap = document.getElementById('wrapReplaceConfirm');
+    var confirmCb = document.getElementById('confirmReplace');
+    if (replaceCb && confirmWrap) {
+        function syncReplace() {
+            confirmWrap.hidden = !replaceCb.checked;
+            if (!replaceCb.checked && confirmCb) confirmCb.checked = false;
+        }
+        replaceCb.addEventListener('change', syncReplace);
+        syncReplace();
+    }
+
+    document.querySelectorAll('[data-confirm]').forEach(function (btn) {
+        btn.closest('form').addEventListener('submit', function (ev) {
+            var msg = btn.getAttribute('data-confirm');
+            if (msg && !window.confirm(msg)) ev.preventDefault();
+        });
+    });
+})();
+</script>
 {% endblock %}
