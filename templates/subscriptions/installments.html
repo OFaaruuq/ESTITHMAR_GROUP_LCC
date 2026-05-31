@@ -43,6 +43,20 @@
             <input type="hidden" name="action" value="sync_payments">
             <button type="submit" class="btn btn-sm btn-outline-primary">Sync payments to schedule</button>
         </form>
+        <form method="post" class="d-inline">
+            <input type="hidden" name="action" value="renumber_sequences">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Renumber sequences (1, 2, 3…)</button>
+        </form>
+        {% if correction.can_regenerate_future %}
+        <form method="post" class="d-inline" id="formRescheduleQuick">
+            <input type="hidden" name="action" value="reschedule_remaining">
+            <input type="hidden" name="confirm" value="1">
+            <input type="hidden" name="installments_count" value="{{ schedule_ui.suggested_reschedule_count|default(6) }}">
+            <input type="hidden" name="start_date" value="{{ schedule_ui.reschedule_start_date.isoformat() if schedule_ui.reschedule_start_date else '' }}">
+            <input type="hidden" name="frequency" value="monthly">
+            <button type="submit" class="btn btn-sm btn-primary" data-confirm="Reschedule remaining balance? Paid months are kept unchanged.">Reschedule remaining</button>
+        </form>
+        {% endif %}
     </div>
     {% endif %}
 </div>
@@ -73,201 +87,33 @@
 </div>
 
 {% if can_manage %}
-<div class="card mb-3" style="max-width:960px">
-    <div class="card-header">Auto-generate schedule</div>
-    <div class="card-body border-bottom">
-        <p class="small text-muted">Split the outstanding balance into equal installments. Use <strong>Replace existing</strong> only when no payments have been applied to current rows.</p>
-        <form method="post" class="row g-2" id="formAutoGenerate">
-            <input type="hidden" name="action" value="auto_generate">
-            <div class="col-md-2">
-                <label class="form-label">Installments</label>
-                <input type="number" min="1" max="60" name="installments_count" class="form-control" value="6">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Frequency</label>
-                <select name="frequency" class="form-select inst-frequency">
-                    <option value="monthly">Monthly</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="biweekly">Bi-weekly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="custom_days">Custom interval (days)</option>
-                </select>
-            </div>
-            <div class="col-md-2 wrap-custom-days" hidden>
-                <label class="form-label">Interval (days)</label>
-                <input type="number" min="1" max="365" name="custom_days" class="form-control" value="30">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Down payment</label>
-                <input type="text" name="down_payment" class="form-control" placeholder="0.00" value="0">
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">First due date</label>
-                <input type="date" name="start_date" class="form-control">
-            </div>
-            <div class="col-12">
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" name="replace_existing" value="1" id="replaceExisting">
-                    <label class="form-check-label small" for="replaceExisting">Replace existing rows (cancels all current rows — requires confirmation)</label>
-                </div>
-                <div class="form-check mb-2" id="wrapReplaceConfirm" hidden>
-                    <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmReplace">
-                    <label class="form-check-label small text-danger" for="confirmReplace">I confirm replacing the entire schedule</label>
-                </div>
-                <button type="submit" class="btn btn-outline-primary btn-sm">Generate</button>
-            </div>
-        </form>
-    </div>
-
-    <div class="card-header">Correct schedule mistakes</div>
-    <div class="card-body border-bottom">
-        <div class="alert alert-success border-success border-opacity-25 small mb-3">
-            <strong>Payments are never deleted.</strong> Contribution receipts and amounts already applied to installment rows stay on those rows.
-            You can only remove rows that have <em>no payments</em>, then rebuild the rest of the schedule.
-            Currently: <strong>{{ correction.locked_count }}</strong> row(s) with payments (protected),
-            <strong>{{ correction.editable_count }}</strong> row(s) can be deleted.
-            {% if correction.locked_paid_total > 0 %}
-            Paid on protected rows: {{ settings.currency_symbol }}{{ correction.locked_paid_total|money }} {{ currency_code }}.
-            {% endif %}
-        </div>
-
-        <div class="card border-warning border-opacity-50 mb-3">
-            <div class="card-header bg-warning bg-opacity-10 py-2">
-                <strong class="small">Delete unpaid installments &amp; rebuild schedule</strong>
-                <span class="text-muted small ms-1">— recommended when the whole schedule is wrong</span>
-            </div>
-            <div class="card-body py-3">
-                <p class="small text-muted mb-2">
-                    Removes every installment row with <strong>no payment</strong>, then creates a new schedule for the remaining balance
-                    ({{ settings.currency_symbol }}{{ correction.regenerate_pool|money }} {{ currency_code }}).
-                    Rows that already have payments are left exactly as they are.
-                </p>
-                <form method="post" class="row g-2 align-items-end" id="formRecorrect">
-                    <input type="hidden" name="action" value="recorrect_schedule">
-                    <div class="col-6 col-md-2">
-                        <label class="form-label small mb-0">New installments</label>
-                        <input type="number" min="1" max="60" name="installments_count" class="form-control form-control-sm" value="6">
-                    </div>
-                    <div class="col-6 col-md-2">
-                        <label class="form-label small mb-0">Frequency</label>
-                        <select name="frequency" class="form-select form-select-sm inst-frequency">
-                            <option value="monthly">Monthly</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="biweekly">Bi-weekly</option>
-                            <option value="quarterly">Quarterly</option>
-                            <option value="custom_days">Custom days</option>
-                        </select>
-                    </div>
-                    <div class="col-6 col-md-2 wrap-custom-days" hidden>
-                        <label class="form-label small mb-0">Every (days)</label>
-                        <input type="number" min="1" max="365" name="custom_days" class="form-control form-control-sm" value="30">
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <label class="form-label small mb-0">First due date</label>
-                        <input type="date" name="start_date" class="form-control form-control-sm">
-                    </div>
-                    <div class="col-12">
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmRecorrect" required>
-                            <label class="form-check-label small text-danger" for="confirmRecorrect">
-                                I confirm — delete unpaid rows and rebuild; paid amounts stay on paid rows
-                            </label>
-                        </div>
-                        <button type="submit" class="btn btn-warning btn-sm" {% if not correction.can_regenerate_future %}disabled title="No remaining balance to reschedule"{% endif %}>
-                            Delete unpaid &amp; rebuild schedule
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <div class="row g-3">
-            <div class="col-lg-6">
-                <h6 class="small fw-semibold">Shift due dates only</h6>
-                <p class="small text-muted">Move pending/partial rows forward or backward without deleting them.</p>
-                <form method="post" class="d-flex flex-wrap gap-2 align-items-end">
-                    <input type="hidden" name="action" value="shift_dates">
-                    <div>
-                        <label class="form-label small">Days (+ later / − earlier)</label>
-                        <input type="number" name="shift_days" class="form-control form-control-sm" style="width:6rem" value="7">
-                    </div>
-                    <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" name="only_unpaid" value="1" id="onlyUnpaidShift" checked>
-                        <label class="form-check-label small" for="onlyUnpaidShift">Skip fully paid</label>
-                    </div>
-                    <button type="submit" class="btn btn-outline-secondary btn-sm">Shift dates</button>
-                </form>
-            </div>
-            <div class="col-lg-6">
-                <h6 class="small fw-semibold">Delete unpaid only (no rebuild)</h6>
-                <p class="small text-muted">Remove all rows with no payments, then add or auto-generate a new schedule manually.</p>
-                <form method="post" class="d-inline" id="formClearUnpaid">
-                    <input type="hidden" name="action" value="clear_unpaid">
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmClearUnpaid" required>
-                        <label class="form-check-label small" for="confirmClearUnpaid">Confirm delete all unpaid rows</label>
-                    </div>
-                    <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Delete ALL unpaid installment rows? Paid rows and payment amounts are kept.">Delete all unpaid rows</button>
-                </form>
-            </div>
-        </div>
-        <hr>
-        <div class="d-flex flex-wrap gap-2">
-            <form method="post" class="d-inline">
-                <input type="hidden" name="action" value="rebalance_due">
-                <button type="submit" class="btn btn-outline-warning btn-sm" title="Redistribute due amounts to match subscribed total">Auto-correct due amounts</button>
-            </form>
-            <form method="post" class="d-inline">
-                <input type="hidden" name="action" value="sync_payments">
-                <button type="submit" class="btn btn-outline-primary btn-sm">Sync payments to schedule</button>
-            </form>
-            <form method="post" class="d-inline" id="formRebuild">
-                <input type="hidden" name="action" value="rebuild_allocations">
-                <input type="hidden" name="confirm" value="1">
-                <button type="submit" class="btn btn-outline-secondary btn-sm" data-confirm="Rebuild allocations from contributions? This reapplies payments to rows — use only if allocations are wrong.">Rebuild from contributions</button>
-            </form>
-        </div>
-    </div>
-
-    <div class="card-header">Add installment row</div>
-    <div class="card-body">
-        <form method="post" class="row g-2">
-            <input type="hidden" name="action" value="add">
-            <div class="col-md-2">
-                <label class="form-label">Sequence</label>
-                <input type="number" min="1" name="sequence_no" class="form-control" value="1">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Due date</label>
-                <input type="date" name="due_date" class="form-control" required>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Due amount ({{ currency_code }})</label>
-                <input type="text" name="due_amount" class="form-control" required placeholder="0.00">
-            </div>
-            <div class="col-md-2 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary btn-sm w-100">Add row</button>
-            </div>
-        </form>
-    </div>
-</div>
+{% include "subscriptions/installments_manage.html" %}
 {% endif %}
 
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span>Current installment rows</span>
-        {% if can_manage and correction.editable_count > 0 %}
-        <form method="post" class="d-flex flex-wrap gap-2 align-items-center mb-0" id="formDeleteSelected" onsubmit="return confirm('Delete selected unpaid rows? Paid rows cannot be selected.');">
-            <input type="hidden" name="action" value="cancel_selected">
-            <div class="form-check mb-0">
-                <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmDeleteSelected" required>
-                <label class="form-check-label small" for="confirmDeleteSelected">Confirm</label>
-            </div>
-            <button type="submit" class="btn btn-sm btn-outline-danger">Delete selected unpaid</button>
-        </form>
-        {% else %}
-        <span class="small text-muted">Sorted by due date</span>
-        {% endif %}
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            {% if cancelled_count > 0 %}
+            {% if show_cancelled %}
+            <a href="{{ url_for('subscriptions_installments', id=sub.id) }}" class="btn btn-sm btn-outline-secondary">Hide {{ cancelled_count }} cancelled</a>
+            {% else %}
+            <a href="{{ url_for('subscriptions_installments', id=sub.id, show_cancelled=1) }}" class="btn btn-sm btn-outline-secondary">Show {{ cancelled_count }} cancelled</a>
+            {% endif %}
+            {% endif %}
+            {% if can_manage and correction.editable_count > 0 %}
+            <form method="post" class="d-flex flex-wrap gap-2 align-items-center mb-0" id="formDeleteSelected" onsubmit="return confirm('Delete selected unpaid rows? Paid rows cannot be selected.');">
+                <input type="hidden" name="action" value="cancel_selected">
+                <div class="form-check mb-0">
+                    <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmDeleteSelected" required>
+                    <label class="form-check-label small" for="confirmDeleteSelected">Confirm</label>
+                </div>
+                <button type="submit" class="btn btn-sm btn-outline-danger">Delete selected unpaid</button>
+            </form>
+            {% elif not cancelled_count %}
+            <span class="small text-muted">Sorted by due date</span>
+            {% endif %}
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -280,8 +126,7 @@
                 </thead>
                 <tbody>
                     {% for r in rows %}
-                    {% if r.status != 'Cancelled' or can_manage %}
-                    <tr class="{% if installment_row_overdue(r) %}table-danger{% endif %}">
+                    <tr class="{% if r.status == 'Cancelled' %}table-secondary text-muted{% elif installment_row_overdue(r) %}table-danger{% endif %}">
                         {% if can_manage %}
                         <td class="text-center">
                             {% if r.id not in locked_row_ids and r.status != 'Cancelled' %}
@@ -349,9 +194,15 @@
                         </td>
                         {% endif %}
                     </tr>
-                    {% endif %}
                     {% else %}
-                    <tr><td colspan="{% if can_manage %}9{% else %}7{% endif %}" class="text-muted p-3">No installment rows defined yet.</td></tr>
+                    <tr><td colspan="{% if can_manage %}9{% else %}7{% endif %}" class="text-muted p-3">
+                        No active installment rows.
+                        {% if cancelled_count > 0 and not show_cancelled %}
+                        <a href="{{ url_for('subscriptions_installments', id=sub.id, show_cancelled=1) }}">Show {{ cancelled_count }} cancelled row(s)</a>
+                        {% elif can_manage %}
+                        Use Auto-generate or Add row above to build a schedule.
+                        {% endif %}
+                    </td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -414,6 +265,79 @@
             if (msg && !window.confirm(msg)) ev.preventDefault();
         });
     });
+
+    var rescheduleCount = document.getElementById('rescheduleCount');
+    var rescheduleFreq = document.getElementById('rescheduleFrequency');
+    var rescheduleStart = document.getElementById('rescheduleStartDate');
+    var rescheduleCustom = document.getElementById('rescheduleCustomDays');
+    var perMonthEl = document.getElementById('reschedulePerMonthPreview');
+    var countPreviewEl = document.getElementById('rescheduleCountPreview');
+    var livePreviewEl = document.getElementById('rescheduleLivePreview');
+    var previewUrl = {{ url_for('api_subscription_reschedule_preview', id=sub.id)|tojson }};
+    var currencySym = {{ (settings.currency_symbol or '$')|tojson }};
+    var previewTimer;
+
+    function moneyFmt(val) {
+        var n = parseFloat(val);
+        if (isNaN(n)) return currencySym + '0.00';
+        return currencySym + n.toFixed(2);
+    }
+
+    function updateReschedulePreview() {
+        if (!rescheduleCount || !previewUrl) return;
+        var params = new URLSearchParams();
+        params.set('installments_count', rescheduleCount.value || '6');
+        if (rescheduleFreq) params.set('frequency', rescheduleFreq.value);
+        if (rescheduleStart && rescheduleStart.value) params.set('start_date', rescheduleStart.value);
+        if (rescheduleCustom) params.set('custom_days', rescheduleCustom.value || '30');
+        fetch(previewUrl + '?' + params.toString(), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (perMonthEl) perMonthEl.textContent = moneyFmt(data.per_installment_amount);
+                if (countPreviewEl) countPreviewEl.textContent = (data.installments_count || 0) + ' month(s)';
+                if (livePreviewEl) {
+                    livePreviewEl.innerHTML = 'About <strong>' + moneyFmt(data.per_installment_amount) + '</strong> per installment × <strong>' +
+                        (data.installments_count || 0) + '</strong> month(s), first due <strong>' +
+                        (data.first_due_date || '—') + '</strong>. Remaining balance: <strong>' +
+                        moneyFmt(data.remaining_balance) + '</strong>.';
+                }
+            })
+            .catch(function () {});
+    }
+
+    function schedulePreviewUpdate() {
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(updateReschedulePreview, 250);
+    }
+
+    if (rescheduleCount) {
+        ['input', 'change'].forEach(function (ev) {
+            rescheduleCount.addEventListener(ev, schedulePreviewUpdate);
+        });
+        if (rescheduleFreq) rescheduleFreq.addEventListener('change', schedulePreviewUpdate);
+        if (rescheduleStart) rescheduleStart.addEventListener('change', schedulePreviewUpdate);
+        if (rescheduleCustom) rescheduleCustom.addEventListener('input', schedulePreviewUpdate);
+    }
+
+    var autoGenCount = document.getElementById('autoGenCount');
+    var autoGenPreview = document.getElementById('autoGenPreview');
+    var autoGenPerMonth = document.getElementById('autoGenPerMonth');
+    var autoGenPool = {% if can_manage and schedule_ui %}{{ schedule_ui.auto_generate_pool|tojson }}{% else %}0{% endif %};
+
+    function updateAutoGenPreview() {
+        if (!autoGenCount || !autoGenPerMonth) return;
+        var n = Math.max(1, parseInt(autoGenCount.value, 10) || 1);
+        var per = autoGenPool / n;
+        autoGenPerMonth.textContent = currencySym + per.toFixed(2);
+        if (autoGenPreview) {
+            autoGenPreview.innerHTML = 'Split <strong>' + currencySym + parseFloat(autoGenPool).toFixed(2) + '</strong> outstanding into <strong>' +
+                n + '</strong> installment(s) — about <strong>' + currencySym + per.toFixed(2) + '</strong> each.';
+        }
+    }
+    if (autoGenCount) {
+        autoGenCount.addEventListener('input', updateAutoGenPreview);
+        autoGenCount.addEventListener('change', updateAutoGenPreview);
+    }
 })();
 </script>
 {% endblock %}

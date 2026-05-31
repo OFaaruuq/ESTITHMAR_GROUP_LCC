@@ -1,0 +1,289 @@
+{# Included from installments.html — manage schedule workflows #}
+<div class="card mb-3 inst-manage-card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 py-3">
+        <div>
+            <span class="fw-semibold">Manage installment schedule</span>
+            {% if schedule_ui.has_paid_installments %}
+            <span class="badge bg-success-subtle text-success border border-success border-opacity-25 ms-2">Payments on record</span>
+            {% elif not schedule_ui.has_active_rows %}
+            <span class="badge bg-secondary-subtle text-secondary ms-2">No schedule yet</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body pt-0">
+        {% if schedule_ui.auto_generate_blocked_reason %}
+        <div class="alert alert-warning border-0 small py-2 mb-3 mb-md-0 mt-3">
+            <i class="ri-shield-check-line me-1"></i>{{ schedule_ui.auto_generate_blocked_reason }}
+        </div>
+        {% endif %}
+        <ul class="nav nav-pills nav-fill flex-wrap gap-1 mb-3 inst-workflow-tabs" role="tablist">
+            {% if schedule_ui.show_auto_generate_primary %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active py-2" id="tab-create" data-bs-toggle="pill" data-bs-target="#panel-create" type="button" role="tab">
+                    <i class="ri-add-circle-line me-1"></i>Create schedule
+                </button>
+            </li>
+            {% endif %}
+            {% if schedule_ui.show_reschedule_primary or schedule_ui.has_paid_installments %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if schedule_ui.show_reschedule_primary and not schedule_ui.show_auto_generate_primary %}active{% elif schedule_ui.has_paid_installments %}active{% endif %} py-2" id="tab-reschedule" data-bs-toggle="pill" data-bs-target="#panel-reschedule" type="button" role="tab">
+                    <i class="ri-calendar-schedule-line me-1"></i>Reschedule remaining
+                </button>
+            </li>
+            {% endif %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if not schedule_ui.show_auto_generate_primary and not schedule_ui.show_reschedule_primary and not schedule_ui.has_paid_installments %}active{% endif %} py-2" id="tab-advanced" data-bs-toggle="pill" data-bs-target="#panel-advanced" type="button" role="tab">
+                    <i class="ri-settings-3-line me-1"></i>Advanced
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            {# —— Create schedule (no payments yet) —— #}
+            {% if schedule_ui.show_auto_generate_primary %}
+            <div class="tab-pane fade show active" id="panel-create" role="tabpanel">
+                <div class="alert alert-light border small mb-3">
+                    <strong>Step 1 — Create the plan.</strong> Split the outstanding balance into equal installments.
+                    Use this when the member has <em>not paid any installment yet</em>.
+                </div>
+                <form method="post" class="row g-3" id="formAutoGenerate">
+                    <input type="hidden" name="action" value="auto_generate">
+                    <div class="col-md-6 col-lg-3">
+                        <label class="form-label small fw-semibold mb-1">Number of installments</label>
+                        <input type="number" min="1" max="60" name="installments_count" id="autoGenCount" class="form-control" value="{{ schedule_ui.suggested_auto_generate_count }}" required>
+                    </div>
+                    <div class="col-md-6 col-lg-3">
+                        <label class="form-label small fw-semibold mb-1">Frequency</label>
+                        <select name="frequency" id="autoGenFrequency" class="form-select inst-frequency">
+                            <option value="monthly" selected>Monthly</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="biweekly">Bi-weekly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="custom_days">Custom interval</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 col-lg-2 wrap-custom-days" hidden>
+                        <label class="form-label small fw-semibold mb-1">Every (days)</label>
+                        <input type="number" min="1" max="365" name="custom_days" class="form-control" value="30">
+                    </div>
+                    <div class="col-md-6 col-lg-2">
+                        <label class="form-label small fw-semibold mb-1">Down payment</label>
+                        <input type="text" name="down_payment" class="form-control" placeholder="0.00" value="0">
+                    </div>
+                    <div class="col-md-6 col-lg-4">
+                        <label class="form-label small fw-semibold mb-1">First due date</label>
+                        <input type="date" name="start_date" id="autoGenStartDate" class="form-control" value="{{ schedule_ui.auto_generate_start_date.isoformat() }}" required>
+                    </div>
+                    <div class="col-12">
+                        <div class="alert alert-primary border-primary border-opacity-25 py-2 mb-3 small" id="autoGenPreview">
+                            Split <strong>{{ settings.currency_symbol }}{{ schedule_ui.auto_generate_pool|money }}</strong> outstanding into
+                            <strong>{{ schedule_ui.suggested_auto_generate_count }}</strong> installment(s) — about
+                            <strong id="autoGenPerMonth">{{ settings.currency_symbol }}{{ schedule_ui.auto_per_installment|money }}</strong> each.
+                        </div>
+                        {% if schedule_ui.has_active_rows %}
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="replace_existing" value="1" id="replaceExisting">
+                            <label class="form-check-label small" for="replaceExisting">Replace existing unpaid rows (required when rows already exist)</label>
+                        </div>
+                        <div class="form-check mb-2" id="wrapReplaceConfirm" hidden>
+                            <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmReplace">
+                            <label class="form-check-label small text-danger" for="confirmReplace">I confirm replacing existing rows</label>
+                        </div>
+                        {% endif %}
+                        <button type="submit" class="btn btn-primary btn-sm" {% if schedule_ui.has_active_rows %}title="Check Replace existing if rows already exist"{% endif %}>
+                            <i class="ri-play-list-add-line me-1"></i>Generate schedule
+                        </button>
+                    </div>
+                </form>
+            </div>
+            {% elif schedule_ui.auto_generate_blocked_reason %}
+            {# Auto-generate hidden when payments exist — message shown above tabs #}
+            {% endif %}
+
+            {# —— Reschedule remaining (payments exist) —— #}
+            <div class="tab-pane fade {% if schedule_ui.show_reschedule_primary or (schedule_ui.has_paid_installments and not schedule_ui.show_auto_generate_primary) %}show active{% endif %}" id="panel-reschedule" role="tabpanel">
+                <div class="alert alert-success border-success border-opacity-25 small mb-3">
+                    <strong>Member already paid some months?</strong> Set how many months remain and the amount per month.
+                    Paid rows below are <em>never changed</em> — only unpaid future rows are replaced.
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 h-100 bg-light">
+                            <p class="text-muted small mb-1">Subscribed</p>
+                            <p class="mb-0 fw-semibold">{{ settings.currency_symbol }}{{ reschedule_preview.subscribed|money }}</p>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 h-100 bg-light">
+                            <p class="text-muted small mb-1">Already paid</p>
+                            <p class="mb-0 fw-semibold text-success">{{ settings.currency_symbol }}{{ reschedule_preview.total_paid|money }}</p>
+                            <p class="small text-muted mb-0">{{ reschedule_preview.locked_count }} month(s)</p>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 h-100 bg-light">
+                            <p class="text-muted small mb-1">Remaining balance</p>
+                            <p class="mb-0 fw-semibold text-primary">{{ settings.currency_symbol }}{{ reschedule_preview.remaining_balance|money }}</p>
+                            <p class="small text-muted mb-0">{{ reschedule_preview.rows_to_remove }} unpaid row(s) replaced</p>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="border rounded p-2 h-100 bg-primary bg-opacity-10 border-primary border-opacity-25">
+                            <p class="text-muted small mb-1">Preview / month</p>
+                            <p class="mb-0 fw-semibold" id="reschedulePerMonthPreview">{{ settings.currency_symbol }}{{ reschedule_preview.per_installment_amount|money }}</p>
+                            <p class="small text-muted mb-0" id="rescheduleCountPreview">{{ reschedule_preview.installments_count }} month(s)</p>
+                        </div>
+                    </div>
+                </div>
+
+                {% if reschedule_preview.locked_rows %}
+                <div class="mb-3">
+                    <h6 class="small fw-semibold mb-2"><i class="ri-lock-line me-1"></i>Paid months kept (unchanged)</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0 bg-white">
+                            <thead class="table-light"><tr><th>#</th><th>Due date</th><th>Due</th><th>Paid</th><th>Status</th></tr></thead>
+                            <tbody>
+                                {% for lr in reschedule_preview.locked_rows %}
+                                <tr>
+                                    <td>{{ lr.sequence_no }}</td>
+                                    <td>{{ lr.due_date }}</td>
+                                    <td>{{ settings.currency_symbol }}{{ lr.due_amount|money }}</td>
+                                    <td class="text-success fw-medium">{{ settings.currency_symbol }}{{ lr.paid_amount|money }}</td>
+                                    <td><span class="badge text-bg-success">{{ lr.status }}</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+
+                <form method="post" class="row g-3 align-items-end border rounded p-3 bg-white" id="formRescheduleRemaining">
+                    <input type="hidden" name="action" value="reschedule_remaining">
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small fw-semibold mb-1">Remaining months</label>
+                        <input type="number" min="1" max="60" name="installments_count" id="rescheduleCount" class="form-control" value="{{ schedule_ui.suggested_reschedule_count }}" required>
+                        <div class="form-text">How many installments for the {{ settings.currency_symbol }}{{ reschedule_preview.remaining_balance|money }} left</div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small fw-semibold mb-1">Frequency</label>
+                        <select name="frequency" id="rescheduleFrequency" class="form-select inst-frequency">
+                            <option value="monthly" selected>Monthly</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="biweekly">Bi-weekly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="custom_days">Custom days</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-2 wrap-custom-days" hidden>
+                        <label class="form-label small fw-semibold mb-1">Every (days)</label>
+                        <input type="number" min="1" max="365" name="custom_days" id="rescheduleCustomDays" class="form-control" value="30">
+                    </div>
+                    <div class="col-6 col-md-4">
+                        <label class="form-label small fw-semibold mb-1">First new due date</label>
+                        <input type="date" name="start_date" id="rescheduleStartDate" class="form-control" value="{{ schedule_ui.reschedule_start_date.isoformat() }}" required>
+                        <div class="form-text">Usually the month after the last paid installment</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="alert alert-light border small py-2 mb-2" id="rescheduleLivePreview">
+                            About <strong>{{ settings.currency_symbol }}{{ reschedule_preview.per_installment_amount|money }}</strong> ×
+                            <strong>{{ reschedule_preview.installments_count }}</strong> month(s),
+                            first due <strong>{{ schedule_ui.reschedule_start_date.isoformat() }}</strong>.
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="confirm" value="1" id="confirmRescheduleRemaining" required>
+                            <label class="form-check-label small" for="confirmRescheduleRemaining">
+                                I confirm — replace unpaid rows only; paid months stay unchanged
+                            </label>
+                        </div>
+                        <button type="submit" class="btn btn-primary" {% if not reschedule_preview.can_reschedule %}disabled{% endif %} data-confirm="Apply new schedule for the remaining balance? Paid months will not be changed.">
+                            <i class="ri-check-line me-1"></i>Apply new schedule
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            {# —— Advanced —— #}
+            <div class="tab-pane fade {% if not schedule_ui.show_auto_generate_primary and not schedule_ui.show_reschedule_primary and not schedule_ui.has_paid_installments %}show active{% endif %}" id="panel-advanced" role="tabpanel">
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <div class="border rounded p-3 h-100">
+                            <h6 class="small fw-semibold">Shift due dates</h6>
+                            <p class="small text-muted">Move dates without deleting rows.</p>
+                            <form method="post" class="d-flex flex-wrap gap-2 align-items-end">
+                                <input type="hidden" name="action" value="shift_dates">
+                                <div>
+                                    <label class="form-label small">Days (+ later / − earlier)</label>
+                                    <input type="number" name="shift_days" class="form-control form-control-sm" style="width:5rem" value="7">
+                                </div>
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input" type="checkbox" name="only_unpaid" value="1" checked>
+                                    <label class="form-check-label small">Skip fully paid</label>
+                                </div>
+                                <button type="submit" class="btn btn-outline-secondary btn-sm">Shift</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="border rounded p-3 h-100">
+                            <h6 class="small fw-semibold">Delete unpaid only</h6>
+                            <p class="small text-muted">Remove rows with no payments (no rebuild).</p>
+                            <form method="post" id="formClearUnpaid">
+                                <input type="hidden" name="action" value="clear_unpaid">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" name="confirm" value="1" required>
+                                    <label class="form-check-label small">Confirm delete</label>
+                                </div>
+                                <button type="submit" class="btn btn-outline-danger btn-sm" data-confirm="Delete all unpaid rows? Paid rows are kept.">Delete unpaid</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-3 pt-3 border-top">
+                    <form method="post" class="d-inline"><input type="hidden" name="action" value="rebalance_due"><button type="submit" class="btn btn-outline-warning btn-sm">Auto-correct amounts</button></form>
+                    <form method="post" class="d-inline"><input type="hidden" name="action" value="sync_payments"><button type="submit" class="btn btn-outline-primary btn-sm">Sync payments</button></form>
+                    <form method="post" class="d-inline"><input type="hidden" name="action" value="renumber_sequences"><button type="submit" class="btn btn-outline-secondary btn-sm">Renumber #</button></form>
+                    <form method="post" class="d-inline" id="formRebuild"><input type="hidden" name="action" value="rebuild_allocations"><input type="hidden" name="confirm" value="1"><button type="submit" class="btn btn-outline-secondary btn-sm" data-confirm="Rebuild allocations from contributions?">Rebuild allocations</button></form>
+                </div>
+                {% if schedule_ui.has_paid_installments %}
+                <form method="post" class="mt-3 pt-3 border-top" id="formCleanupRebuild">
+                    <input type="hidden" name="action" value="cleanup_rebuild">
+                    <input type="hidden" name="installments_count" value="{{ schedule_ui.suggested_reschedule_count }}">
+                    <input type="hidden" name="start_date" value="{{ schedule_ui.reschedule_start_date.isoformat() }}">
+                    <input type="hidden" name="frequency" value="monthly">
+                    <input type="hidden" name="custom_days" value="30">
+                    <p class="small text-muted mb-2">One-click: delete unpaid rows, rebuild with defaults, renumber, align totals.</p>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="confirm" value="1" required>
+                        <label class="form-check-label small">Confirm clean up &amp; rebuild</label>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-outline-primary" {% if not correction.can_regenerate_future %}disabled{% endif %} data-confirm="Clean up and rebuild? Paid rows kept.">Clean up &amp; rebuild</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+
+        <details class="mt-3 pt-2 border-top">
+            <summary class="small text-muted" style="cursor:pointer">Add single row manually</summary>
+            <form method="post" class="row g-2 mt-2">
+                <input type="hidden" name="action" value="add">
+                <div class="col-md-2">
+                    <label class="form-label small">Sequence</label>
+                    <input type="number" min="1" name="sequence_no" class="form-control form-control-sm" value="{{ next_sequence_no|default(1) }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">Due date</label>
+                    <input type="date" name="due_date" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">Amount ({{ currency_code }})</label>
+                    <input type="text" name="due_amount" class="form-control form-control-sm" required placeholder="0.00">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-outline-primary btn-sm w-100">Add</button>
+                </div>
+            </form>
+        </details>
+    </div>
+</div>

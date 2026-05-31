@@ -12,12 +12,18 @@ from estithmar.models import Contribution, InstallmentPlan, Member, ShareSubscri
 from estithmar.services.certificates import issue_certificate
 from estithmar.services.installments import (
     allocate_contribution_to_installments,
+    reschedule_remaining_balance,
+    reschedule_remaining_balance_preview,
+    cleanup_and_rebuild_installment_schedule,
     cancel_unpaid_installment_rows,
     ensure_installment_schedule_exists,
     generate_installment_schedule,
     is_row_overdue_for_display,
     rebalance_installment_due_amounts,
     recompute_installment_statuses,
+    normalize_installment_sequences,
+    next_installment_sequence_no,
+    has_duplicate_installment_sequences,
     regenerate_future_installment_schedule,
     schedule_health_warnings,
     shift_installment_due_dates,
@@ -424,6 +430,38 @@ def test_validate_sequence_no_duplicate(app, member_and_sub):
             validate_sequence_no(sub, 1)
 
 
+def test_normalize_installment_sequences_fixes_duplicates(app, member_and_sub):
+    m, sub = member_and_sub
+    with app.app_context():
+        sub = db.session.get(ShareSubscription, sub.id)
+        for due, seq in (
+            (date(2026, 1, 1), 1),
+            (date(2026, 2, 1), 1),
+            (date(2026, 3, 1), 2),
+            (date(2026, 4, 1), 2),
+        ):
+            db.session.add(
+                InstallmentPlan(
+                    subscription_id=sub.id,
+                    due_date=due,
+                    due_amount=Decimal("50"),
+                    paid_amount=Decimal("0"),
+                    status="Pending",
+                    sequence_no=seq,
+                )
+            )
+        db.session.commit()
+        assert has_duplicate_installment_sequences(sub)
+        changed = normalize_installment_sequences(sub.id, commit=True)
+        assert changed == 4
+        sub = db.session.get(ShareSubscription, sub.id)
+        active = [r for r in sub.installments.all() if r.status != "Cancelled"]
+        active.sort(key=lambda r: r.due_date)
+        assert [r.sequence_no for r in active] == [1, 2, 3, 4]
+        assert not has_duplicate_installment_sequences(sub)
+        assert next_installment_sequence_no(sub) == 5
+
+
 def test_shift_dates(app, member_and_sub):
     m, sub = member_and_sub
     with app.app_context():
@@ -478,6 +516,36 @@ def test_regenerate_future_keeps_paid(app, member_and_sub):
         assert paid_row.status != "Cancelled"
         assert unpaid_row.status == "Cancelled"
         assert len(new_rows) == 2
+        active = [r for r in sub.installments.all() if r.status != "Cancelled"]
+        active.sort(key=lambda r: r.due_date)
+        assert [r.sequence_no for r in active] == [1, 2, 3]
+        assert not has_duplicate_installment_sequences(sub)
+
+
+def test_regenerate_start_date_after_kept_rows(app, member_and_sub):
+    m, sub = member_and_sub
+    with app.app_context():
+        sub = db.session.get(ShareSubscription, sub.id)
+        kept = InstallmentPlan(
+            subscription_id=sub.id,
+            due_date=date(2026, 6, 1),
+            due_amount=Decimal("100"),
+            paid_amount=Decimal("50"),
+            status="Partially Paid",
+            sequence_no=1,
+        )
+        db.session.add(kept)
+        db.session.commit()
+        regenerate_future_installment_schedule(
+            sub.id,
+            installments_count=1,
+            frequency="monthly",
+            start_date=date(2026, 4, 1),
+            commit=True,
+        )
+        new_rows = [r for r in sub.installments.all() if r.status == "Pending" and r.id != kept.id]
+        assert new_rows
+        assert new_rows[0].due_date > kept.due_date
 
 
 def test_cancel_unpaid_rows(app, member_and_sub):
@@ -508,6 +576,104 @@ def test_cancel_unpaid_rows(app, member_and_sub):
         assert n == 1
         assert r1.status == "Cancelled"
         assert r2.status != "Cancelled"
+        assert r2.sequence_no == 1
+
+
+def test_reschedule_remaining_keeps_paid_months(app, member_and_sub):
+    m, sub = member_and_sub
+    with app.app_context():
+        sub = db.session.get(ShareSubscription, sub.id)
+        subscribed = sub.subscribed_amount or Decimal("1000")
+        per_month = (subscribed / Decimal("10")).quantize(Decimal("0.01"))
+        rows = []
+        for i in range(1, 11):
+            paid = per_month if i <= 2 else Decimal("0")
+            rows.append(
+                InstallmentPlan(
+                    subscription_id=sub.id,
+                    due_date=date(2026, i, 1),
+                    due_amount=per_month,
+                    paid_amount=paid,
+                    status="Fully Paid" if paid >= per_month else "Pending",
+                    sequence_no=i,
+                )
+            )
+        db.session.add_all(rows)
+        db.session.commit()
+
+        preview = reschedule_remaining_balance_preview(sub, installments_count=4)
+        assert preview["locked_count"] == 2
+        assert preview["rows_to_remove"] == 8
+        assert preview["remaining_balance"] == subscribed - (per_month * 2)
+
+        result = reschedule_remaining_balance(
+            sub.id,
+            installments_count=4,
+            frequency="monthly",
+            start_date=date(2026, 3, 1),
+            commit=True,
+        )
+        assert result["locked_count"] == 2
+        assert result["removed"] == 8
+        assert result["created"] == 4
+        paid_rows = [
+            r for r in sub.installments.all()
+            if r.status != "Cancelled" and (r.paid_amount or Decimal("0")) > 0
+        ]
+        assert len(paid_rows) == 2
+        assert all(r.paid_amount == per_month for r in paid_rows)
+        assert abs(result["schedule_gap"]) <= Decimal("0.01")
+
+
+def test_cleanup_and_rebuild_installment_schedule(app, member_and_sub):
+    m, sub = member_and_sub
+    with app.app_context():
+        sub = db.session.get(ShareSubscription, sub.id)
+        for due, seq, paid in (
+            (date(2026, 1, 1), 1, Decimal("0")),
+            (date(2026, 1, 1), 1, Decimal("0")),
+            (date(2026, 2, 1), 2, Decimal("100")),
+            (date(2026, 3, 1), 2, Decimal("0")),
+        ):
+            db.session.add(
+                InstallmentPlan(
+                    subscription_id=sub.id,
+                    due_date=due,
+                    due_amount=Decimal("100"),
+                    paid_amount=paid,
+                    status="Fully Paid" if paid >= Decimal("100") else "Pending",
+                    sequence_no=seq,
+                )
+            )
+        db.session.commit()
+        result = cleanup_and_rebuild_installment_schedule(
+            sub.id,
+            installments_count=2,
+            frequency="monthly",
+            start_date=date(2026, 4, 1),
+            commit=True,
+        )
+        assert result["removed"] == 3
+        assert result["created"] == 2
+        assert result["locked_count"] == 1
+        active = [r for r in sub.installments.all() if r.status != "Cancelled"]
+        active.sort(key=lambda r: r.due_date)
+        assert [r.sequence_no for r in active] == [1, 2, 3]
+        assert abs(result["schedule_gap"]) <= Decimal("0.01")
+
+
+def test_generate_auto_rebalance_closes_gap(app, member_and_sub):
+    m, sub = member_and_sub
+    with app.app_context():
+        sub = db.session.get(ShareSubscription, sub.id)
+        generate_installment_schedule(
+            sub.id,
+            installments_count=2,
+            frequency="monthly",
+            start_date=date(2026, 1, 1),
+            commit=True,
+        )
+        assert abs(subscription_schedule_gap(sub)["schedule_gap"]) <= Decimal("0.01")
 
 
 def test_waive_late_fee(app, member_and_sub):

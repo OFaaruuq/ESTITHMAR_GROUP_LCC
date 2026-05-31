@@ -141,8 +141,14 @@ from estithmar.services import (
     generate_installment_schedule,
     regenerate_future_installment_schedule,
     recorrect_installment_schedule,
+    cleanup_and_rebuild_installment_schedule,
+    reschedule_remaining_balance,
+    reschedule_remaining_balance_preview,
     schedule_correction_summary,
     schedule_health_warnings,
+    has_duplicate_installment_sequences,
+    normalize_installment_sequences,
+    next_installment_sequence_no,
     installment_row_has_payments,
     handle_payment_plan_changed_to_full,
     installment_schedule_for_receipt,
@@ -163,6 +169,12 @@ from estithmar.services import (
     subscription_schedule_adherence,
     subscription_schedule_gap,
     summarize_installment_rows,
+    suggested_installment_start_date,
+    suggested_new_schedule_start_date,
+    suggested_reschedule_start_date,
+    suggested_reschedule_installment_count,
+    suggested_new_schedule_installment_count,
+    installment_schedule_ui_context,
     shift_installment_due_dates,
     sync_orphan_payments_to_installments,
     validate_sequence_no,
@@ -874,12 +886,15 @@ def _audit_notification_item(log: AuditLog) -> dict | None:
         "installments_auto_generated": "Installment schedule generated",
         "installments_regenerated_future": "Future installments regenerated",
         "installments_recorrected": "Installment schedule recorrected (paid rows kept)",
+        "installments_cleanup_rebuild": "Installment schedule cleaned up and rebuilt",
+        "installments_reschedule_remaining": "Remaining balance rescheduled (paid months kept)",
         "installments_rows_deleted": "Unpaid installment rows deleted",
         "installments_rebalanced": "Installment amounts corrected",
         "installments_rebuilt_from_contributions": "Installment allocations rebuilt",
         "installments_synced_payments": "Payments synced to schedule",
         "installments_dates_shifted": "Installment dates shifted",
         "installments_cleared_unpaid": "Unpaid installment rows cleared",
+        "installments_sequences_renumbered": "Installment sequences renumbered",
         "installment_late_fee_waived": "Late fee waived",
     }
     title = title_map.get(log.action, log.action.replace("_", " ").title())
@@ -3861,7 +3876,10 @@ def register_routes(app):
                             "warning",
                         )
                     else:
-                        flash("Installment schedule generated.", "success")
+                        flash(
+                            "Installment schedule generated and due amounts aligned to subscribed total.",
+                            "success",
+                        )
                     return redirect(url_for("subscriptions_installments", id=sub.id))
 
                 if action in ("regenerate_future", "recorrect_schedule"):
@@ -3907,7 +3925,104 @@ def register_routes(app):
                     else:
                         flash(
                             f"Schedule recorrected: {removed} unpaid row(s) removed, "
-                            f"{paid_kept} paid row(s) unchanged, new installments created.",
+                            f"{paid_kept} paid row(s) unchanged, new installments created "
+                            "with unique sequence numbers and aligned due totals.",
+                            "success",
+                        )
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "reschedule_remaining":
+                    if not confirm:
+                        raise ValueError(
+                            "Check the confirmation box to reschedule the remaining balance. "
+                            "Rows with payments are kept unchanged."
+                        )
+                    installments_count = max(1, min(60, request.form.get("installments_count", type=int) or 1))
+                    start_date = _parse_date(request.form.get("start_date")) or suggested_installment_start_date(sub)
+                    freq = (request.form.get("frequency") or "monthly").strip().lower()
+                    custom_days = max(1, min(365, request.form.get("custom_days", type=int) or 30))
+                    result = reschedule_remaining_balance(
+                        sub.id,
+                        installments_count=installments_count,
+                        frequency=freq,
+                        start_date=start_date,
+                        custom_days=custom_days,
+                        commit=False,
+                    )
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installments_reschedule_remaining",
+                        "ShareSubscription",
+                        sub.id,
+                        (
+                            f"removed={result['removed']} created={result['created']} "
+                            f"count={installments_count} remaining={result['remaining_balance']} "
+                            f"frequency={freq}"
+                        ),
+                    )
+                    db.session.commit()
+                    sym = settings.currency_symbol or "$"
+                    per_month = result["per_installment_amount"]
+                    if abs(result["schedule_gap"]) > Decimal("0.01"):
+                        flash(
+                            f"Kept {result['locked_count']} row(s) with payments "
+                            f"({sym}{result['locked_paid_total']} paid). "
+                            f"Removed {result['removed']} unpaid row(s) and created {result['created']} new "
+                            f"installment(s) of about {sym}{per_month} each. "
+                            f"Small gap remaining: {result['schedule_gap']}.",
+                            "warning",
+                        )
+                    else:
+                        flash(
+                            f"Rescheduled remaining balance: kept {result['locked_count']} paid month(s), "
+                            f"removed {result['removed']} unpaid row(s), created {result['created']} new "
+                            f"installment(s) at about {sym}{per_month} each. "
+                            "Existing payments were not changed.",
+                            "success",
+                        )
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
+                if action == "cleanup_rebuild":
+                    if not confirm:
+                        raise ValueError(
+                            "Check the confirmation box to clean up and rebuild the installment schedule."
+                        )
+                    installments_count = request.form.get("installments_count", type=int)
+                    start_date = _parse_date(request.form.get("start_date"))
+                    freq = (request.form.get("frequency") or "monthly").strip().lower()
+                    custom_days = max(1, min(365, request.form.get("custom_days", type=int) or 30))
+                    result = cleanup_and_rebuild_installment_schedule(
+                        sub.id,
+                        installments_count=installments_count,
+                        frequency=freq,
+                        start_date=start_date,
+                        custom_days=custom_days,
+                        commit=False,
+                    )
+                    recompute_subscription_status(sub.id, commit=False)
+                    log_audit(
+                        "installments_cleanup_rebuild",
+                        "ShareSubscription",
+                        sub.id,
+                        (
+                            f"removed={result['removed']} created={result['created']} "
+                            f"count={result['installments_count']} frequency={result['frequency']}"
+                        ),
+                    )
+                    db.session.commit()
+                    if abs(result["schedule_gap"]) > Decimal("0.01"):
+                        flash(
+                            f"Cleaned up {result['removed']} unpaid row(s), created {result['created']} new "
+                            f"installment(s), kept {result['locked_count']} paid row(s). "
+                            f"Small gap remaining: {result['schedule_gap']} — run Auto-correct due amounts.",
+                            "warning",
+                        )
+                    else:
+                        flash(
+                            f"Schedule cleaned up: {result['removed']} unpaid row(s) removed, "
+                            f"{result['created']} new installment(s) created, "
+                            f"{result['locked_count']} paid row(s) unchanged, sequences renumbered, "
+                            "and due totals aligned to subscribed amount.",
                             "success",
                         )
                     return redirect(url_for("subscriptions_installments", id=sub.id))
@@ -3958,6 +4073,7 @@ def register_routes(app):
                         sequence_no=sequence_no,
                     )
                     db.session.add(row)
+                    normalize_installment_sequences(sub.id, commit=False)
                     recompute_installment_statuses(sub.id, commit=False)
                     recompute_subscription_status(sub.id, commit=False)
                     log_audit(
@@ -3991,6 +4107,7 @@ def register_routes(app):
                     row.due_date = due_date
                     row.due_amount = due_amount
                     row.sequence_no = sequence_no
+                    normalize_installment_sequences(sub.id, commit=False)
                     recompute_installment_statuses(sub.id, commit=False)
                     recompute_subscription_status(sub.id, commit=False)
                     log_audit(
@@ -4011,6 +4128,11 @@ def register_routes(app):
                     if installment_row_has_payments(row):
                         raise ValueError("Cannot cancel a row that already has payments applied.")
                     row.status = "Cancelled"
+                    normalize_installment_sequences(sub.id, commit=False)
+                    try:
+                        rebalance_installment_due_amounts(sub.id, commit=False)
+                    except ValueError:
+                        pass
                     recompute_installment_statuses(sub.id, commit=False)
                     recompute_subscription_status(sub.id, commit=False)
                     log_audit(
@@ -4111,6 +4233,25 @@ def register_routes(app):
                     flash(f"Cancelled {n} unpaid installment row(s). Use Regenerate future to build a new schedule.", "warning")
                     return redirect(url_for("subscriptions_installments", id=sub.id))
 
+                if action == "renumber_sequences":
+                    n = normalize_installment_sequences(sub.id, commit=False)
+                    recompute_installment_statuses(sub.id, commit=False)
+                    log_audit(
+                        "installments_sequences_renumbered",
+                        "ShareSubscription",
+                        sub.id,
+                        f"rows_changed={n}",
+                    )
+                    db.session.commit()
+                    if n:
+                        flash(
+                            f"Renumbered {n} row(s) to unique sequence order (1, 2, 3…) by due date.",
+                            "success",
+                        )
+                    else:
+                        flash("Sequence numbers are already unique and in order.", "info")
+                    return redirect(url_for("subscriptions_installments", id=sub.id))
+
                 if action == "waive_late_fee":
                     row_id = request.form.get("row_id", type=int)
                     waive_installment_late_fee(row_id, sub.id, commit=False)
@@ -4133,6 +4274,21 @@ def register_routes(app):
         rows = sub.installments.order_by(
             InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()
         ).all()
+        if can_manage and has_duplicate_installment_sequences(sub):
+            changed = normalize_installment_sequences(sub.id, commit=True)
+            if changed:
+                flash(
+                    f"Corrected duplicate sequence numbers on {changed} row(s) — now numbered 1..N by due date.",
+                    "info",
+                )
+                rows = sub.installments.order_by(
+                    InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()
+                ).all()
+
+        show_cancelled = request.args.get("show_cancelled") == "1"
+        display_rows = rows if show_cancelled else [r for r in rows if r.status != "Cancelled"]
+        cancelled_count = sum(1 for r in rows if r.status == "Cancelled")
+        next_sequence_no = next_installment_sequence_no(sub)
         gap = subscription_schedule_gap(sub)
         adherence = subscription_schedule_adherence(sub)
         schedule_warnings = schedule_health_warnings(sub)
@@ -4141,10 +4297,35 @@ def register_routes(app):
         locked_row_ids = {
             r.id for r in rows if r.status != "Cancelled" and installment_row_has_payments(r)
         }
+        active_count = len([r for r in rows if r.status != "Cancelled"])
+        unpaid_active_count = len(
+            [r for r in rows if r.status != "Cancelled" and r.id not in locked_row_ids]
+        )
+        suggested_start_date = suggested_reschedule_start_date(sub) if correction["locked_count"] > 0 else suggested_new_schedule_start_date(sub)
+        suggested_installment_count = (
+            suggested_reschedule_installment_count(sub)
+            if correction["locked_count"] > 0
+            else suggested_new_schedule_installment_count(sub)
+        )
+        schedule_ui = installment_schedule_ui_context(sub)
+        reschedule_preview = reschedule_remaining_balance_preview(
+            sub,
+            installments_count=schedule_ui["suggested_reschedule_count"],
+            frequency="monthly",
+            start_date=schedule_ui["reschedule_start_date"],
+        )
         return render_template(
             "subscriptions/installments.html",
             sub=sub,
-            rows=rows,
+            rows=display_rows,
+            display_rows=display_rows,
+            show_cancelled=show_cancelled,
+            cancelled_count=cancelled_count,
+            next_sequence_no=next_sequence_no,
+            suggested_start_date=suggested_start_date,
+            suggested_installment_count=suggested_installment_count,
+            schedule_ui=schedule_ui,
+            reschedule_preview=reschedule_preview,
             allocations=allocations,
             can_manage=can_manage,
             settings=settings,
@@ -4155,6 +4336,44 @@ def register_routes(app):
             correction=correction,
             locked_row_ids=locked_row_ids,
         )
+
+    @app.route("/api/subscriptions/<int:id>/reschedule-preview")
+    @permission_required(Permission.SUBSCRIPTIONS_INSTALLMENTS_MANAGE)
+    def api_subscription_reschedule_preview(id):
+        q = ShareSubscription.query.join(Member, ShareSubscription.member_id == Member.id)
+        if current_user.role == "agent" and current_user.agent_id:
+            q = q.filter(Member.agent_id == current_user.agent_id)
+        sub = q.filter(ShareSubscription.id == id).first_or_404()
+        ensure_installment_subscription(sub)
+        count = max(1, min(60, request.args.get("installments_count", type=int) or 6))
+        freq = (request.args.get("frequency") or "monthly").strip().lower()
+        start_date = _parse_date(request.args.get("start_date"))
+        custom_days = max(1, min(365, request.args.get("custom_days", type=int) or 30))
+        preview = reschedule_remaining_balance_preview(
+            sub,
+            installments_count=count,
+            frequency=freq,
+            start_date=start_date,
+            custom_days=custom_days,
+        )
+
+        def _dec(v):
+            return str(v) if isinstance(v, Decimal) else v
+
+        payload = {
+            k: _dec(v)
+            for k, v in preview.items()
+            if k != "locked_rows"
+        }
+        payload["first_due_date"] = preview["first_due_date"].isoformat() if preview.get("first_due_date") else None
+        payload["locked_rows"] = [
+            {
+                **{kk: _dec(vv) for kk, vv in row.items() if kk != "due_date"},
+                "due_date": row["due_date"].isoformat() if row.get("due_date") else None,
+            }
+            for row in preview.get("locked_rows", [])
+        ]
+        return jsonify(payload)
 
     @app.route("/api/subscriptions/<int:id>/installment-options")
     @permission_required(Permission.CONTRIBUTIONS_CREATE)
@@ -4200,9 +4419,15 @@ def register_routes(app):
             q = q.filter(ShareSubscription.member_id == current_user.member_id)
         sub = q.filter(ShareSubscription.id == id).first_or_404()
         recompute_installment_statuses(sub.id, commit=True)
-        rows = sub.installments.order_by(
-            InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()
-        ).all()
+        if has_duplicate_installment_sequences(sub):
+            normalize_installment_sequences(sub.id, commit=True)
+        rows = [
+            r
+            for r in sub.installments.order_by(
+                InstallmentPlan.due_date.asc(), InstallmentPlan.sequence_no.asc()
+            ).all()
+            if r.status != "Cancelled"
+        ]
         return jsonify(
             {
                 "subscription_id": sub.id,
@@ -7804,6 +8029,7 @@ def register_routes(app):
         rows = query.all()
         today = date.today()
         overdue_rows, unpaid_rows, gap_rows = collect_installment_report_rows(rows, as_of=today)
+        gap_rows.sort(key=lambda g: abs(g["schedule_gap"]), reverse=True)
         adherence_rows = []
         seen_sub_ids: set[int] = set()
         for r in rows:

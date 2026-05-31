@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 
 from dateutil.relativedelta import relativedelta
 
@@ -116,6 +116,133 @@ def active_installment_rows(sub: ShareSubscription) -> list[InstallmentPlan]:
     ]
 
 
+def suggested_installment_start_date(sub: ShareSubscription) -> date:
+    """Backward-compatible alias — prefer suggested_reschedule_start_date when payments exist."""
+    locked = [r for r in active_installment_rows(sub) if installment_row_has_payments(r)]
+    if locked:
+        return suggested_reschedule_start_date(sub)
+    return suggested_new_schedule_start_date(sub)
+
+
+def suggested_new_schedule_start_date(sub: ShareSubscription) -> date:
+    """First due date for a new schedule (no payments on any row yet)."""
+    today = date.today()
+    unpaid = [r for r in active_installment_rows(sub) if not installment_row_has_payments(r)]
+    if not unpaid:
+        return today
+    future_dates = sorted(d for r in unpaid for d in [r.due_date] if d and d >= today)
+    if future_dates:
+        return future_dates[0]
+    return today
+
+
+def suggested_reschedule_start_date(sub: ShareSubscription) -> date:
+    """First due for new rows after paid months — ignores far-future dates on unpaid rows."""
+    today = date.today()
+    locked = [r for r in active_installment_rows(sub) if installment_row_has_payments(r)]
+    if locked:
+        paid_dates = [r.due_date for r in locked if r.due_date]
+        if paid_dates:
+            return max(paid_dates) + relativedelta(months=1)
+    return suggested_new_schedule_start_date(sub)
+
+
+def suggested_reschedule_installment_count(sub: ShareSubscription) -> int:
+    """Reasonable default for remaining months (not the count of bad unpaid rows)."""
+    correction = schedule_correction_summary(sub)
+    pool = correction["regenerate_pool"]
+    if pool <= Decimal("0"):
+        return 6
+    locked_count = correction["locked_count"]
+    locked_paid = correction["locked_paid_total"]
+    if locked_count > 0 and locked_paid > Decimal("0"):
+        avg = (locked_paid / Decimal(str(locked_count))).quantize(Decimal("0.01"))
+        if avg > Decimal("0"):
+            est = int((pool / avg).to_integral_value(rounding=ROUND_CEILING))
+            return max(1, min(60, min(est, 12)))
+    active = active_installment_rows(sub)
+    if not active:
+        return 6
+    return max(1, min(60, 6))
+
+
+def suggested_new_schedule_installment_count(sub: ShareSubscription) -> int:
+    """Default installment count for auto-generate on a fresh or unpaid-only schedule."""
+    active = active_installment_rows(sub)
+    if not active:
+        return 6
+    if any(installment_row_has_payments(r) for r in active):
+        return suggested_reschedule_installment_count(sub)
+    return max(1, min(60, len(active) if len(active) <= 12 else 6))
+
+
+def installment_schedule_ui_context(sub: ShareSubscription) -> dict:
+    """Template helpers: which workflow to show and smart defaults."""
+    correction = schedule_correction_summary(sub)
+    active = active_installment_rows(sub)
+    has_paid = correction["locked_count"] > 0
+    auto_start = suggested_new_schedule_start_date(sub)
+    reschedule_start = suggested_reschedule_start_date(sub)
+    reschedule_count = suggested_reschedule_installment_count(sub)
+    auto_count = suggested_new_schedule_installment_count(sub)
+    outstanding = sub.outstanding_balance()
+    auto_per = (
+        (outstanding / Decimal(str(auto_count))).quantize(Decimal("0.01"))
+        if auto_count > 0
+        else outstanding.quantize(Decimal("0.01"))
+    )
+    return {
+        "has_paid_installments": has_paid,
+        "has_active_rows": bool(active),
+        "auto_generate_start_date": auto_start,
+        "reschedule_start_date": reschedule_start,
+        "suggested_reschedule_count": reschedule_count,
+        "suggested_auto_generate_count": auto_count,
+        "auto_generate_pool": outstanding.quantize(Decimal("0.01")),
+        "auto_per_installment": auto_per,
+        "show_reschedule_primary": has_paid and correction["can_regenerate_future"],
+        "show_auto_generate_primary": not has_paid,
+        "auto_generate_blocked_reason": (
+            "Payments exist on this schedule. Use Reschedule remaining balance — "
+            "auto-generate would require replacing all rows and cannot run while payments are applied."
+            if has_paid
+            else None
+        ),
+    }
+
+
+def _effective_regenerate_start_date(
+    kept: list[InstallmentPlan],
+    start_date: date,
+    frequency: str,
+    *,
+    custom_days: int = 30,
+) -> date:
+    """Ensure regenerated rows start after the latest kept installment due date."""
+    dates = [r.due_date for r in kept if r.due_date]
+    if not dates:
+        return start_date
+    latest = max(dates)
+    if start_date > latest:
+        return start_date
+    return _next_due_date(latest, 2, frequency, custom_days=custom_days)
+
+
+def _auto_rebalance_schedule_if_needed(subscription_id: int) -> bool:
+    """Close small schedule gaps after generate/regenerate when possible."""
+    sub = db.session.get(ShareSubscription, subscription_id)
+    if sub is None:
+        return False
+    gap = subscription_schedule_gap(sub)["schedule_gap"]
+    if abs(gap) <= Decimal("0.01"):
+        return False
+    try:
+        rebalance_installment_due_amounts(subscription_id, commit=False)
+    except ValueError:
+        return False
+    return abs(subscription_schedule_gap(sub)["schedule_gap"]) <= Decimal("0.01")
+
+
 def schedule_total_due(sub: ShareSubscription, *, exclude_row_id: int | None = None) -> Decimal:
     total = Decimal("0")
     for row in active_installment_rows(sub):
@@ -152,8 +279,41 @@ def validate_sequence_no(
             continue
         if row.sequence_no == seq:
             raise ValueError(
-                f"Sequence #{seq} is already used on this schedule. Choose a unique sequence number."
+                f"Sequence #{seq} is already used on this schedule. Choose a unique sequence number "
+                "or use Renumber sequences."
             )
+
+
+def next_installment_sequence_no(sub: ShareSubscription) -> int:
+    """Next free sequence # for a new active row (assumes rows are normalized)."""
+    active = active_installment_rows(sub)
+    if not active:
+        return 1
+    return max((int(r.sequence_no or 0) for r in active), default=0) + 1
+
+
+def has_duplicate_installment_sequences(sub: ShareSubscription) -> bool:
+    seqs = [int(r.sequence_no or 0) for r in active_installment_rows(sub)]
+    return len(seqs) > 0 and len(seqs) != len(set(seqs))
+
+
+def normalize_installment_sequences(subscription_id: int, *, commit: bool = False) -> int:
+    """Renumber active rows to unique 1..N ordered by due date, then prior sequence, then id."""
+    sub = db.session.get(ShareSubscription, subscription_id)
+    if sub is None:
+        return 0
+    active = active_installment_rows(sub)
+    if not active:
+        return 0
+    active.sort(key=lambda r: (r.due_date or date.min, int(r.sequence_no or 0), r.id))
+    changed = 0
+    for idx, row in enumerate(active, start=1):
+        if int(row.sequence_no or 0) != idx:
+            row.sequence_no = idx
+            changed += 1
+    if changed and commit:
+        db.session.commit()
+    return changed
 
 
 def schedule_health_warnings(sub: ShareSubscription, *, as_of: date | None = None) -> list[str]:
@@ -175,7 +335,9 @@ def schedule_health_warnings(sub: ShareSubscription, *, as_of: date | None = Non
     active = active_installment_rows(sub)
     seqs = [r.sequence_no for r in active]
     if len(seqs) != len(set(seqs)):
-        warnings.append("Duplicate sequence numbers detected — edit rows so each # is unique.")
+        warnings.append(
+            "Duplicate sequence numbers detected — use Renumber sequences or edit rows so each # is unique."
+        )
     sub_paid = gap_info["paid_total"]
     inst_paid = gap_info["installment_paid"]
     pay_gap = (sub_paid - inst_paid).quantize(Decimal("0.01"))
@@ -232,6 +394,122 @@ def schedule_correction_summary(sub: ShareSubscription) -> dict:
         ),
         "regenerate_pool": regenerate_pool,
         "can_regenerate_future": regenerate_pool > Decimal("0"),
+    }
+
+
+def reschedule_remaining_balance_preview(
+    sub: ShareSubscription,
+    *,
+    installments_count: int = 6,
+    frequency: str = "monthly",
+    start_date: date | None = None,
+    custom_days: int = 30,
+) -> dict:
+    """Preview rescheduling unpaid future rows while keeping rows that already have payments."""
+    correction = schedule_correction_summary(sub)
+    active = active_installment_rows(sub)
+    locked = [r for r in active if installment_row_has_payments(r)]
+    editable = [r for r in active if not installment_row_has_payments(r)]
+    pool = correction["regenerate_pool"]
+    count = max(1, min(60, int(installments_count or 1)))
+    freq = frequency if frequency in {"monthly", "weekly", "biweekly", "quarterly", "custom_days"} else "monthly"
+    first_due = start_date or suggested_installment_start_date(sub)
+    if locked:
+        first_due = _effective_regenerate_start_date(locked, first_due, freq, custom_days=custom_days)
+
+    if pool > 0 and count > 0:
+        base = (pool / Decimal(str(count))).quantize(Decimal("0.01"))
+        running = base * Decimal(str(count - 1))
+        last_amount = (pool - running).quantize(Decimal("0.01")) if count > 1 else pool
+    else:
+        base = Decimal("0")
+        last_amount = Decimal("0")
+
+    subscribed = (sub.subscribed_amount or Decimal("0")).quantize(Decimal("0.01"))
+    total_paid = (sub.paid_total() or Decimal("0")).quantize(Decimal("0.01"))
+
+    return {
+        "can_reschedule": correction["can_regenerate_future"],
+        "locked_count": len(locked),
+        "rows_to_remove": len(editable),
+        "remaining_balance": pool,
+        "installments_count": count,
+        "per_installment_amount": base,
+        "last_installment_amount": last_amount,
+        "first_due_date": first_due,
+        "frequency": freq,
+        "subscribed": subscribed,
+        "total_paid": total_paid,
+        "subscription_outstanding": sub.outstanding_balance(),
+        "locked_paid_total": correction["locked_paid_total"],
+        "locked_rows": [
+            {
+                "id": r.id,
+                "sequence_no": r.sequence_no,
+                "due_date": r.due_date,
+                "due_amount": (r.due_amount or Decimal("0")).quantize(Decimal("0.01")),
+                "paid_amount": (r.paid_amount or Decimal("0")).quantize(Decimal("0.01")),
+                "outstanding": row_outstanding_balance(r),
+                "status": r.status,
+            }
+            for r in sorted(locked, key=lambda x: (x.due_date or date.min, int(x.sequence_no or 0)))
+        ],
+    }
+
+
+def reschedule_remaining_balance(
+    subscription_id: int,
+    *,
+    installments_count: int,
+    frequency: str = "monthly",
+    start_date: date | None = None,
+    custom_days: int = 30,
+    commit: bool = False,
+) -> dict:
+    """Redo future installments for the remaining balance; paid/partial rows are kept unchanged."""
+    sub = db.session.get(ShareSubscription, subscription_id)
+    if sub is None:
+        raise ValueError("Invalid subscription.")
+    ensure_installment_subscription(sub)
+
+    count = max(1, min(60, int(installments_count or 1)))
+    freq = frequency if frequency in {"monthly", "weekly", "biweekly", "quarterly", "custom_days"} else "monthly"
+    first_due = start_date or suggested_installment_start_date(sub)
+
+    preview = reschedule_remaining_balance_preview(
+        sub,
+        installments_count=count,
+        frequency=freq,
+        start_date=first_due,
+        custom_days=custom_days,
+    )
+    if not preview["can_reschedule"]:
+        raise ValueError(
+            "Nothing left to reschedule — payments on kept rows already cover the outstanding balance."
+        )
+
+    removed, new_rows = recorrect_installment_schedule(
+        subscription_id,
+        installments_count=count,
+        frequency=freq,
+        start_date=first_due,
+        custom_days=custom_days,
+        commit=False,
+    )
+    normalize_installment_sequences(subscription_id, commit=False)
+    gap_closed = _auto_rebalance_schedule_if_needed(subscription_id)
+    normalize_installment_sequences(subscription_id, commit=False)
+    recompute_installment_statuses(subscription_id, commit=False)
+    if commit:
+        db.session.commit()
+
+    gap = subscription_schedule_gap(sub)
+    return {
+        **preview,
+        "removed": removed,
+        "created": len(new_rows),
+        "gap_closed": gap_closed,
+        "schedule_gap": gap["schedule_gap"],
     }
 
 
@@ -503,6 +781,8 @@ def cancel_installment_rows_by_ids(
         row.status = "Cancelled"
         n += 1
     if n:
+        normalize_installment_sequences(sub.id, commit=False)
+        _auto_rebalance_schedule_if_needed(sub.id)
         recompute_installment_statuses(sub.id, commit=False)
     if commit:
         db.session.commit()
@@ -536,6 +816,34 @@ def recorrect_installment_schedule(
     return removed, new_rows
 
 
+def cleanup_and_rebuild_installment_schedule(
+    subscription_id: int,
+    *,
+    installments_count: int | None = None,
+    frequency: str = "monthly",
+    start_date: date | None = None,
+    custom_days: int = 30,
+    commit: bool = False,
+) -> dict:
+    """Remove unpaid rows, rebuild schedule, renumber sequences, and close schedule gap."""
+    sub = db.session.get(ShareSubscription, subscription_id)
+    if sub is None:
+        raise ValueError("Invalid subscription.")
+    correction = schedule_correction_summary(sub)
+    unpaid_count = correction["editable_count"]
+    count = installments_count
+    if count is None:
+        count = max(1, min(60, unpaid_count or len(active_installment_rows(sub)) or 6))
+    return reschedule_remaining_balance(
+        subscription_id,
+        installments_count=int(count),
+        frequency=frequency,
+        start_date=start_date,
+        custom_days=custom_days,
+        commit=commit,
+    )
+
+
 def shift_installment_due_dates(
     subscription_id: int,
     days: int,
@@ -559,6 +867,7 @@ def shift_installment_due_dates(
         row.due_date = row.due_date + delta
         n += 1
     if n:
+        normalize_installment_sequences(sub.id, commit=False)
         recompute_installment_statuses(sub.id, commit=False)
     if commit:
         db.session.commit()
@@ -618,7 +927,7 @@ def regenerate_future_installment_schedule(
 
     count = max(1, min(60, int(installments_count or 1)))
     freq = frequency if frequency in {"monthly", "weekly", "biweekly", "quarterly", "custom_days"} else "monthly"
-    max_seq = max((r.sequence_no or 0 for r in kept), default=0)
+    start_date = _effective_regenerate_start_date(kept, start_date, freq, custom_days=custom_days)
 
     rows: list[InstallmentPlan] = []
     base = (remaining / Decimal(str(count))).quantize(Decimal("0.01"))
@@ -629,7 +938,6 @@ def regenerate_future_installment_schedule(
             due_amount = (remaining - running).quantize(Decimal("0.01"))
         running += due_amount
         due_date = _next_due_date(start_date, i, freq, custom_days=custom_days)
-        max_seq += 1
         rows.append(
             InstallmentPlan(
                 subscription_id=sub.id,
@@ -637,7 +945,7 @@ def regenerate_future_installment_schedule(
                 due_amount=due_amount,
                 paid_amount=Decimal("0"),
                 status="Pending",
-                sequence_no=max_seq,
+                sequence_no=i,
             )
         )
 
@@ -647,6 +955,8 @@ def regenerate_future_installment_schedule(
         raise ValueError("Regenerated schedule would exceed the subscription amount.")
 
     db.session.add_all(rows)
+    _auto_rebalance_schedule_if_needed(sub.id)
+    normalize_installment_sequences(sub.id, commit=False)
     recompute_installment_statuses(sub.id, commit=False)
     if commit:
         db.session.commit()
@@ -1039,6 +1349,8 @@ def generate_installment_schedule(
     if new_total > (sub.subscribed_amount or Decimal("0")) + Decimal("0.01"):
         raise ValueError("Generated schedule exceeds the subscription amount.")
     db.session.add_all(rows)
+    _auto_rebalance_schedule_if_needed(sub.id)
+    normalize_installment_sequences(sub.id, commit=False)
     recompute_installment_statuses(sub.id, commit=False)
     if commit:
         db.session.commit()
@@ -1080,6 +1392,7 @@ def rebuild_allocations_from_contributions(subscription_id: int, *, commit: bool
             )
 
     sync_orphan_payments_to_installments(sub.id, commit=False)
+    normalize_installment_sequences(sub.id, commit=False)
     recompute_installment_statuses(sub.id, commit=False)
     if commit:
         db.session.commit()
@@ -1164,8 +1477,9 @@ def collect_installment_report_rows(
         if sub and sub.id not in seen_subs and (sub.payment_plan or "full") == "installment":
             seen_subs.add(sub.id)
             gap = subscription_schedule_gap(sub)
-            gap["subscription"] = sub
-            gap_rows.append(gap)
+            if abs(gap["schedule_gap"]) > Decimal("0.01"):
+                gap["subscription"] = sub
+                gap_rows.append(gap)
 
     return overdue_rows, unpaid_rows, gap_rows
 
